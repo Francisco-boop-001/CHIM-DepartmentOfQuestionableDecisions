@@ -14,7 +14,7 @@ This is a PRE-ALPHA for a disposable test profile, save and separate server/data
 
 Skyrim SE/AE, matching SKSE64 and Address Library, PRISMA UI with its V1 API, SkyUI, CHIM, and the supported complete owner plugin releases. VR is not a supported build target. Install the owner plugins' own required game components as well.
 
-The masterless ESP is ESL-flagged: **one light-plugin slot, no full-plugin slot**. This is not a zero-slot mod. Exact package size and supported version pins belong to the release manifest. The separate dev.18 candidate requires the exact separately published Sealed Fates owner package described in [dev.18 compatibility](docs/DEV18-COMPATIBILITY.md); it does not include or publish that owner package. Dev.18 has a known overlapping-init race; keep restore/init operations serialized in TEST and read the linked limitation before use.
+The masterless ESP is ESL-flagged: **one light-plugin slot, no full-plugin slot**. This is not a zero-slot mod. Exact package size and supported version pins belong to the release manifest. This prealpha.4 candidate supports exact Sealed Fates dev.14–18 and dev.20. Dev.18 requires serialized restore/init as described in [dev.18 compatibility](docs/DEV18-COMPATIBILITY.md); the separately verified [dev.20 pairing](docs/DEV20-COMPATIBILITY.md) covers controlled restore overlap. Prealpha.3 remains limited to dev.14–18. The complete Sealed Fates owner remains a separate dependency; dev.19 is not a supported pairing.
 
 ## Installation and testing
 

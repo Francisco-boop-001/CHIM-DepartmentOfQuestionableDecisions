@@ -1,5 +1,18 @@
 # PRE-ALPHA verification
 
+This is the frozen source checkpoint for the TEST-only prealpha.4 candidate and exact Sealed Fates dev.20 pairing. The production change is confined to the correspondence adapter; owner/core/native/UI and the original Private Conversation fallback remain outside the port. Read [DEV20-COMPATIBILITY.md](DEV20-COMPATIBILITY.md) for the exact owner identity and closure rules. Sealed Fates independently accepted the source/behavior pairing; publication still requires final committed-source/package closure review and public download verification.
+
+| Current candidate boundary | Evidence and limit |
+| --- | --- |
+| Exact source and host checks | Root independently verified all 13 dev.20 pins and unchanged dev.14–18 pin maps. Ten focused host probes, eight pairing self-check cases and two supplemental dispatch/closure probes pass. These are source/validator checks, not PostgreSQL proof. |
+| Actual dev.20 facade | Root executed and independently reviewed run 20261021T215250Z-ed346ab8: 33/33 actual qd_api_handle cases and all 11 Linux prechecks passed. Cases cover controlled restore overlap and stale authority, all five operations under source drift, signed unknown/partial read snapshots, no resend, pruned/mismatched close events, a valid late receipt, whole delivered detail for a renderable 775-character forwarded letter and whole owner storage for an unrenderable 1,845-character queued draft with public-detail refusal. Four failed fixture runs and their exact inputs remain preserved. Direct PHP facade only; no HTTP or gameplay proof. |
+| Source and protected boundaries | The accepted runtime freeze binds 3,155 entries, including 3,081 stock core files and the 13-file owner closure. Source postchecks, owned PostgreSQL shutdown, TEST stop and protected baselines passed; Kali remained running. Fresh rehashes match all 139 immutable owner source files and 53 native/UI/PCV/generated inputs, including 17 Private Conversation route files and the whole unchanged runtime-support file. Native/UI execution is reused, not rerun. |
+| Package and publication checkpoint | The private preparation archive passed its 128-source/133-input audit and all nine GNU checksum entries. The final prealpha.4 archive must bind this corrected source to five accepted gates and pass archive, Git-blob and cross-project closure review before publication. Anonymous download verification follows publication. Source-only readiness never substitutes for behavior proof. |
+
+The record below describes the published prealpha.3 baseline. Its dev.18 database run is historical evidence; it does not establish dev.20 behavior. Unchanged native/UI/private-route results may be reused only after current input checks. Browser and native contract results never replace Skyrim acceptance.
+
+## Prealpha.3 baseline
+
 This prealpha.3 candidate changes letter recovery in the UI, checksum generation and source/release documentation. GPT-6-LUNA/max agents implemented the product fixes; the Department coordinator independently reviewed and tested them. PHP, native source and delivered binaries are unchanged from prealpha.2. Server/native results below are explicitly reused after input rehashing. It remains TEST only.
 
 | Boundary | Evidence and limit |

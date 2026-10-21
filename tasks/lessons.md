@@ -16,3 +16,20 @@
 
 - Verify a checksum manifest with its ordinary external consumer. Parsing lines and comparing hashes can miss CRLF filenames; generate explicit LF bytes independent of the host platform.
 - A historical source snapshot must be labeled and point to the authoritative Git repository. Use named worktrees for changes, keep release tags immutable, and fast-forward a clean primary checkout after publication.
+
+- Before releasing an owner version used by an exact-pinned companion, execute the companion's readiness/pairing probe against the exact candidate sources and record the supported pairing. A source hash addition alone does not validate lifecycle or document-contract changes.
+
+- Check newly added files after explicit staging: ordinary git diff --check omits untracked content. Preserve established line endings and reject extra blank EOF lines before recording final source hashes.
+- Evidence examples must write UTF-8 without BOM explicitly on Windows. Shell redirection defaults are not a portable JSON or checksum encoding contract.
+
+- A versioned harness may still call unchanged shared probes at their original filenames. Resolve every literal test path against the frozen tree before TEST and compare ordered case IDs, not counts alone.
+
+- Tests that remove shared fixture tables must restore their exact rows in cleanup. Positive compose tests must explicitly establish fresh owner presence before measurement; never count queued as dispatched or hide fixture writes in API helpers. Keep SQL boolean projection consistent with strict callers.
+
+- Derive concurrency barriers and rendering preconditions from pinned owner calls and raw SQL/GD evidence. A pending marker can precede a queued shared ingress lock; do not wait for a later exclusive stage through the owner timeout. Character count is not image-layout capacity. Never alter stock assets, relax receipt/privacy checks, or use contrived skinny text to manufacture a passing delivery claim.
+
+- Keep success and refusal transaction oracles separate. A known not_found exception inside a fenced read snapshot must roll back exactly once and unlock; successful reads and receipt reconciliation must commit exactly once without rollback. Trace the actual exception boundary before reusing a helper.
+
+- Check new SQL against the pinned migration, including JSON-only fields. Keep client idempotency/request IDs separate from owner-generated operation UUIDs; verify links through the real document and operations row instead of equating independent identifiers.
+
+Preserve UTF-8 and existing per-file line endings during documentation edits. Scan changed prose for mojibake before freezing. In a byte-preserving repository, run Git whitespace checks with cr-at-eol rather than normalizing executed or frozen CRLF inputs; ordinary trailing spaces still fail.
