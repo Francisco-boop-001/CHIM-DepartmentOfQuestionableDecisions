@@ -36,6 +36,21 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'lib/store.php' => '2dd57b2d8067a8ce80b8cee25c7ce1be0f43284278b2bb34883f5dfcfd7b2b87',
         'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
     ],
+    '0.1.0-dev.18' => [
+        'manifest.json' => '669ca4ae3e20a8a2d551fcc3b0f7525b4004f041c8cf442ee0ab246fbf99eef6',
+        'lib/runtime.php' => '3d71593fe70b3a64fac7de25f142fc860a9d9a79575fdefc1ddd957fde8d9af6',
+        'lib/store.php' => '5a91e6d0722ef81c10b5cbebc11d26773da8bbd9b06da0ffc7a3c734fe17fefa',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => 'ec19a0eb40111fb03b99a788f73f55c03f00b8384c768e022009c8f94b2b4129',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => 'ee541b8764131508564267461fff8ba09308f8a6e6a715d40586531c8e030ae2',
+        'lib/autonomy_host.php' => 'dfa257dbb68f1ade87b7f13750e4fb25dd306c695b3c4ddd070e7ca1a4140a61',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => 'ee777ec2efcfcf61d6164145964a41b46aa19219f66e24e84226daa38b960328',
+        'lib/offscreen_host.php' => '7c036bf86978acc8349742ba4a172d0dcc4a8ef9b8ab8b2b97b321686bc09bdb',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -55,8 +70,16 @@ function qd_correspondence_source_root(): string
 
 function qd_correspondence_source_files(string $root): array
 {
+    $manifestPath = $root . DIRECTORY_SEPARATOR . 'manifest.json';
+    if (!is_file($manifestPath) || is_link($manifestPath)) return [];
+    $manifestBytes = @file_get_contents($manifestPath);
+    if (!is_string($manifestBytes) || strlen($manifestBytes) > 8192) return [];
+    $manifest = json_decode($manifestBytes, true, 8);
+    if (!is_array($manifest) || ($manifest['name'] ?? null) !== 'correspondence' || !is_string($manifest['version'] ?? null)) return [];
+    $expectedHashes = QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$manifest['version']] ?? null;
+    if (!is_array($expectedHashes)) return [];
     $files = [];
-    foreach (QD_CORRESPONDENCE_SOURCE_FILES as $relative) {
+    foreach (array_keys($expectedHashes) as $relative) {
         $files[$relative] = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
     }
     return $files;
@@ -67,6 +90,7 @@ function qd_correspondence_manifest_ready(string $root): bool
     $root = realpath($root);
     if (!is_string($root) || !is_dir($root)) return false;
     $files = qd_correspondence_source_files($root);
+    if ($files === []) return false;
     foreach ($files as $relative => $path) {
         if (!is_file($path) || is_link($path)) return false;
         $real = realpath($path);
@@ -90,30 +114,53 @@ function qd_correspondence_manifest_ready(string $root): bool
     return true;
 }
 
-function qd_correspondence_loaded_source_version(): ?string
+function qd_correspondence_current_source_identity(string $root): ?array
+{
+    $root = realpath($root);
+    if (!is_string($root) || !is_dir($root) || !qd_correspondence_manifest_ready($root)) return null;
+    $manifestBytes = @file_get_contents($root . DIRECTORY_SEPARATOR . 'manifest.json');
+    if (!is_string($manifestBytes) || strlen($manifestBytes) > 8192) return null;
+    $manifest = json_decode($manifestBytes, true, 8);
+    $version = is_array($manifest) ? ($manifest['version'] ?? null) : null;
+    $expectedManifestHash = is_string($version)
+        ? (QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$version]['manifest.json'] ?? null)
+        : null;
+    if (!is_string($expectedManifestHash) || !hash_equals($expectedManifestHash, hash('sha256', $manifestBytes))) return null;
+    return ['root' => $root, 'version' => $version, 'manifestHash' => hash('sha256', $manifestBytes)];
+}
+
+function qd_correspondence_loaded_source_identity(?array $identity = null): ?array
+{
+    static $loadedIdentity = null;
+    if ($identity !== null) {
+        if ($loadedIdentity !== null && $loadedIdentity !== $identity) throw new QDServerFault('unavailable');
+        $loadedIdentity = $identity;
+    }
+    return $loadedIdentity;
+}
+
+function qd_correspondence_loaded_source_version(): string
 {
     try {
-        $root = qd_correspondence_load_sources();
-        if (!qd_correspondence_manifest_ready($root)) return null;
-        $manifestPath = $root . DIRECTORY_SEPARATOR . 'manifest.json';
-        $manifestBytes = @file_get_contents($manifestPath);
-        if (!is_string($manifestBytes) || strlen($manifestBytes) > 8192) return null;
-        $manifest = json_decode($manifestBytes, true, 8);
-        $version = is_array($manifest) ? ($manifest['version'] ?? null) : null;
-        $expectedManifestHash = is_string($version)
-            ? (QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$version]['manifest.json'] ?? null)
-            : null;
-        if (!is_string($expectedManifestHash) || !hash_equals($expectedManifestHash, hash('sha256', $manifestBytes))) return null;
-        return $version;
+        qd_correspondence_load_sources();
+        $identity = qd_correspondence_loaded_source_identity();
+        if (!is_array($identity) || !is_string($identity['version'] ?? null)) throw new QDServerFault('unavailable');
+        return $identity['version'];
+    } catch (QDServerFault $error) {
+        throw $error;
     } catch (Throwable) {
-        return null;
+        throw new QDServerFault('unavailable');
     }
 }
 
 function qd_correspondence_runtime_ready(): bool
 {
     try {
-        return PHP_VERSION_ID >= 80100 && qd_correspondence_manifest_ready(qd_correspondence_source_root());
+        if (PHP_VERSION_ID < 80100) return false;
+        $identity = qd_correspondence_current_source_identity(qd_correspondence_source_root());
+        if (!is_array($identity)) return false;
+        $loadedIdentity = qd_correspondence_loaded_source_identity();
+        return $loadedIdentity === null || $loadedIdentity === $identity;
     } catch (Throwable) {
         return false;
     }
@@ -121,26 +168,34 @@ function qd_correspondence_runtime_ready(): bool
 
 function qd_correspondence_load_sources(): string
 {
-    static $loadedRoot = null;
-    $root = qd_correspondence_source_root();
-    if ($loadedRoot !== null) {
-        if ($loadedRoot !== $root) throw new RuntimeException('A different Correspondence source root is already loaded.');
+    try {
+        $root = qd_correspondence_source_root();
+    } catch (Throwable) {
+        throw new QDServerFault('unavailable');
+    }
+    $identity = qd_correspondence_current_source_identity($root);
+    if (!is_array($identity)) throw new QDServerFault('unavailable');
+    $loadedIdentity = qd_correspondence_loaded_source_identity();
+    if ($loadedIdentity !== null) {
+        if ($identity !== $loadedIdentity) throw new QDServerFault('unavailable');
         return $root;
     }
-    if (!qd_correspondence_manifest_ready($root)) {
-        throw new RuntimeException('The pinned Correspondence source contract is unavailable.');
+    $version = $identity['version'];
+    if ($version === '0.1.0-dev.18') {
+        require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'bootstrap.php';
+    } else {
+        require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'runtime.php';
+        require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'store.php';
+        require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'boundaries.php';
     }
-    require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'runtime.php';
-    require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'store.php';
-    require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'boundaries.php';
     foreach ([
         'CorrespondenceService' => 'lib/runtime.php',
         'CorrespondencePgStore' => 'lib/store.php',
     ] as $class => $relative) {
-        if (!class_exists($class, false)) throw new RuntimeException('The pinned Correspondence service contract is unavailable.');
+        if (!class_exists($class, false)) throw new QDServerFault('unavailable');
         $source = realpath((new ReflectionClass($class))->getFileName() ?: '');
         if ($source !== realpath($root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative))) {
-            throw new RuntimeException('Correspondence source loaded from an unexpected root.');
+            throw new QDServerFault('unavailable');
         }
     }
     foreach ([
@@ -148,25 +203,96 @@ function qd_correspondence_load_sources(): string
         'correspondenceAttachments' => 'lib/runtime.php',
         'correspondencePrepareCoreNote' => 'lib/boundaries.php',
     ] as $function => $relative) {
-        if (!function_exists($function)) throw new RuntimeException('The pinned Correspondence helper contract is unavailable.');
+        if (!function_exists($function)) throw new QDServerFault('unavailable');
         $source = realpath((new ReflectionFunction($function))->getFileName() ?: '');
         if ($source !== realpath($root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative))) {
-            throw new RuntimeException('Correspondence helper loaded from an unexpected root.');
+            throw new QDServerFault('unavailable');
         }
     }
-    $loadedRoot = $root;
+    if ($version === '0.1.0-dev.18') {
+        foreach ([
+            'correspondenceEngineRoot' => 'lib/bootstrap.php',
+            'correspondenceNativeConnection' => 'lib/bootstrap.php',
+            'correspondenceBeginRequestIngress' => 'lib/bootstrap.php',
+            'correspondenceCaptureRequestIngress' => 'lib/bootstrap.php',
+        ] as $function => $relative) {
+            if (!function_exists($function)) throw new QDServerFault('unavailable');
+            $source = realpath((new ReflectionFunction($function))->getFileName() ?: '');
+            if ($source !== realpath($root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative))) {
+                throw new QDServerFault('unavailable');
+            }
+        }
+    }
+    if (qd_correspondence_current_source_identity($root) !== $identity) throw new QDServerFault('unavailable');
+    qd_correspondence_loaded_source_identity($identity);
     return $root;
 }
 
 function qd_correspondence_runtime_operations(): array
 {
     return [
-        'correspondence.catalog.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_catalog_read($payload, $context),
-        'correspondence.mailbox.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_mailbox_read($payload, $context),
-        'correspondence.detail.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_detail_read($payload, $context),
-        'correspondence.compose' => static fn(stdClass $payload, array $context): array => qd_correspondence_compose($payload, $context),
-        'correspondence.reconcile' => static fn(stdClass $payload, array $context): array => qd_correspondence_reconcile($payload, $context),
+        'correspondence.catalog.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('catalog', $payload, $context),
+        'correspondence.mailbox.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('mailbox', $payload, $context),
+        'correspondence.detail.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('detail', $payload, $context),
+        'correspondence.compose' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('compose', $payload, $context),
+        'correspondence.reconcile' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('reconcile', $payload, $context),
     ];
+}
+
+function qd_correspondence_dispatch(string $operation, stdClass $payload, array $context): array
+{
+    $handlers = [
+        'catalog' => 'qd_correspondence_catalog_read',
+        'mailbox' => 'qd_correspondence_mailbox_read',
+        'detail' => 'qd_correspondence_detail_read',
+        'compose' => 'qd_correspondence_compose',
+        'reconcile' => 'qd_correspondence_reconcile',
+    ];
+    $handler = $handlers[$operation] ?? null;
+    if (!is_string($handler)) throw new LogicException('Unknown correspondence operation.');
+    if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.18') return $handler($payload, $context);
+
+    $requestKeys = ['CORRESPONDENCE_REQUEST_RESTORE_CAPTURED', 'CORRESPONDENCE_REQUEST_RESTORE_TOKEN', 'CORRESPONDENCE_REQUEST_NATIVE_TS'];
+    $saved = qd_runtime_correspondence_save_globals($requestKeys);
+    try {
+        if (!empty($GLOBALS['CORRESPONDENCE_RESTORE_INIT_UNSAFE']) || !empty($GLOBALS['CORRESPONDENCE_RESTORE_INIT_ACTIVE'])) {
+            throw new QDServerFault('stale_context');
+        }
+        $captured = array_key_exists('CORRESPONDENCE_REQUEST_RESTORE_CAPTURED', $GLOBALS)
+            ? $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_CAPTURED']
+            : false;
+        if ($captured !== true && $captured !== false) throw new QDServerFault('unavailable');
+        if ($captured) {
+            $token = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null;
+            $nativeTs = $GLOBALS['CORRESPONDENCE_REQUEST_NATIVE_TS'] ?? null;
+            if (!is_string($token) || $token === '' || ($nativeTs !== null && !qd_correspondence_valid_native_timestamp($nativeTs))) {
+                throw new QDServerFault('stale_context');
+            }
+        } else {
+            qd_correspondence_dev18_begin_fresh_ingress();
+        }
+        $ownerRoot = qd_correspondence_source_root();
+        return qd_runtime_with_correspondence_lease($ownerRoot, static function (string $generation, mixed $lease, string $coreRoot, string $ownerRoot) use ($handler, $payload, $context): array {
+            $context['__qdCorrespondenceDev18'] = [
+                'coreRoot' => $coreRoot,
+                'generation' => $generation,
+                'lease' => $lease,
+                'ownerRoot' => $ownerRoot,
+            ];
+            return $handler($payload, $context);
+        });
+    } finally {
+        qd_runtime_correspondence_restore_globals($saved);
+    }
+}
+
+function qd_correspondence_dev18_begin_fresh_ingress(): void
+{
+    if (($GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null) !== null
+        || ($GLOBALS['CORRESPONDENCE_REQUEST_NATIVE_TS'] ?? null) !== null) {
+        throw new QDServerFault('stale_context');
+    }
+    correspondenceBeginRequestIngress([]);
 }
 
 function qd_correspondence_catalog_read(stdClass $payload, array $context): array
@@ -254,7 +380,7 @@ function qd_correspondence_catalog_read(stdClass $payload, array $context): arra
                 ? qd_correspondence_make_catalog_cursor($scopeKey, $revision, $index)
                 : null;
             return ['actors' => $page, 'limited' => $limited, 'revision' => $revision, 'nextCursor' => $nextCursor];
-        });
+        }, $context);
         $assertCurrent();
         return $result;
     } catch (QDServerFault $error) {
@@ -336,7 +462,7 @@ function qd_correspondence_mailbox_read(stdClass $payload, array $context): arra
                 ? qd_correspondence_make_cursor($recipientKey, $scopeKey, $revision, $index)
                 : null;
             return ['recipientActorKey' => $recipientKey, 'letters' => $letters, 'limited' => $limited, 'nextCursor' => $next];
-        });
+        }, $context);
         $assertCurrent();
         return $result;
     } catch (QDServerFault $error) {
@@ -404,7 +530,7 @@ function qd_correspondence_detail_read(stdClass $payload, array $context): array
                 $ordinary['recordedAuthor'] = qd_correspondence_clip_utf8((string)$doc['author']['name'], 256, $limited);
             }
             return $ordinary;
-        });
+        }, $context);
         $assertCurrent();
         return $result;
     } catch (QDServerFault $error) {
@@ -473,6 +599,9 @@ function qd_correspondence_compose(stdClass $payload, array $context): array
     $signatureKey = $mapped['signatureKey'];
     $input = $mapped['input'];
     try {
+        if (qd_correspondence_loaded_source_version() === '0.1.0-dev.18') {
+            return qd_correspondence_compose_dev18($context, $withCurrentContext, $requestId, $writerKey, $recipientKey, $signatureKey, $input);
+        }
         $result = $withCurrentContext(static function () use ($context, $requestId, $writerKey, $recipientKey, $signatureKey, $input): array {
             return qd_runtime_with_core_db(static function ($connection) use ($context, $requestId, $writerKey, $recipientKey, $signatureKey, $input): array {
                 $active = qd_runtime_active_playthrough($connection);
@@ -526,6 +655,89 @@ function qd_correspondence_compose(stdClass $payload, array $context): array
     } catch (Throwable) {
         throw new QDServerFault('unavailable');
     }
+}
+
+function qd_correspondence_compose_dev18(array $context, callable $withCurrentContext, string $requestId, string $writerKey, string $recipientKey, string $signatureKey, array $input): array
+{
+    $assertCurrent = qd_correspondence_assertion($context);
+    $scopeKey = qd_correspondence_scope_key($context);
+    $authority = qd_correspondence_dev18_authority($context);
+    $assertCurrent();
+    qd_correspondence_dev18_fenced_snapshot($scopeKey, $authority, static function ($connection, array $active) use ($writerKey, $recipientKey, $signatureKey): bool {
+        $service = new CorrespondenceService(qd_correspondence_read_store($connection, $active));
+        $actorKeys = [];
+        foreach ($service->actors() as $actor) $actorKeys[$actor['key']] = $actor;
+        if (!isset($actorKeys[$writerKey]) || !isset($actorKeys[$recipientKey]) || !isset($actorKeys[$signatureKey])) {
+            throw new QDServerFault('not_found');
+        }
+        return true;
+    });
+
+    $result = $withCurrentContext(static function () use ($context, $scopeKey, $authority, $requestId, $input): array {
+        $beginCommit = $context['beginCommit'] ?? null;
+        if (!is_callable($beginCommit)) throw new QDServerFault('unavailable');
+        $beginCommit();
+
+        return qd_runtime_with_correspondence_owner_lease($authority['ownerRoot'], $authority['generation'], $authority['lease'], static function () use ($authority, $scopeKey, $requestId, $input): array {
+            return qd_runtime_with_owned_connection(
+                static fn() => correspondenceNativeConnection(),
+                static function ($connection): void { qd_correspondence_close_owned_pg_connection($connection); },
+                static function ($connection) use ($authority, $scopeKey, $requestId, $input): array {
+                    $store = new CorrespondencePgStore(
+                        $connection,
+                        static fn($candidate): ?string => $candidate->observedExecutor(),
+                        static fn(string $title, string $body): bool => correspondencePrepareCoreNote($authority['coreRoot'], $title, $body),
+                        $authority['coreRoot'] . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'playthrough_runtime' . DIRECTORY_SEPARATOR . 'correspondence.restore.json',
+                    );
+                    $store->ensureSchema();
+                    correspondenceCaptureRequestIngress($store);
+                    $originalToken = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null;
+                    if (!is_string($originalToken) || $originalToken === ''
+                        || !is_string($store->requestRestoreToken())
+                        || !hash_equals($originalToken, (string)$store->requestRestoreToken())) {
+                        throw new QDServerFault('stale_context');
+                    }
+                    try {
+                        $store->assertRestoreToken($originalToken);
+                    } catch (Throwable) {
+                        throw new QDServerFault('stale_context');
+                    }
+
+                    $service = new CorrespondenceService($store);
+                    $actorKeys = [];
+                    foreach ($service->actors() as $actor) $actorKeys[$actor['key']] = $actor;
+                    foreach ([$input['author'], $input['recipient'], $input['claimed_sender']] as $actorKey) {
+                        if (!isset($actorKeys[$actorKey])) throw new QDServerFault('not_found');
+                    }
+                    try {
+                        $composed = $service->compose($input);
+                    } catch (QDServerFault $error) {
+                        throw $error;
+                    } catch (DomainException $error) {
+                        throw qd_correspondence_domain_fault($error);
+                    } catch (InvalidArgumentException) {
+                        throw new QDServerFault('invalid_request');
+                    }
+                    $documentId = $composed['document_id'] ?? null;
+                    if (!is_string($documentId)) throw new QDServerFault('unavailable');
+                    try {
+                        $service->dispatch($documentId);
+                    } catch (Throwable) {
+                        // Keep the queued owner document when dispatch cannot complete.
+                    }
+                    try {
+                        $store->assertRestoreToken($originalToken);
+                    } catch (Throwable) {
+                        throw new QDServerFault('stale_context');
+                    }
+                    qd_correspondence_assert_active_scope(qd_runtime_active_playthrough($connection), $scopeKey);
+                    return qd_correspondence_write_outcome($service, $store, $connection, $documentId, $requestId);
+                },
+            );
+        });
+    });
+    $assertCurrent();
+    return $result;
 }
 
 function qd_correspondence_prepare_compose(stdClass $payload): array
@@ -609,7 +821,7 @@ function qd_correspondence_reconcile(stdClass $payload, array $context): array
             } catch (Throwable) {
                 throw new QDServerFault('unavailable');
             }
-        });
+        }, $context);
         $assertCurrent();
         return $result;
     } catch (QDServerFault $error) {
@@ -730,7 +942,11 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
             || !is_array($operation['attachments'] ?? null) || !is_array($operation['dispatch_anchor'] ?? null)) {
             return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
         }
-        $physicalActorResolver ??= static fn(array $actor): array => qd_correspondence_physical_actor($connection, $actor);
+        if ($physicalActorResolver === null) {
+            $physicalActorResolver = qd_correspondence_loaded_source_version() === '0.1.0-dev.18'
+                ? fn(array $actor): array => $store->physicalActor($actor)
+                : static fn(array $actor): array => qd_correspondence_physical_actor($connection, $actor);
+        }
         if (correspondenceCanonicalJson($operation['recipient'] ?? []) !== correspondenceCanonicalJson($physicalActorResolver($doc['recipient']))
             || correspondenceCanonicalJson($operation['payer'] ?? []) !== correspondenceCanonicalJson($physicalActorResolver($doc['payer']))) {
             return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
@@ -781,7 +997,12 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
         $physicalAttachments = [];
         foreach ($ownerAttachments as $item) {
             if (!is_array($item)) return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
-            $physical = $physicalItemResolver !== null ? $physicalItemResolver($item) : qd_correspondence_physical_item($connection, $item);
+            if ($physicalItemResolver === null) {
+                $physicalItemResolver = qd_correspondence_loaded_source_version() === '0.1.0-dev.18'
+                    ? fn(array $candidate): array => $store->physicalItem($candidate)
+                    : static fn(array $candidate): array => qd_correspondence_physical_item($connection, $candidate);
+            }
+            $physical = $physicalItemResolver($item);
             $formId = $physical['form_id'] ?? null;
             if (!is_int($formId) || isset($expected[$formId])) return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
             $physicalAttachments[] = $physical;
@@ -793,14 +1014,14 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
         $seen = [];
         $confirmedItems = [];
         $partial = ($receipt['note_form_id'] ?? 0) !== 0;
-        $signedUnknownV17 = ($receipt['status'] ?? null) === 'unknown'
-            && qd_correspondence_loaded_source_version() === '0.1.0-dev.17';
+        $signedUnknownVersion = ($receipt['status'] ?? null) === 'unknown'
+            && in_array(qd_correspondence_loaded_source_version(), ['0.1.0-dev.17', '0.1.0-dev.18'], true);
         foreach ($receipt['attachments'] as $actual) {
             if (!is_array($actual)) return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
             correspondenceKeys($actual, ['form_id', 'quantity', 'before_source', 'after_source', 'before_recipient', 'after_recipient']);
             foreach ($actual as $key => $value) {
                 if (!is_int($value) || ($key !== 'form_id' && (
-                    $key === 'quantity' && $signedUnknownV17
+                    $key === 'quantity' && $signedUnknownVersion
                         ? ($value < -2147483648 || $value > 2147483647)
                         : ($value < 0 || $value > 2147483647)
                 ))) {
@@ -809,8 +1030,8 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
             }
             $form = $actual['form_id'];
             if (!isset($expected[$form]) || isset($seen[$form])
-                || (!$signedUnknownV17 && $actual['quantity'] > $expected[$form]['quantity'])
-                || ($signedUnknownV17 && $actual['after_recipient'] - $actual['before_recipient'] !== $actual['quantity'])) {
+                || (!$signedUnknownVersion && $actual['quantity'] > $expected[$form]['quantity'])
+                || ($signedUnknownVersion && $actual['after_recipient'] - $actual['before_recipient'] !== $actual['quantity'])) {
                 return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
             }
             $seen[$form] = true;
@@ -1059,8 +1280,11 @@ function qd_correspondence_cursor_offset(?string $cursor, string $recipientKey, 
     return $state['o'];
 }
 
-function qd_correspondence_read_snapshot(string $scopeKey, callable $callback): mixed
+function qd_correspondence_read_snapshot(string $scopeKey, callable $callback, ?array $context = null): mixed
 {
+    if (qd_correspondence_loaded_source_version() === '0.1.0-dev.18') {
+        return qd_correspondence_dev18_fenced_snapshot($scopeKey, qd_correspondence_dev18_authority($context ?? []), $callback);
+    }
     return qd_runtime_with_core_db(static function ($connection) use ($scopeKey, $callback): mixed {
         if (@pg_query($connection, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') === false) throw new RuntimeException('The Correspondence read snapshot is unavailable.');
         try {
@@ -1074,6 +1298,163 @@ function qd_correspondence_read_snapshot(string $scopeKey, callable $callback): 
             throw $error;
         }
     });
+}
+
+function qd_correspondence_dev18_authority(array $context): array
+{
+    $authority = $context['__qdCorrespondenceDev18'] ?? null;
+    if (!is_array($authority) || !is_string($authority['coreRoot'] ?? null)
+        || !is_string($authority['ownerRoot'] ?? null) || !is_string($authority['generation'] ?? null)
+        || !is_resource($authority['lease'] ?? null)) {
+        throw new QDServerFault('unavailable');
+    }
+    $coreRoot = qd_runtime_core_root();
+    if (realpath($authority['coreRoot']) !== $coreRoot || realpath($authority['ownerRoot']) !== qd_correspondence_source_root()
+        || dirname($authority['ownerRoot'], 2) !== $coreRoot) {
+        throw new QDServerFault('unavailable');
+    }
+    return $authority;
+}
+
+function qd_correspondence_valid_native_timestamp(mixed $timestamp): bool
+{
+    return is_string($timestamp) && preg_match('/\A[1-9][0-9]{0,18}\z/D', $timestamp) === 1
+        && filter_var($timestamp, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]) !== false;
+}
+
+/** Close only a fresh owner connection; the owner store may already close it on unlock failure. */
+function qd_correspondence_close_owned_pg_connection(mixed $connection): void
+{
+    try {
+        @pg_close($connection);
+    } catch (Throwable) {
+        // Preserve the operation error when the pinned store already closed this connection.
+    }
+}
+
+function qd_correspondence_dev18_fenced_snapshot(string $scopeKey, array $authority, callable $callback): mixed
+{
+    return qd_runtime_with_core_db(static function ($connection) use ($scopeKey, $authority, $callback): mixed {
+        $locked = false;
+        $begun = false;
+        try {
+            qd_correspondence_pg_rows($connection, "SET lock_timeout='3s'");
+            qd_correspondence_pg_rows($connection, 'SELECT pg_advisory_lock_shared(18459814, 1) AS acquired');
+            $locked = true;
+            if (!hash_equals($authority['generation'], qd_runtime_correspondence_read_generation())) {
+                throw new QDServerFault('stale_context');
+            }
+            qd_correspondence_pg_rows($connection, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY');
+            $begun = true;
+
+            $token = qd_correspondence_dev18_assert_restore_current($connection, $authority, null, true);
+            $active = qd_runtime_active_playthrough($connection);
+            qd_correspondence_assert_active_scope($active, $scopeKey);
+            $result = $callback($connection, $active);
+            if (pg_transaction_status($connection) !== PGSQL_TRANSACTION_INTRANS) {
+                throw new RuntimeException('The Correspondence read snapshot ended before validation.');
+            }
+            qd_correspondence_dev18_assert_restore_current($connection, $authority, $token, false);
+            qd_correspondence_pg_rows($connection, 'COMMIT');
+            $begun = false;
+            qd_correspondence_dev18_assert_restore_current($connection, $authority, $token, false);
+            return $result;
+        } catch (Throwable $error) {
+            if ($begun && pg_transaction_status($connection) !== PGSQL_TRANSACTION_IDLE) @pg_query($connection, 'ROLLBACK');
+            throw $error;
+        } finally {
+            if ($locked) {
+                $rows = qd_correspondence_pg_rows($connection, 'SELECT pg_advisory_unlock_shared(18459814, 1) AS released');
+                if (($rows[0]['released'] ?? null) !== 't') throw new RuntimeException('The Correspondence read fence could not be released.');
+            }
+        }
+    });
+}
+
+function qd_correspondence_dev18_assert_restore_current(mixed $connection, array $authority, ?string $expectedToken, bool $capture): string
+{
+    if (!hash_equals($authority['generation'], qd_runtime_correspondence_read_generation())) throw new QDServerFault('stale_context');
+    $rows = qd_correspondence_pg_rows($connection, 'SELECT epoch::text AS epoch,pending,native_ts_floor::text AS native_ts_floor FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
+    if (count($rows) !== 1 || !is_string($rows[0]['epoch'] ?? null)
+        || preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/D', $rows[0]['epoch']) !== 1
+        || ($rows[0]['pending'] ?? null) !== 'f') {
+        throw new QDServerFault('stale_context');
+    }
+    $floor = $rows[0]['native_ts_floor'] ?? null;
+    if (!is_string($floor) || preg_match('/\A(?:0|[1-9][0-9]{0,18})\z/D', $floor) !== 1
+        || filter_var($floor, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0]]) === false) {
+        throw new QDServerFault('stale_context');
+    }
+    $sentinel = qd_correspondence_dev18_read_sentinel($authority['coreRoot']);
+    if (($sentinel['state'] ?? null) !== 'clear' || !hash_equals($rows[0]['epoch'], (string)($sentinel['epoch'] ?? ''))) {
+        throw new QDServerFault('stale_context');
+    }
+    $token = $rows[0]['epoch'] . ':' . ($authority['generation'] === '' ? 'none' : $authority['generation']);
+    $captured = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_CAPTURED'] ?? false;
+    if ($captured === true) {
+        $ingressToken = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null;
+        $nativeTs = $GLOBALS['CORRESPONDENCE_REQUEST_NATIVE_TS'] ?? null;
+        if (!is_string($ingressToken) || $ingressToken === '' || !hash_equals($ingressToken, $token)
+            || ($nativeTs !== null && (!qd_correspondence_valid_native_timestamp($nativeTs) || (int)$nativeTs <= (int)$floor))) {
+            throw new QDServerFault('stale_context');
+        }
+    } elseif ($capture && $captured === false) {
+        $nativeTs = $GLOBALS['CORRESPONDENCE_REQUEST_NATIVE_TS'] ?? null;
+        if ($nativeTs !== null) throw new QDServerFault('stale_context');
+        $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] = $token;
+        $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_CAPTURED'] = true;
+    } else {
+        throw new QDServerFault('stale_context');
+    }
+    if ($expectedToken !== null && !hash_equals($expectedToken, $token)) throw new QDServerFault('stale_context');
+    if (!hash_equals($authority['generation'], qd_runtime_correspondence_read_generation())) throw new QDServerFault('stale_context');
+    return $token;
+}
+
+function qd_correspondence_dev18_read_sentinel(string $coreRoot): array
+{
+    $path = $coreRoot . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'playthrough_runtime' . DIRECTORY_SEPARATOR . 'correspondence.restore.json';
+    clearstatcache(true, $path);
+    $linkStat = @lstat($path);
+    $pathStat = @stat($path);
+    if (!is_array($linkStat) || !is_array($pathStat) || (($linkStat['mode'] ?? 0) & 0170000) !== 0100000
+        || (($pathStat['mode'] ?? 0) & 0170000) !== 0100000 || !is_int($pathStat['dev'] ?? null)
+        || !is_int($pathStat['ino'] ?? null) || $pathStat['ino'] === 0
+        || ($linkStat['dev'] ?? null) !== $pathStat['dev'] || ($linkStat['ino'] ?? null) !== $pathStat['ino']
+        || ($pathStat['size'] ?? 4097) < 1 || $pathStat['size'] > 4096) {
+        throw new QDServerFault('stale_context');
+    }
+    $handle = @fopen($path, 'rb');
+    if ($handle === false) throw new QDServerFault('stale_context');
+    try {
+        $handleStat = fstat($handle);
+        $bytes = stream_get_contents($handle, 4097);
+        clearstatcache(true, $path);
+        $afterLinkStat = @lstat($path);
+        $after = @stat($path);
+        if (!is_array($handleStat) || !is_string($bytes) || strlen($bytes) > 4096
+            || (($handleStat['mode'] ?? 0) & 0170000) !== 0100000
+            || ($handleStat['dev'] ?? null) !== $pathStat['dev'] || ($handleStat['ino'] ?? null) !== $pathStat['ino']
+            || !is_array($afterLinkStat) || (($afterLinkStat['mode'] ?? 0) & 0170000) !== 0100000
+            || !is_array($after) || $after['dev'] !== $handleStat['dev'] || $after['ino'] !== $handleStat['ino']
+            || $afterLinkStat['dev'] !== $handleStat['dev'] || $afterLinkStat['ino'] !== $handleStat['ino']) {
+            throw new QDServerFault('stale_context');
+        }
+    } finally {
+        fclose($handle);
+    }
+    try {
+        $sentinel = json_decode($bytes, true, 8, JSON_THROW_ON_ERROR);
+    } catch (Throwable) {
+        throw new QDServerFault('stale_context');
+    }
+    if (!is_array($sentinel) || count($sentinel) !== 3 || ($sentinel['schema'] ?? null) !== 'correspondence.restore.v1'
+        || !in_array($sentinel['state'] ?? null, ['clear', 'pending'], true)
+        || !is_string($sentinel['epoch'] ?? null)
+        || preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/D', $sentinel['epoch']) !== 1) {
+        throw new QDServerFault('stale_context');
+    }
+    return $sentinel;
 }
 
 function qd_correspondence_assert_active_scope(array $active, string $scopeKey): void
@@ -1178,8 +1559,57 @@ function qd_correspondence_read_store(mixed $connection, array $active, array $d
         public function managedExecutor(): ?string { throw new LogicException('read_only_correspondence_store'); }
         public function prepareNote(string $title, string $body): void { throw new LogicException('read_only_correspondence_store'); }
         public function queueCommand(string $actor, string $action): void { throw new LogicException('read_only_correspondence_store'); }
-        public function physicalActor(array $actor): array { throw new LogicException('read_only_correspondence_store'); }
-        public function physicalItem(array $item): array { throw new LogicException('read_only_correspondence_store'); }
+        public function physicalActor(array $actor): array
+        {
+            if (($actor['kind'] ?? null) === 'player') {
+                $runtime = '00000014';
+            } else {
+                $rows = $this->query('SELECT refid FROM public.core_npc_master WHERE id=$1 LIMIT 2', [$actor['id'] ?? null]);
+                if (count($rows) !== 1) throw new DomainException('actor_form_unavailable');
+                $runtime = $rows[0]['refid'] ?? '';
+            }
+            if (!is_string($runtime) || preg_match('/\A(?:0x)?([0-9a-fA-F]{8})\z/D', $runtime, $match) !== 1) {
+                throw new DomainException('actor_form_unavailable');
+            }
+            $runtime = strtoupper($match[1]);
+            if (str_starts_with($runtime, 'FF')) throw new DomainException('dynamic_form_unsupported');
+            $prefix = str_starts_with($runtime, 'FE') ? substr($runtime, 0, 5) : substr($runtime, 0, 2);
+            $rows = array_values(array_filter(
+                $this->query('SELECT plugin_name,formid_prefix FROM public.game_plugins WHERE upper(formid_prefix COLLATE "C")=upper($1 COLLATE "C") LIMIT 2', [$prefix]),
+                fn(array $row): bool => is_string($row['formid_prefix'] ?? null) && strtoupper($row['formid_prefix']) === $prefix,
+            ));
+            if (count($rows) !== 1 || !is_string($rows[0]['plugin_name'] ?? null)) throw new DomainException('plugin_mapping_unavailable');
+            $plugin = $rows[0]['plugin_name'];
+            if (preg_match('/\A[^|@\x00-\x1f\/\\\\]{1,200}\.(?i:esm|esp|esl)\z/D', $plugin) !== 1) throw new DomainException('invalid_plugin');
+            $id = (int)hexdec($runtime);
+            $local = $id & (strlen($prefix) === 5 ? 4095 : 16777215);
+            if ($local === 0) throw new DomainException('invalid_local_form');
+            if ($id > 2147483647) $id -= 4294967296;
+            return ['refid' => $id, 'plugin' => $plugin, 'local_id' => $local];
+        }
+        public function physicalItem(array $item): array
+        {
+            correspondenceAttachments([$item]);
+            [$plugin, $hex] = explode('|', $item['form_id']);
+            $local = (int)hexdec($hex);
+            $rows = array_values(array_filter(
+                $this->query('SELECT plugin_name,formid_prefix FROM public.game_plugins WHERE lower(plugin_name COLLATE "C")=lower($1 COLLATE "C") LIMIT 2', [$plugin]),
+                fn(array $row): bool => is_string($row['plugin_name'] ?? null) && strcasecmp($row['plugin_name'], $plugin) === 0,
+            ));
+            if (count($rows) !== 1 || !is_string($rows[0]['formid_prefix'] ?? null) || !is_string($rows[0]['plugin_name'] ?? null)) {
+                throw new DomainException('plugin_mapping_unavailable');
+            }
+            $row = $rows[0];
+            $prefix = strtoupper($row['formid_prefix']);
+            if ($local < 1 || (strlen($prefix) === 5 ? $local > 4095 : $local > 16777215)
+                || preg_match('/\A(?:[0-9A-E][0-9A-F]|F[0-9A-D]|FE[0-9A-F]{3})\z/D', $prefix) !== 1) {
+                throw new DomainException('invalid_local_form');
+            }
+            $runtime = strlen($prefix) === 5 ? (hexdec($prefix) << 12) | $local : (hexdec($prefix) << 24) | $local;
+            $formId = (int)$runtime;
+            if ($formId > 2147483647) $formId -= 4294967296;
+            return ['kind' => $item['kind'], 'form_id' => $formId, 'plugin' => $row['plugin_name'], 'local_id' => $local, 'quantity' => $item['quantity']];
+        }
         public function query(string $sql, array $parameters = []): array
         {
             if (preg_match('/\A\s*SELECT\b/i', $sql) !== 1 || preg_match('/\b(FOR\s+(?:UPDATE|SHARE)|INSERT|UPDATE|DELETE|ALTER|DROP|CREATE|TRUNCATE|LOCK|pg_advisory)\b/i', $sql) === 1) {

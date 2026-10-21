@@ -160,6 +160,214 @@ function qd_runtime_with_profile_lease(callable $callback): mixed
     }
 }
 
+/** Capture the real CHIM restore generation while the request owns work.lock SH. */
+function qd_runtime_with_correspondence_lease(string $ownerRoot, callable $callback): mixed
+{
+    if (!empty($GLOBALS['ptr_runtime_controller'])) throw new QDServerFault('busy');
+    if (array_key_exists('ptr_runtime_lease', $GLOBALS) && !is_resource($GLOBALS['ptr_runtime_lease'])) {
+        throw new QDServerFault('unavailable');
+    }
+    if (array_key_exists('ptr_runtime_generation', $GLOBALS) && !is_string($GLOBALS['ptr_runtime_generation'])) {
+        throw new QDServerFault('unavailable');
+    }
+    try {
+        qd_runtime_load_profile_lock_helpers();
+        $coreRoot = qd_runtime_core_root();
+        $canonicalOwnerRoot = realpath($ownerRoot);
+        if (!is_string($canonicalOwnerRoot) || dirname($canonicalOwnerRoot, 2) !== $coreRoot) {
+            throw new RuntimeException('The pinned Correspondence engine root does not match CHIM.');
+        }
+        if (array_key_exists('ENGINE_PATH', $GLOBALS)) {
+            if (!is_string($GLOBALS['ENGINE_PATH']) || realpath($GLOBALS['ENGINE_PATH']) !== $coreRoot) {
+                throw new RuntimeException('The Correspondence engine root does not match CHIM.');
+            }
+        }
+        return qd_runtime_with_profile_lease(static function () use ($canonicalOwnerRoot, $coreRoot, $callback): mixed {
+            $lease = qd_runtime_correspondence_lease_resource($coreRoot);
+            $generation = qd_runtime_correspondence_read_generation();
+            if (array_key_exists('ptr_runtime_lease', $GLOBALS)
+                && (!is_resource($GLOBALS['ptr_runtime_lease'])
+                    || $GLOBALS['ptr_runtime_lease'] !== $lease
+                    || !array_key_exists('ptr_runtime_generation', $GLOBALS)
+                    || !is_string($GLOBALS['ptr_runtime_generation'])
+                    || !hash_equals($generation, $GLOBALS['ptr_runtime_generation']))) {
+                throw new RuntimeException('The current core lease generation is unavailable.');
+            }
+            if (array_key_exists('ptr_runtime_generation', $GLOBALS)
+                && (!is_string($GLOBALS['ptr_runtime_generation']) || !hash_equals($generation, $GLOBALS['ptr_runtime_generation']))) {
+                throw new RuntimeException('The current core generation is stale.');
+            }
+            return $callback($generation, $lease, $coreRoot, $canonicalOwnerRoot);
+        });
+    } catch (QDServerFault $error) {
+        throw $error;
+    } catch (Throwable) {
+        throw new QDServerFault('unavailable');
+    }
+}
+
+/** Temporarily lend the existing Department SH handle to the owner's idempotent runtime entry. */
+function qd_runtime_with_correspondence_owner_lease(string $ownerRoot, string $expectedGeneration, mixed $lease, callable $callback): mixed
+{
+    $keys = ['ptr_runtime_lease', 'ptr_runtime_generation', 'ENGINE_PATH'];
+    $saved = qd_runtime_correspondence_save_globals($keys);
+    try {
+        if (!is_resource($lease) || !empty($GLOBALS['ptr_runtime_controller'])) {
+            throw new RuntimeException('The current core lease is unavailable.');
+        }
+        $canonicalOwnerRoot = realpath($ownerRoot);
+        $coreRoot = qd_runtime_core_root();
+        if (!is_string($canonicalOwnerRoot) || dirname($canonicalOwnerRoot, 2) !== $coreRoot
+            || !hash_equals($expectedGeneration, qd_runtime_correspondence_read_generation())
+            || qd_runtime_correspondence_lease_resource($coreRoot) !== $lease) {
+            throw new RuntimeException('The current core lease generation changed.');
+        }
+        if (array_key_exists('ENGINE_PATH', $GLOBALS)) {
+            if (!is_string($GLOBALS['ENGINE_PATH']) || realpath($GLOBALS['ENGINE_PATH']) !== $coreRoot) {
+                throw new RuntimeException('The Correspondence engine root does not match CHIM.');
+            }
+        } else {
+            $GLOBALS['ENGINE_PATH'] = $coreRoot;
+        }
+        if (array_key_exists('ptr_runtime_lease', $GLOBALS)) {
+            if (!is_resource($GLOBALS['ptr_runtime_lease']) || $GLOBALS['ptr_runtime_lease'] !== $lease
+                || !array_key_exists('ptr_runtime_generation', $GLOBALS)
+                || !is_string($GLOBALS['ptr_runtime_generation'])
+                || !hash_equals($expectedGeneration, $GLOBALS['ptr_runtime_generation'])) {
+                throw new RuntimeException('The existing core runtime lease is stale.');
+            }
+        } else {
+            $GLOBALS['ptr_runtime_lease'] = $lease;
+            if (array_key_exists('ptr_runtime_generation', $GLOBALS)) {
+                if (!is_string($GLOBALS['ptr_runtime_generation']) || !hash_equals($expectedGeneration, $GLOBALS['ptr_runtime_generation'])) {
+                    throw new RuntimeException('The existing core runtime generation is stale.');
+                }
+            } else {
+                $GLOBALS['ptr_runtime_generation'] = $expectedGeneration;
+            }
+        }
+        return $callback();
+    } catch (QDServerFault $error) {
+        throw $error;
+    } catch (Throwable) {
+        throw new QDServerFault('unavailable');
+    } finally {
+        qd_runtime_correspondence_restore_globals($saved);
+    }
+}
+
+function qd_runtime_correspondence_read_generation(): string
+{
+    $coreRoot = qd_runtime_core_root();
+    $logRoot = $coreRoot . DIRECTORY_SEPARATOR . 'log';
+    $runtimeRoot = $logRoot . DIRECTORY_SEPARATOR . 'playthrough_runtime';
+    $generationPath = $runtimeRoot . DIRECTORY_SEPARATOR . 'generation';
+    clearstatcache(true, $logRoot);
+    clearstatcache(true, $runtimeRoot);
+    clearstatcache(true, $generationPath);
+    if (is_link($logRoot) || is_link($runtimeRoot) || is_link($generationPath)) {
+        throw new RuntimeException('The core restore generation is not a regular file.');
+    }
+    $canonicalRuntimeRoot = realpath($runtimeRoot);
+    if (!is_string($canonicalRuntimeRoot) || !is_dir($canonicalRuntimeRoot)
+        || !is_readable($canonicalRuntimeRoot)
+        || !str_starts_with($canonicalRuntimeRoot, $coreRoot . DIRECTORY_SEPARATOR)) {
+        throw new RuntimeException('The core restore generation path is unavailable.');
+    }
+    $linkStat = @lstat($generationPath);
+    if ($linkStat === false) return '';
+    $pathStat = @stat($generationPath);
+    if (!is_array($pathStat) || (($linkStat['mode'] ?? 0) & 0170000) !== 0100000
+        || (($pathStat['mode'] ?? 0) & 0170000) !== 0100000) {
+        throw new RuntimeException('The core restore generation is not a regular file.');
+    }
+    $handle = @fopen($generationPath, 'rb');
+    if ($handle === false) throw new RuntimeException('The core restore generation cannot be read.');
+    try {
+        $stat = fstat($handle);
+        if (!is_array($stat) || !isset($stat['mode'], $stat['size'])
+            || (($stat['mode'] & 0170000) !== 0100000) || $stat['size'] < 1 || $stat['size'] > 256) {
+            throw new RuntimeException('The core restore generation has an invalid size or type.');
+        }
+        $raw = stream_get_contents($handle, 257);
+        clearstatcache(true, $generationPath);
+        $afterLinkStat = @lstat($generationPath);
+        $afterPathStat = @stat($generationPath);
+        if (!is_string($raw) || strlen($raw) > 256 || !is_int($pathStat['dev'] ?? null) || !is_int($pathStat['ino'] ?? null)
+            || !is_int($stat['dev'] ?? null) || !is_int($stat['ino'] ?? null)
+            || !is_array($afterLinkStat) || !is_array($afterPathStat)
+            || (($afterLinkStat['mode'] ?? 0) & 0170000) !== 0100000
+            || (($afterPathStat['mode'] ?? 0) & 0170000) !== 0100000
+            || ($pathStat['dev'] ?? null) !== ($stat['dev'] ?? null)
+            || ($pathStat['ino'] ?? null) !== ($stat['ino'] ?? null)
+            || ($afterLinkStat['dev'] ?? null) !== ($stat['dev'] ?? null)
+            || ($afterLinkStat['ino'] ?? null) !== ($stat['ino'] ?? null)
+            || ($afterPathStat['dev'] ?? null) !== ($stat['dev'] ?? null)
+            || ($afterPathStat['ino'] ?? null) !== ($stat['ino'] ?? null)) {
+            throw new RuntimeException('The core restore generation changed while being read.');
+        }
+        $generation = trim($raw);
+        if (preg_match('/\A[0-9a-f]{32}\z/D', $generation) !== 1) {
+            throw new RuntimeException('The core restore generation is malformed.');
+        }
+        return $generation;
+    } finally {
+        fclose($handle);
+    }
+}
+
+function qd_runtime_correspondence_lease_resource(string $coreRoot): mixed
+{
+    $lease = $GLOBALS['ptr_runtime_lease'] ?? $GLOBALS['qd_runtime_owned_profile_lease'] ?? null;
+    if (!is_resource($lease)) throw new RuntimeException('The shared profile lease is unavailable.');
+    if (is_resource($GLOBALS['ptr_runtime_lease'] ?? null)
+        && is_resource($GLOBALS['qd_runtime_owned_profile_lease'] ?? null)
+        && $GLOBALS['ptr_runtime_lease'] !== $GLOBALS['qd_runtime_owned_profile_lease']) {
+        throw new RuntimeException('The shared profile lease handles do not match.');
+    }
+    $path = $coreRoot . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'playthrough_runtime' . DIRECTORY_SEPARATOR . 'work.lock';
+    clearstatcache(true, $path);
+    $linkStat = @lstat($path);
+    $pathStat = @stat($path);
+    $handleStat = @fstat($lease);
+    if (!is_array($linkStat) || !is_array($pathStat) || !is_array($handleStat)
+        || (($linkStat['mode'] ?? 0) & 0170000) !== 0100000
+        || (($pathStat['mode'] ?? 0) & 0170000) !== 0100000
+        || (($handleStat['mode'] ?? 0) & 0170000) !== 0100000
+        || !is_int($linkStat['dev'] ?? null) || !is_int($linkStat['ino'] ?? null)
+        || !is_int($pathStat['dev'] ?? null) || !is_int($pathStat['ino'] ?? null)
+        || !is_int($handleStat['dev'] ?? null) || !is_int($handleStat['ino'] ?? null)
+        || $linkStat['ino'] === 0 || $pathStat['ino'] === 0 || $handleStat['ino'] === 0
+        || $linkStat['dev'] !== $pathStat['dev'] || $linkStat['ino'] !== $pathStat['ino']
+        || $pathStat['dev'] !== $handleStat['dev'] || $pathStat['ino'] !== $handleStat['ino']) {
+        throw new RuntimeException('The shared profile lease path no longer identifies the held file.');
+    }
+    $expected = realpath($path);
+    $metadata = stream_get_meta_data($lease);
+    $uri = is_array($metadata) ? ($metadata['uri'] ?? null) : null;
+    if (!is_string($expected) || !is_string($uri) || realpath($uri) !== $expected) {
+        throw new RuntimeException('The shared profile lease is not the pinned work.lock handle.');
+    }
+    return $lease;
+}
+
+function qd_runtime_correspondence_save_globals(array $keys): array
+{
+    $saved = [];
+    foreach ($keys as $key) {
+        $saved[$key] = [array_key_exists($key, $GLOBALS), $GLOBALS[$key] ?? null];
+    }
+    return $saved;
+}
+
+function qd_runtime_correspondence_restore_globals(array $saved): void
+{
+    foreach ($saved as $key => [$present, $value]) {
+        if ($present) $GLOBALS[$key] = $value;
+        else unset($GLOBALS[$key]);
+    }
+}
+
 function qd_runtime_core_root(): string
 {
     return qd_runtime_engine_root();

@@ -1,0 +1,9 @@
+{
+  "name": "correspondence",
+  "version": "0.1.0-dev.14",
+  "schema_version": 2,
+  "description": "Sealed Fates: physical letters and attachments, recipient-scoped written evidence, and bounded autonomous text-only NPC correspondence.",
+  "status": "development_candidate",
+  "config_url": "../ext/correspondence/index.php",
+  "server_compatibility_reference": "HerikaServer dev 0ec590b42c8087860138bb4e9aab470049ff9a2b: ptp_connect/ptr_runtime_enter, preprocessing/context_pre hooks, character_bottom prompt API and restored eventlog; CHIM dev 5ca1bc361d1e11a3c58067599b494b1101c2c77b: plugin_player_routing_v2 managed snapshots and actor ExtCmd route. Requires the paired compiled correspondence bridge. Source references are compatibility targets, not installed-runtime proof."
+}

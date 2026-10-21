@@ -109,7 +109,25 @@ php -n -d extension=mbstring -d extension=ctype server/tests/pcv/companion_prese
 php -n -d extension=mbstring -d extension=ctype server/tests/pcv/companion_store.php
 ```
 
-The correspondence and inspector integration suites use separately preserved, version-pinned owner-source snapshots. This scoped source ZIP omits those integration test drivers and their bulk fixture trees; both are preserved internally for the full release checks. The complete correspondence and inspector suites are not runnable from this source ZIP. The shipped foundation and PCV tests listed above are available to run. The Windows provision CGI/CLI regression additionally requires matching local PHP CLI and CGI executables; pass them as `QD_TEST_PHP_CLI` and `QD_TEST_PHP_CGI` when running `php -n -d extension=mbstring server/tests/provision-cgi.php`. It creates and removes only a fresh temporary fixture beneath the server test directory.
+The older complete correspondence and inspector integration suites use separately preserved, version-pinned owner snapshots. This source ZIP omits their bulk fixture trees and full legacy drivers; those complete suites are not runnable from this source ZIP. It now includes focused correspondence tests and four exact dev.14 source fixtures for the read-store interface probe. These fixtures are test inputs, not a complete owner installation; their ownership and licensing status remain with the [Sealed Fates project](https://github.com/Francisco-boop-001/CHIM-SealedFates). No dependency license is inferred from inclusion. The shipped foundation and PCV tests above remain available. The Windows provision CGI/CLI regression additionally requires matching local PHP CLI and CGI executables; pass them as `QD_TEST_PHP_CLI` and `QD_TEST_PHP_CGI` when running `php -n -d extension=mbstring server/tests/provision-cgi.php`. It creates and removes only a fresh temporary fixture beneath the server test directory.
+
+## Focused dev.18 checks
+
+Extract the exact separately published Sealed Fates dev.18 source release and pass its `server/` directory as `--owner-root`; the test verifies all 13 required owner files before copying them into an isolated temporary fixture. The source-contract test also loads dev.18, then corrupts a pinned source or replaces the isolated tree with the valid dev.14 fixture, and checks that routing refuses both changes. It does not edit the supplied owner tree.
+
+```sh
+php server/tests/correspondence/dev18-source-contract.php --owner-root /absolute/path/to/SealedFates/server
+php server/tests/correspondence/dev18-ingress-authority.php
+php server/tests/correspondence/dev18-generation-reader.php
+php server/tests/correspondence/dev18-lease-identity.php
+php server/tests/correspondence/dev18-owned-close.php
+php -n server/tests/correspondence/dev18-physical-mapping.php --owner-root /absolute/path/to/SealedFates/server
+php -n -d extension=mbstring -d extension=ctype server/tests/correspondence/dev14-interface-compatibility.php
+```
+
+The physical-mapping probe disables `pgsql`, uses the pinned owner interface, and checks 18 form-ID/mapping cases with a SELECT-only fake database. It checks mapping semantics and connection identity; it does not execute PostgreSQL. The owned-close probe requires `pgsql` and checks that a cleanup TypeError cannot replace the primary failure. It is not a real closed-connection test. The inode-replacement assertion executes on Linux and explicitly skips that assertion on Windows. The dev.14 probe must run without `pgsql` because it supplies a synthetic database boundary.
+
+`server/tests/dev18-pg/` supplies the synthetic SQL fixture, direct PHP API-entry driver, owner-lifecycle fixture, receipt seeder, shared fixture guard and case specification. The driver invokes the actual `qd_api_handle` with production runtime dependencies; it does not prove HTTP transport or Skyrim behavior. The guard refuses ordinary host/live invocations before loading core code. The root TEST launcher must create a network namespace different from PID 1, then create the exact fresh `/var/tmp/department-dev18-RUN_ID/stage/core` clone and a bounded `fixture-marker.json` outside that clone. The scratch root and marker must be root-owned and not writable by group or others. Unprivileged fixtures compare their own namespace with that protected marker; they do not need permission to inspect PID 1. The marker must have exactly `schema` (`department.dev18.fixture.v1`), `runId`, `coreRoot` and the current `networkNamespace`. Set `QD_DEV18_RUN_ID`, `QD_DEV18_SCRATCH_ROOT`, `QD_DEV18_FIXTURE_MARKER` and `QD_CHIM_ROOT` to those fixture values. Use only a new PostgreSQL cluster in a loopback-only namespace; the pinned core database reader uses localhost:5432/database dwemer, so changing environment database settings alone does not isolate it. Run measured API calls as an unprivileged OS user and the non-superuser database role dwemer. The owner fixture initializes only that private database after the no-initialization read check. The machine-specific TEST orchestration and raw receipts are kept separately; the release receipts identify executed cases, the static legacy-pin case and reused evidence separately.
 
 ## Release candidate validation
 
