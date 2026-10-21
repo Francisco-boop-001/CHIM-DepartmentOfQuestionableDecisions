@@ -6,8 +6,8 @@ Goal: publish a separate TEST-only companion candidate with exact Sealed Fates d
 - [x] Delegate product fixes to GPT-6-LUNA/max agents; root reviews callers, source identity, restore authority, commit ordering and cleanup.
 - [x] Pass focused host checks and review the isolated harness; preserve failed preflight evidence.
 - [x] Execute and independently review the fresh TEST PostgreSQL/facade run, source preservation and owned cleanup.
-- [ ] Bind unchanged native/UI/PCV evidence, finalize the verification record, build and independently audit new archives.
-- [ ] Commit, push, publish a new prerelease and verify anonymous public downloads against the frozen inputs.
+- [x] Bind unchanged native/UI/PCV evidence, finalize the verification record, build and independently audit new archives.
+- [x] Commit, push, publish a new prerelease and verify anonymous public downloads against the frozen inputs.
 
 ## Review
 
@@ -33,3 +33,9 @@ Run 20261021T135003Z-9fa7580a passed ten prechecks (including 162 foundation ass
 Final source checks, owned PostgreSQL stop, TEST stop and protected-state checks passed at 2026-10-21T13:59:59Z. Other running distros remained unchanged. TEST was explicitly released to Sealed Fates before packaging; no further Department runtime is queued. Native/UI/PCV and journal evidence is reused only after current input hashes match. Root audit found no remaining blocker within exact dev.18 serialized-init TEST scope; Skyrim and broad coexistence remain pending.
 
 This source snapshot is the pre-publication checkpoint. The archive audit, commit/push, publication and anonymous download checks must finish before the final hand-off; the release tag will retain its frozen source identity.
+
+## Publication completed
+
+Published [v0.1.0-prealpha.2](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.2) at source commit ec6868073f66721050fad3781a8268cbb85fd2df. The independent archive audit passed: 118 frozen inputs, 113 canonical source files, 9 game files, 24 server files and 7 notices. All 113 Git index blobs matched the frozen source before commit. Ten authenticated draft downloads matched before publication; ten anonymous public downloads, all five gate receipts, all nine checksum entries and all 113 tagged GitHub source files matched afterward. The prior release tag and ten assets are unchanged.
+
+This documentation-only follow-up records completion without moving the frozen release tag or replacing any asset. The release source retains its explicit pre-publication checkpoint. Local dist/evidence directories remain untracked verification artifacts. No Department runtime is queued; Skyrim checks remain for the user in an isolated TEST profile/save/server.
