@@ -13,3 +13,6 @@
 
 
 - A nominally read-only owner helper may manage its own transaction. Trace its implementation before using it inside an existing snapshot; never construct an uninitialized owner store there. Form lookups must reuse the fenced connection without BEGIN/COMMIT/ROLLBACK, and positive receipt cases must assert that boundary in the SQL trace.
+
+- Verify a checksum manifest with its ordinary external consumer. Parsing lines and comparing hashes can miss CRLF filenames; generate explicit LF bytes independent of the host platform.
+- A historical source snapshot must be labeled and point to the authoritative Git repository. Use named worktrees for changes, keep release tags immutable, and fast-forward a clean primary checkout after publication.

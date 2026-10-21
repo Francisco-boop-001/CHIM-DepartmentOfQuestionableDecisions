@@ -60,6 +60,8 @@
     { "path": "packaging/companion-only/notices/spdlog-1.13.0-LICENSE.txt" },
     { "path": "packaging/companion-only/pcv-0.1.22-source-manifest.json" },
     { "path": "packaging/public-source-allowlist.json" },
+    { "path": "packaging/tests/ReleaseChecksums.Tests.ps1" },
+    { "path": "packaging/write-release-checksums.ps1" },
     { "path": "pcv-companion/companion.php" },
     { "path": "pcv-companion/globals.php" },
     { "path": "pcv-companion/preprocessing.php" },

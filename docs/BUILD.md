@@ -133,6 +133,28 @@ The physical-mapping probe disables `pgsql`, uses the pinned owner interface, an
 
 The candidate builder defaults to validation only. A release candidate requires a new root-owned `department-pre-alpha` freeze with exactly the accepted `privateRoute`, `critique`, `ui`, `native`, and `runtimeRelease` gates. Pass fresh DLL, PEX, ESP, and SEQ paths below one generated-input root, an explicit public-source allowlist, a new freeze path, and a new candidate output directory. The builder compares each input to the freeze and refuses stale or additional files. The independent auditor reopens the outer archive and all four component ZIPs, validates their exact members and canonical source bytes, verifies the blank INI and seven-file PCV overlay, and rejects unsafe archive entries. Package creation neither installs nor publishes anything. The release supplies `input-freeze.json` and `verification-receipts.zip`; place the freeze and five receipts at their recorded source-relative paths when auditing a release. Use the five canonical generated assets extracted from its game-data ZIP under one generated-input root. Freshly compiled PEX timestamps differ, as described above, so a fresh compile cannot be substituted silently for a frozen asset.
 
+### Release checksum manifest
+
+Stage the nine release files below in a fresh, flat directory, then write its checksum manifest. The helper accepts only the explicit file set, excludes `SHA256SUMS.txt` itself, writes lowercase hashes as ASCII LF lines, and refuses to replace a different existing manifest.
+
+```powershell
+$releaseAssetsDirectory = 'C:\path\to\fresh-release-assets'
+& .\packaging\write-release-checksums.ps1 -ReleaseDirectory $releaseAssetsDirectory -AssetNames @(
+  'input-freeze.json'
+  'package-manifest.json'
+  'PRE-ALPHA-RELEASE.md'
+  'verification-receipts.zip'
+  'WorldOfDramaLlama-department-pre-alpha-candidate.zip'
+  'WorldOfDramaLlama-department-pre-alpha-game-data.zip'
+  'WorldOfDramaLlama-department-pre-alpha-notices.zip'
+  'WorldOfDramaLlama-department-pre-alpha-server.zip'
+  'WorldOfDramaLlama-department-pre-alpha-source.zip'
+)
+
+# Optional: set SHA256SUM_EXE to an explicit sha256sum executable to run GNU verification too.
+& .\packaging\tests\ReleaseChecksums.Tests.ps1
+```
+
 ## Identity and acceptance limits
 
 The generated assets are a 185-byte ESP and a 4-byte SEQ; they use one light-plugin slot and no full-plugin slot. The candidate bundles nine game files, 24 server files, seven notices, and the explicit source allowlist at the archive root. It does not reuse an older game-data ZIP. The PCV 0.1.22 overlay is seven flat files and must be installed over the complete supported owner release.

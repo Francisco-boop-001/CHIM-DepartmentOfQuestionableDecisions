@@ -39,3 +39,24 @@ This source snapshot is the pre-publication checkpoint. The archive audit, commi
 Published [v0.1.0-prealpha.2](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.2) at source commit ec6868073f66721050fad3781a8268cbb85fd2df. The independent archive audit passed: 118 frozen inputs, 113 canonical source files, 9 game files, 24 server files and 7 notices. All 113 Git index blobs matched the frozen source before commit. Ten authenticated draft downloads matched before publication; ten anonymous public downloads, all five gate receipts, all nine checksum entries and all 113 tagged GitHub source files matched afterward. The prior release tag and ten assets are unchanged.
 
 This documentation-only follow-up records completion without moving the frozen release tag or replacing any asset. The release source retains its explicit pre-publication checkpoint. Local dist/evidence directories remain untracked verification artifacts. No Department runtime is queued; Skyrim checks remain for the user in an isolated TEST profile/save/server.
+
+## Critique 3 fixes: prealpha.3
+
+Goal: clarify the authoritative repository, publish portable LF checksums, and allow a distinct letter draft while keeping every unresolved operation available for same-ID reconciliation. Preserve all server/native replay rules, exact dev.18 pairing, CHIM core, installed game and live server. Earlier releases remain immutable.
+
+- [x] Clarify source authority; fast-forward the clean primary checkout and mark the older implementation snapshot historical.
+- [x] Luna/max: implement a bounded unresolved-letter UI, explicit unresolved-not-found messaging and discriminating regressions.
+- [x] Luna/max: add a minimal LF checksum writer and a real GNU consumer check.
+- [x] Root review code/callers, run browser/interaction/visual checks and confirm unchanged native/server replay inputs against accepted evidence.
+- [ ] Update verification/recovery docs and explicit allowlist; freeze, build and independently audit a new candidate.
+- [ ] Commit, push, publish prealpha.3, verify anonymous downloads with ordinary sha256sum, synchronize the clean primary checkout and finalize the review.
+
+Ownership: letter_recovery owns UI and its browser tests; checksum_fix owns the checksum helper/test and BUILD usage; replay_review reads the existing native/server contract. Root owns source authority, task records, independent review/execution, evidence, packaging and publication. No implementation conflict or backend change is intended. No WSL runtime is needed unless a newly discovered changed boundary requires it; TEST ownership must be coordinated before any start.
+
+Success requires: earlier queued/unknown IDs remain reconcilable after another draft or send; not_found never clears uncertainty; no implicit resend; delayed replies cannot overwrite a different draft; auth loss removes private text without forgetting IDs; genuine authenticated scope change clears only that scope's local UI; bounded capacity refuses explicitly without eviction; GNU sha256sum verifies the untouched published checksum file.
+
+Design review added two guards before implementation: refuse same writer/recipient/whitespace-normalized text even with new IDs/revisions/attachment choices; serialize transfer-bearing operations because current inventory checks do not reserve pending quantities. A bounded local fingerprint may over-refuse on collision and is never a crypto/privacy claim. No backend or native code change is needed. Root independently rehashed all 3,144 accepted server/core/owner/harness entries, 25 native inputs and five assets; all matched. The checksum self-check passed under root with the real GNU consumer, including exact anchors for trailing-newline rejection.
+
+### Critique 3 review checkpoint
+
+Root reviewed the final Luna UI/checksum diff and the independent replay contract review. All nine recorded review findings are addressed, including detached old replies, visible not_found at capacity and auth-negative bootstrap text erasure. Root executed 39/39 functional cases, one interaction case and 11 render captures; visual review includes four tabs, unresolved recovery and compact review. The new recovery case fails against prealpha.2. GNU checksum self-check passes; actual staged/public consumer verification remains required. No backend/native input changed and no WSL runtime was started. Archive/publication remain pending at this immutable source checkpoint.

@@ -16,6 +16,7 @@ const resultPath = process.env.UI_TEST_RESULTS;
 const screenshotPath = process.env.UI_TEST_SCREENSHOT;
 const nativeRefusalScreenshotPath = process.env.UI_NATIVE_REFUSAL_SCREENSHOT;
 const nativeRecoveryScreenshotPath = process.env.UI_NATIVE_RECOVERY_SCREENSHOT;
+const letterRecoveryScreenshotPath = process.env.UI_LETTER_RECOVERY_SCREENSHOT;
 const results = [];
 let uuidCounter = 1;
 
@@ -148,16 +149,16 @@ async function authenticatedPage(browser, serverContext = 'scope-test-1', scopeT
   return page;
 }
 
-async function prepareComposer(page, body) {
+async function prepareComposer(page, body, options = {}) {
   await page.getByRole('tab', { name: 'Sealed Fates' }).click();
   await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
   const catalog = await latestRequest(page, 'correspondence.catalog.read');
   const inventory = await latestRequest(page, 'correspondence.inventory.read');
-  await respond(page, catalog, catalogPage([
+  await respond(page, catalog, catalogPage(options.actors || [
     { actorKey: 'npc:1', label: 'Writer', canWrite: true, canReceive: true, canSignAs: true },
     { actorKey: 'npc:2', label: 'Recipient', canWrite: false, canReceive: true, canSignAs: false },
   ]));
-  await respond(page, inventory, { inventoryRevision: 'inventory-1', items: [], gold: { available: 10 } });
+  await respond(page, inventory, options.inventory || { inventoryRevision: 'inventory-1', items: [], gold: { available: 10 } });
   await page.getByLabel('Writer').selectOption('npc:1');
   await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
   await page.getByLabel('Letter body').fill(body);
@@ -592,6 +593,267 @@ async function main() {
       await page.close();
     });
 
+    await test('ordinary view close and reinitialize retain the locked draft cache and unresolved operation ID', async () => {
+      const scope = 'Q'.repeat(43);
+      const page = await authenticatedPage(browser, 'scope-letter-ordinary-reopen', scope);
+      await prepareComposer(page, 'Retained only in the current UI lifetime.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'queued' });
+      assert.match(await page.locator('#letter-review-summary').innerText(), /Retained only in the current UI lifetime\./,
+        'the review summary contains the private body before auth-loss cleanup');
+      await page.getByRole('button', { name: 'Close' }).click();
+
+      const reopened = await initialize(page, newUuid(), '2');
+      await respond(page, reopened, authenticatedData('scope-letter-ordinary-reopen', scope));
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Retained only in the current UI lifetime.');
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId);
+      assert.equal(await page.locator('#letter-reconcile').isHidden(), false);
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      const reconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(reconcile.payload.operationId, compose.payload.operationId);
+      await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No receipt yet.' } });
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId, 'not_found keeps the same ID through ordinary reopen');
+
+      await page.getByRole('button', { name: 'Close' }).click();
+      const unauthenticated = await initialize(page, newUuid(), '3');
+      await respond(page, unauthenticated, {
+        authenticated: false, authRequired: true, serverContext: null, scopeToken: null,
+        capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
+        access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+      });
+      assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'an unauthenticated bootstrap erases the cached private body');
+      assert.equal(await page.locator('#letter-review-summary').innerText(), '', 'an unauthenticated bootstrap erases review-summary text');
+      assert.equal(await page.locator('#letter-review-summary').locator('> *').count(), 0, 'an unauthenticated bootstrap removes private review-summary children');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), true);
+      assert.equal(await page.locator('#letter-operation').isHidden(), true, 'unresolved IDs are hidden while authorization is absent');
+
+      await page.getByRole('button', { name: 'Close' }).click();
+      const reauthenticated = await initialize(page, newUuid(), '4');
+      await respond(page, reauthenticated, authenticatedData('scope-letter-ordinary-reopen', scope));
+      assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'same-scope reauthentication does not restore erased private text');
+      assert.equal(await page.locator('#letter-review-summary').innerText(), '', 'erased review text stays absent after reauthentication');
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId, 'the unresolved operation ID survives same-scope auth loss');
+      assert.equal(await page.locator('#letter-reconcile').isHidden(), false, 'same-scope reauthentication restores ID-only reconciliation');
+      await page.close();
+    });
+
+    await test('starts a new draft beside unresolved IDs and isolates delayed compose and reconcile responses', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-recovery-multiple', 'M'.repeat(43));
+      await prepareComposer(page, 'First operation private body.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const first = await latestRequest(page, 'correspondence.compose');
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'New letter explicitly clears the prior editor body');
+      assert.equal(await page.locator('#letter-operation').inputValue(), first.payload.operationId, 'the unresolved ID remains available');
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('Second operation private body.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const second = await latestRequest(page, 'correspondence.compose');
+      assert.notEqual(second.payload.operationId, first.payload.operationId);
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('Current editor stays on this newer draft.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await respond(page, first, { operationId: first.payload.operationId, state: 'queued' });
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Current editor stays on this newer draft.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'a delayed old result cannot relock the current editor');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), false, 'an old result cannot clear the newer review');
+      const listedIds = await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+      assert.deepEqual(new Set(listedIds), new Set([first.payload.operationId, second.payload.operationId]));
+      assert.doesNotMatch(await page.locator('#letter-operation').innerText(), /First operation private body|Second operation private body/,
+        'the unresolved list contains IDs and statuses, never prior letter text');
+
+      await page.locator('#letter-operation').selectOption(first.payload.operationId);
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      const reconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(reconcile.payload.operationId, first.payload.operationId, 'reconciliation uses the selected old operation ID');
+      await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No current receipt.' } });
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /not found yet.*remains unresolved/i);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Current editor stays on this newer draft.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'not_found for an old ID cannot lock the newer editor');
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'the reviewed newer draft remains sendable');
+      if (letterRecoveryScreenshotPath) {
+        fs.mkdirSync(path.dirname(letterRecoveryScreenshotPath), { recursive: true });
+        await page.screenshot({ path: letterRecoveryScreenshotPath, fullPage: true });
+      }
+      const currentReceipt = await page.locator('#letter-receipt').innerText();
+      await respond(page, second, null, { ok: false, error: { code: 'stale_revision', message: 'Detached operation was not sent.', dispatched: false } });
+      await page.waitForFunction((id) => {
+        const ids = [...document.querySelectorAll('#letter-operation option')].map((option) => option.value).filter(Boolean);
+        return ids.length === 1 && !ids.includes(id);
+      }, second.payload.operationId);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Current editor stays on this newer draft.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'a delayed proven refusal for a detached ID cannot relock the newer draft');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), false, 'a detached refusal cannot clear the newer review');
+      assert.equal(await page.locator('#letter-receipt').innerText(), currentReceipt, 'a detached refusal cannot overwrite the newer editor status');
+      assert.equal(await page.locator('#letter-send').isDisabled(), false);
+
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const third = await latestRequest(page, 'correspondence.compose');
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('A final draft survives detached delivery confirmation.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await respond(page, third, { operationId: third.payload.operationId, state: 'queued' });
+      await page.locator('#letter-operation').selectOption(third.payload.operationId);
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      const terminalReconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(terminalReconcile.payload.operationId, third.payload.operationId);
+      await respond(page, terminalReconcile, { operationId: third.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'now' } });
+      assert.match(await page.locator('#letter-recovery-result').innerText(), new RegExp(`${third.payload.operationId} resolved: delivery receipt confirmed`),
+        'a definitive old-ID result is reported in recovery status without replacing the editor receipt');
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'A final draft survives detached delivery confirmation.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'an old terminal reconciliation cannot relock the current editor');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), false, 'an old terminal reconciliation cannot clear the newer review');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /not found yet.*remains unresolved/i,
+        'the earlier not_found operation remains visible after another ID resolves');
+      assert.equal(await page.locator('#letter-send').isDisabled(), false);
+      await page.close();
+    });
+
+    await test('blocks unresolved semantic duplicates, permits changed intent, and refuses cap overflow without eviction', async () => {
+      const actors = [
+        { actorKey: 'npc:1', label: 'Writer', canWrite: true, canReceive: true, canSignAs: true },
+        { actorKey: 'npc:2', label: 'Recipient', canWrite: false, canReceive: true, canSignAs: false },
+        { actorKey: 'npc:3', label: 'Alternate recipient', canWrite: false, canReceive: true, canSignAs: true },
+      ];
+      const page = await authenticatedPage(browser, 'scope-letter-intent-guard', 'N'.repeat(43));
+      await page.evaluate(() => Object.defineProperty(window, 'crypto', { configurable: true, value: undefined }));
+      const originalBody = 'Same   semantic\nbody ';
+      await prepareComposer(page, originalBody, { actors, inventory: {
+        inventoryRevision: 'inventory-before', items: [{ itemKey: 'item:before', label: 'Potion', availableQuantity: 2 }], gold: { available: 10 },
+      } });
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const first = await latestRequest(page, 'correspondence.compose');
+      assert.equal(first.payload.body, originalBody, 'fingerprint normalization leaves the transmitted body unchanged');
+      await respond(page, first, { operationId: first.payload.operationId, state: 'queued' });
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      const refreshedCatalog = await latestRequest(page, 'correspondence.catalog.read');
+      const refreshedInventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, refreshedCatalog, catalogPage(actors, { revision: 'd'.repeat(64) }));
+      await respond(page, refreshedInventory, { inventoryRevision: 'inventory-after', items: [{ itemKey: 'item:after', label: 'Potion', availableQuantity: 2 }], gold: { available: 10 } });
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Sign as someone else').check();
+      await page.getByLabel('Signature shown on the letter').selectOption('npc:3');
+      await page.getByLabel('Letter body').fill('  Same   semantic\n body  ');
+      await page.getByLabel('Attach Potion').check();
+      await page.getByLabel('Gold').fill('1');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true,
+        'changed inventory revision, item key, signature, attachments, gold, and whitespace cannot bypass an unresolved semantic duplicate');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /same writer, recipient, and normalized body/i);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'the duplicate refusal sends no second request');
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('Changed body is a distinct intent.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const second = await latestRequest(page, 'correspondence.compose');
+      await respond(page, second, { operationId: second.payload.operationId, state: 'queued' });
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:3');
+      await page.getByLabel('Letter body').fill('Same body, different recipient.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const third = await latestRequest(page, 'correspondence.compose');
+      await respond(page, third, { operationId: third.payload.operationId, state: 'queued' });
+      assert.equal(await page.locator('#letter-operation option').count(), 3, 'the bounded unresolved list retains all three operation IDs');
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('Fourth unique letter.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the fourth unresolved send is explicitly refused at the cap');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /three unresolved operations.*none will be dropped/i);
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [first.payload.operationId, second.payload.operationId, third.payload.operationId], 'cap exhaustion never silently evicts an unresolved ID');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 3);
+      await page.locator('#letter-operation').selectOption(first.payload.operationId);
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      const reconcile = await latestRequest(page, 'correspondence.reconcile');
+      await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No receipt yet.' } });
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /three unresolved operations.*not found yet.*remains unresolved/i,
+        'at capacity, reconciliation still reports that the selected not_found operation remains unresolved');
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [first.payload.operationId, second.payload.operationId, third.payload.operationId], 'not_found at capacity preserves all three IDs');
+      await page.close();
+    });
+
+    await test('reserves transfer-bearing sends across unresolved IDs while allowing text-only letters', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-transfer-reservation', 'P'.repeat(43));
+      const actors = [
+        { actorKey: 'npc:1', label: 'Writer', canWrite: true, canReceive: true, canSignAs: true },
+        { actorKey: 'npc:2', label: 'Recipient', canWrite: false, canReceive: true, canSignAs: false },
+      ];
+      await prepareComposer(page, 'First transfer operation.', { actors, inventory: {
+        inventoryRevision: 'transfer-inventory-1', items: [{ itemKey: 'item:old', label: 'Potion', availableQuantity: 2 }], gold: { available: 10 },
+      } });
+      await page.getByLabel('Attach Potion').check();
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const transfer = await latestRequest(page, 'correspondence.compose');
+      await respond(page, transfer, { operationId: transfer.payload.operationId, state: 'queued' });
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('A distinct text-only letter can proceed.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const textOnly = await latestRequest(page, 'correspondence.compose');
+      await respond(page, textOnly, { operationId: textOnly.payload.operationId, state: 'queued' });
+      assert.deepEqual(textOnly.payload.attachments, [], 'a pending gift does not block a distinct text-only letter');
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      const catalog = await latestRequest(page, 'correspondence.catalog.read');
+      const inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage(actors, { revision: 'e'.repeat(64) }));
+      await respond(page, inventory, { inventoryRevision: 'transfer-inventory-2', items: [{ itemKey: 'item:new', label: 'Potion', availableQuantity: 2 }], gold: { available: 10 } });
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('A second transfer must wait.');
+      await page.getByLabel('Attach Potion').check();
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'a second transfer stays blocked after inventory refresh');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /transfer-bearing operation remains unresolved/i);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 2);
+
+      await page.locator('#letter-operation').selectOption(transfer.payload.operationId);
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      let reconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(reconcile.payload.operationId, transfer.payload.operationId);
+      await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No receipt yet.' } });
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'not_found does not release a transfer reservation');
+
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      reconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(reconcile.payload.operationId, transfer.payload.operationId, 'the same ID remains available for later reconciliation');
+      await respond(page, reconcile, { operationId: transfer.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'now' } });
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'a matching definitive receipt frees the transfer reservation');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const third = await latestRequest(page, 'correspondence.compose');
+      assert.notEqual(third.payload.operationId, transfer.payload.operationId);
+      assert.deepEqual(third.payload.attachments, [{ itemKey: 'item:new', quantity: 1 }]);
+      await page.close();
+    });
+
     await test('unmarked auth/stale errors retain unresolved operations and not_found does not prove non-dispatch', async () => {
       const page = await authenticatedPage(browser, 'scope-auth-recovery', 'B'.repeat(43));
       await page.getByRole('tab', { name: 'Sealed Fates' }).click();
@@ -608,19 +870,28 @@ async function main() {
       const compose = await latestRequest(page, 'correspondence.compose');
       await respond(page, compose, null, { ok: false, error: { code: 'stale_context', message: 'Fixed stale response.' } });
       assert.equal(await page.locator('#letter-reconcile').isHidden(), true, 'reconciliation stays unavailable while authorization is stale');
+      assert.equal(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)).then((ids) => ids.length), 0,
+        'unresolved IDs stay out of the recovery controls while authorization is lost');
       assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
       assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'authorization errors clear private compose text');
       await page.getByRole('button', { name: 'Close' }).click();
       const reopened = await initialize(page, newUuid(), '2');
       await respond(page, reopened, authenticatedData('scope-auth-recovery-reopen', 'B'.repeat(43)));
       assert.equal(await page.locator('#letter-reconcile').isHidden(), false, 'same confirmed scope restores the original operation handle');
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId, 'same-scope reopen restores the exact unresolved ID');
       assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'same-scope recovery does not restore unauthorized compose text');
       await page.getByRole('button', { name: /reconcile same operation/i }).click();
       const reconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(reconcile.payload.operationId, compose.payload.operationId);
       await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No current receipt.' } });
       assert.equal(await page.locator('#letter-reconcile').isHidden(), false, 'generic not_found never unlocks an uncertain compose');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /not found yet.*remains unresolved/i);
       assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+
+      const newScope = await initialize(page, newUuid(), '3');
+      await respond(page, newScope, authenticatedData('scope-auth-recovery-new', 'C'.repeat(43)));
+      assert.equal(await page.locator('#letter-reconcile').isHidden(), true, 'an authenticated server-scope change clears the old operation handles');
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)), []);
       await page.close();
     });
 

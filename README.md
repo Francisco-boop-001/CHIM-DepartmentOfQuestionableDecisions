@@ -22,9 +22,13 @@ Follow the [installation guide](packaging/COMPANION-ONLY-TEST-PACKAGE.md) and [t
 
 Send once. If a write or text send becomes uncertain, use its status/reconciliation control and the [state recovery policy](docs/STATE-RECOVERY-POLICY.md). Do not resend it or delete its state to remove a lock. A consumed text token records acceptance by the PCV route, not audible delivery. Durable replay protection means private server history grows and needs disk monitoring.
 
+Sealed Fates retains up to three unresolved letter IDs. New letter / discard draft clears the editor while preserving those IDs for reconciliation. It refuses the same writer/recipient/text while unresolved and serializes letters carrying items or gold. A missing receipt never authorizes resend. These local guards survive ordinary view reopen, not a full UI/process restart; preserve uncertain server state.
+
 Use only the test distribution. Keep the live profile, shared CHIM files and live server untouched.
 
 ## Source and evidence
+
+The [public Git repository](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions) is the source of truth. Use `main` for current development and an immutable release tag for reproducing a downloaded candidate. Named Git worktrees are isolated checkouts of that same repository; use `git worktree list` to identify them. The earlier unpublished `CHIM-DramaLlama-Interface/implementation` tree is a historical snapshot, not a current build source. Historical receipts and frozen inputs remain evidence for the revisions they name.
 
 This repository contains the reviewed companion source projection and reproducible build instructions. Third-party dependencies are acquired separately at pinned identities; their notices accompany the release. Historical experimental client replacements, raw private evidence, credentials and server state do not belong in this repository.
 

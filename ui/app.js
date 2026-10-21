@@ -5,6 +5,7 @@
   const MAX_STRING_BYTES = 8192;
   const MAX_ROWS = 100;
   const MAX_CATALOG_ACTORS = 10000;
+  const MAX_UNRESOLVED_LETTERS = 3;
   const OPS = new Set([
     'bootstrap', 'view.close', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
@@ -55,7 +56,7 @@
     pending: new Map(), inFlight: new Set(),
     pcv: { roster: null, status: null, mutationPending: false, mutationUnknown: false, mutationOperationId: null, sendPending: false, sendStatusPending: false, sendOperationId: null, sendUnknownId: null, sendSubmitted: null, sendDraftDiscardedId: null, draftText: '', lastFocusedControl: null },
     mail: { actors: [], catalogLimited: false, catalogRevision: null, catalogNextCursor: null, catalogError: null, inventory: null, inventoryLoaded: false, items: [], letters: [], selectedLetter: null, mailboxNextCursor: null,
-      operation: null, operationState: null, operationReceipt: null, operationDraft: null, composeLocked: false, mailboxLimited: false, reviewed: false },
+      operations: [], currentOperationId: null, operationDraft: null, recoveryNotice: '', composeLocked: false, mailboxLimited: false, reviewed: false },
   };
 
   function bytes(value) { return new TextEncoder().encode(value).length; }
@@ -71,6 +72,21 @@
     return entries.length <= 64 && entries.every(([key, item]) => bytes(key) <= MAX_STRING_BYTES && boundedTree(item, depth + 1));
   }
   function validUuid(value) { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
+  function letterIntentFingerprint(payload) {
+    if (!isPlainObject(payload) || !boundedString(payload.writerActorKey, 128) || !boundedString(payload.recipientActorKey, 128) || !boundedString(payload.body, 8192)) return '';
+    const body = payload.body.replace(/\r\n?/g, '\n').trim().replace(/\s+/g, ' ');
+    if (!body) return '';
+    const value = JSON.stringify([payload.writerActorKey, payload.recipientActorKey, body]);
+    let first = 0x811c9dc5;
+    let second = 0x9e3779b9;
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index);
+      first = Math.imul(first ^ code, 0x01000193);
+      second = Math.imul(second ^ (code + index), 0x85ebca6b);
+    }
+    // shortcut: whitespace-only edits and rare 64-bit collisions can refuse a distinct draft; relax only if that becomes a product requirement.
+    return `${value.length}:${first >>> 0}:${second >>> 0}`;
+  }
   function validGeneration(value) { return typeof value === 'string' && /^\d{1,20}$/.test(value); }
   function validServerContext(value) { return value === null || (typeof value === 'string' && value.length > 0 && bytes(value) <= 128); }
   function boundedString(value, maxBytes = MAX_STRING_BYTES) { return typeof value === 'string' && bytes(value) <= maxBytes; }
@@ -326,11 +342,12 @@
       state.perspectiveLimited = bootstrap.perspectiveLimited;
       if (bootstrap.authenticated) state.lastAuthenticatedScopeToken = bootstrap.scopeToken;
       state.bootstrapping = false;
+      if (!bootstrap.authenticated) clearAuthorization('AUTH_REQUIRED');
       if (state.authenticated && state.pcv.draftText) {
         $('pcv-text').value = state.pcv.draftText;
         updatePcvCount();
       }
-      if (state.authenticated && state.mail.operationDraft && state.mail.operation && state.mail.composeLocked) {
+      if (state.authenticated && state.mail.operationDraft && state.mail.currentOperationId && state.mail.composeLocked) {
         $('letter-body').value = state.mail.operationDraft.body;
         updateLetterCount();
       }
@@ -348,6 +365,7 @@
     else {
       const code = BOUNDARY_ERROR[response.error.code] || 'UNAVAILABLE';
       const error = failLocal(code);
+      error.boundaryCode = response.error.code;
       error.dispatched = Object.prototype.hasOwnProperty.call(BOUNDARY_ERROR, response.error.code)
         && Object.prototype.hasOwnProperty.call(response.error, 'dispatched') ? response.error.dispatched : true;
       if (['AUTH_REQUIRED', 'FORBIDDEN', 'CONTEXT_STALE'].includes(code)) {
@@ -372,8 +390,11 @@
     state.pcv.draftText = '';
     if (state.pcv.sendSubmitted) state.pcv.sendSubmitted.text = null;
     state.mail.operationDraft = null;
+    state.mail.recoveryNotice = '';
+    state.mail.reviewed = false;
     $('pcv-text').value = '';
     $('letter-body').value = '';
+    $('letter-review-summary').replaceChildren();
     $('letter-review-summary').hidden = true;
     updatePcvCount();
     updateLetterCount();
@@ -406,14 +427,15 @@
     state.pcv.sendSubmitted = null;
     state.pcv.sendDraftDiscardedId = null;
     state.pcv.draftText = '';
-    state.mail.operation = null;
-    state.mail.operationState = null;
-    state.mail.operationReceipt = null;
+    state.mail.operations = [];
+    state.mail.currentOperationId = null;
     state.mail.operationDraft = null;
+    state.mail.recoveryNotice = '';
     state.mail.composeLocked = false;
     state.mail.reviewed = false;
     $('pcv-text').value = '';
     $('letter-body').value = '';
+    $('letter-review-summary').replaceChildren();
     $('letter-review-summary').hidden = true;
     updatePcvCount();
     updateLetterCount();
@@ -464,7 +486,7 @@
       state.pcv.sendUnknownId = state.pcv.sendOperationId;
     }
     if (state.pcv.mutationPending) state.pcv.mutationUnknown = true;
-    if (state.mail.operation && state.mail.composeLocked && !state.mail.operationDraft) state.mail.operationDraft = { body: $('letter-body').value };
+    if (state.mail.currentOperationId && state.mail.composeLocked && !state.mail.operationDraft) state.mail.operationDraft = { body: $('letter-body').value };
     clearPending('The game view reopened or its context changed.');
     state.seenViewTokens.push(init.viewToken);
     state.initialized = true;
@@ -1402,6 +1424,77 @@
     const count = (selected ? selected.length : 0) + (gold > 0 ? 1 : 0);
     text('attachment-count', `${count} / 8 unique attachment types · Gold counts as one${count > 8 ? ' · Too many attachments' : ''}.`);
   }
+  function operationFor(operationId) {
+    return state.mail.operations.find((operation) => operation.operationId === operationId) || null;
+  }
+  function selectedUnresolvedOperation() {
+    const selectedId = $('letter-operation').value;
+    return operationFor(selectedId) || operationFor(state.mail.currentOperationId) || state.mail.operations[0] || null;
+  }
+  function renderUnresolvedOperations() {
+    const select = $('letter-operation');
+    const canManage = state.authenticated && !state.closed && state.access.compose && state.capabilities.correspondence;
+    if (!canManage) {
+      const placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = 'Available after authorization';
+      select.replaceChildren(placeholder);
+      select.disabled = true;
+      $('letter-recovery').hidden = true;
+      $('letter-reconcile').hidden = true;
+      $('letter-reconcile').disabled = true;
+      $('letter-new').hidden = true;
+      $('letter-new').disabled = true;
+      text('letter-recovery-status', '');
+      text('letter-recovery-result', '');
+      return { fingerprint: '', transferBlocked: false, duplicateBlocked: false };
+    }
+    $('letter-recovery').hidden = false;
+    const currentSelection = select.value;
+    const selectedId = operationFor(currentSelection) ? currentSelection
+      : operationFor(state.mail.currentOperationId) ? state.mail.currentOperationId
+        : state.mail.operations[0]?.operationId || '';
+    const options = state.mail.operations.map((operation) => {
+      const option = document.createElement('option');
+      option.value = operation.operationId;
+      option.textContent = `${operation.operationId} · ${operation.state}`;
+      return option;
+    });
+    if (!options.length) {
+      const option = document.createElement('option');
+      option.value = '';
+      option.textContent = 'No unresolved letters';
+      options.push(option);
+    }
+    select.replaceChildren(...options);
+    select.value = selectedId;
+    select.disabled = state.mail.operations.length === 0;
+    const selected = selectedUnresolvedOperation();
+    const payload = composePayload();
+    const fingerprint = payload ? letterIntentFingerprint(payload) : '';
+    const transferBlocked = Boolean(payload && (payload.attachments.length > 0 || payload.goldAmount > 0)
+      && state.mail.operations.some((operation) => operation.hasTransfer));
+    const duplicateBlocked = Boolean(fingerprint && state.mail.operations.some((operation) => operation.intentFingerprint === fingerprint));
+    const messages = [];
+    if (state.mail.operations.length >= MAX_UNRESOLVED_LETTERS) {
+      messages.push('Three unresolved operations are retained. Reconcile one before sending another letter; none will be dropped.');
+    } else if (transferBlocked) {
+      messages.push('A transfer-bearing operation remains unresolved. Reconcile it before sending another transfer-bearing letter; text-only letters remain available.');
+    } else if (payload && !fingerprint) {
+      messages.push('This draft cannot be compared safely with unresolved operations, so it cannot be sent.');
+    } else if (duplicateBlocked) {
+      messages.push('An unresolved operation has the same writer, recipient, and normalized body. Reconcile that operation before sending this draft.');
+    }
+    if (selected && selected.message) messages.push(selected.message);
+    else if (selected) messages.push(`${selected.operationId} remains unresolved (${selected.state}). Reconcile this same operation; absence alone does not prove it was not sent.`);
+    text('letter-recovery-status', messages.join(' '));
+    text('letter-recovery-result', state.mail.recoveryNotice);
+    $('letter-reconcile').hidden = !selected;
+    $('letter-reconcile').disabled = !selected || state.inFlight.has('correspondence.reconcile');
+    $('letter-new').hidden = false;
+    $('letter-new').disabled = false;
+    return { fingerprint, transferBlocked, duplicateBlocked };
+  }
   function renderMailAccess() {
     const authenticated = state.authenticated && !state.closed;
     const correspondenceReady = authenticated && state.capabilities.correspondence;
@@ -1425,11 +1518,12 @@
       if (composerReady) row.querySelector('.inventory-quantity').disabled = !row.querySelector('.inventory-check').checked;
       else row.querySelector('.inventory-quantity').disabled = true;
     });
-    const formValid = composerReady && composePayload() !== null;
+    const payload = composePayload();
+    const formValid = composerReady && payload !== null;
+    const recovery = renderUnresolvedOperations();
     $('letter-review').disabled = !formValid;
-    $('letter-send').disabled = !formValid || !state.mail.reviewed;
-    $('letter-reconcile').hidden = !(canCompose && state.mail.operation && state.mail.composeLocked);
-    $('letter-reconcile').disabled = !canCompose || state.inFlight.has('correspondence.reconcile');
+    $('letter-send').disabled = !formValid || !state.mail.reviewed || state.mail.operations.length >= MAX_UNRESOLVED_LETTERS
+      || recovery.transferBlocked || recovery.duplicateBlocked || !recovery.fingerprint;
     if (!correspondenceReady) {
       setStatus('mail-state', authenticated ? 'Sealed Fates is unavailable in this installation.' : 'Authentication is required to use Sealed Fates.', 'error');
     } else if (!canCatalog) {
@@ -1441,7 +1535,6 @@
     } else {
       setStatus('mail-state', 'Out-of-character access is authorized. Composition and receipt stages remain separate from NPC knowledge.', 'success');
     }
-    if (state.mail.operation && state.mail.operationState) renderLetterReceipt();
   }
   function clearSelectsForMail() {
     renderCatalogSelect('letter-writer', 'No authorized writers', state.mail.actors, (actor) => actor.canWrite);
@@ -1561,11 +1654,34 @@
   }
   function markComposeChanged() {
     state.mail.reviewed = false;
-    if (['delivered', 'rejected'].includes(state.mail.operationState)) {
-      state.mail.operation = null; state.mail.operationState = null; state.mail.operationReceipt = null;
-      state.mail.operationDraft = null;
-    }
     $('letter-review-summary').hidden = true;
+    renderMailAccess();
+  }
+  function startNewLetter() {
+    if ($('letter-new').disabled) return;
+    const retained = state.mail.operations.length > 0;
+    state.mail.currentOperationId = null;
+    state.mail.operationDraft = null;
+    state.mail.composeLocked = false;
+    state.mail.reviewed = false;
+    $('letter-writer').value = '';
+    $('letter-recipient').value = '';
+    $('sign-as-other').checked = false;
+    $('letter-signature').value = '';
+    $('signature-wrap').hidden = true;
+    $('letter-body').value = '';
+    $('gold-amount').value = '0';
+    $('inventory-items').querySelectorAll('.inventory-row').forEach((row) => {
+      row.querySelector('.inventory-check').checked = false;
+      row.querySelector('.inventory-quantity').value = '1';
+    });
+    $('letter-review-summary').replaceChildren();
+    $('letter-review-summary').hidden = true;
+    updateLetterCount();
+    updateAttachmentCount();
+    setReceiptText(retained
+      ? 'A new draft is ready. Earlier unresolved operations remain listed by ID.'
+      : 'The draft was cleared. Enter a new letter.');
     renderMailAccess();
   }
   function reviewLetter() {
@@ -1592,56 +1708,80 @@
     renderMailAccess();
   }
   function setReceiptText(message, kind = '') { setStatus('letter-receipt', message, kind); }
-  function renderLetterReceipt() {
-    const stateText = state.mail.operationState;
-    const stage = {
-      stored: 'Stored; delivery is not confirmed.', queued: 'Queued; delivery is not confirmed.', dispatched: 'Dispatched; delivery is not confirmed.',
-      delivered: 'Delivery receipt confirmed.', unknown: 'Outcome unknown; do not send again.', partial: 'Partial outcome; do not send again.', rejected: 'Rejected; no receipt confirms delivery.',
-    }[stateText] || 'Receipt stage unavailable.';
-    const receipt = state.mail.operationReceipt;
-    const confirmed = stateText === 'delivered' && receipt && receipt.deliveryConfirmed === true;
-    const message = confirmed ? `${stage}${boundedString(receipt.receivedAt, 256) ? ` Received ${receipt.receivedAt}.` : ''}` : stage;
-    setReceiptText(message, confirmed ? 'success' : ['unknown', 'partial'].includes(stateText) ? 'error' : '');
-  }
   function applyComposeResult(data, expectedOperationId) {
     if (!isPlainObject(data) || data.operationId !== expectedOperationId || !['stored', 'queued', 'dispatched', 'delivered', 'unknown', 'partial', 'rejected'].includes(data.state)) throw failLocal('UNAVAILABLE');
+    const operation = operationFor(expectedOperationId);
+    if (!operation) return false;
     const receipt = isPlainObject(data.receipt) ? {
       deliveryConfirmed: data.receipt.deliveryConfirmed === true,
       receivedAt: boundedString(data.receipt.receivedAt, 256) ? data.receipt.receivedAt : '',
     } : null;
-    if (data.state === 'delivered' && (!receipt || receipt.deliveryConfirmed !== true)) data.state = 'unknown';
-    state.mail.operation = expectedOperationId;
-    state.mail.operationState = data.state;
-    state.mail.operationReceipt = receipt;
-    state.mail.composeLocked = !['delivered', 'rejected'].includes(data.state);
-    if (!state.mail.composeLocked) {
-      state.mail.operationDraft = null;
-      state.mail.reviewed = false;
-      $('letter-review-summary').hidden = true;
+    const resolvedState = data.state === 'delivered' && (!receipt || receipt.deliveryConfirmed !== true) ? 'unknown' : data.state;
+    const terminal = resolvedState === 'delivered' || resolvedState === 'rejected';
+    const isCurrent = state.mail.currentOperationId === expectedOperationId;
+    if (terminal) {
+      state.mail.operations = state.mail.operations.filter((item) => item.operationId !== expectedOperationId);
+      if (!isCurrent) {
+        state.mail.recoveryNotice = resolvedState === 'delivered'
+          ? `Operation ${expectedOperationId} resolved: delivery receipt confirmed.`
+          : `Operation ${expectedOperationId} resolved: rejected without a delivery receipt.`;
+      }
+      if (isCurrent) {
+        state.mail.currentOperationId = null;
+        state.mail.composeLocked = false;
+        state.mail.reviewed = false;
+        $('letter-review-summary').hidden = true;
+        state.mail.operationDraft = null;
+        setReceiptText(resolvedState === 'delivered'
+          ? `Delivery receipt confirmed for operation ${expectedOperationId}${boundedString(receipt.receivedAt, 256) ? ` · Received ${receipt.receivedAt}` : ''}.`
+          : `Operation ${expectedOperationId} was rejected; no delivery receipt was recorded.`, resolvedState === 'delivered' ? 'success' : 'error');
+      }
+    } else {
+      operation.state = resolvedState;
+      operation.message = '';
+      if (isCurrent) {
+        state.mail.composeLocked = true;
+        const stage = {
+          stored: 'Stored; delivery is not confirmed.', queued: 'Queued; delivery is not confirmed.', dispatched: 'Dispatched; delivery is not confirmed.',
+          unknown: 'Outcome unknown; do not send again.', partial: 'Partial outcome; do not send again.',
+        }[resolvedState] || 'Receipt stage unavailable.';
+        setReceiptText(`${stage} Reconcile this operation before retrying.`, ['unknown', 'partial'].includes(resolvedState) ? 'error' : '');
+      }
     }
-    renderLetterReceipt();
     renderMailAccess();
+    return true;
   }
   function releaseComposeOperation(operationId) {
-    if (state.mail.operation !== operationId || !state.mail.composeLocked) return false;
-    state.mail.operation = null;
-    state.mail.operationState = null;
-    state.mail.operationReceipt = null;
-    state.mail.operationDraft = null;
-    state.mail.composeLocked = false;
-    state.mail.reviewed = false;
-    $('letter-review-summary').hidden = true;
+    const operation = operationFor(operationId);
+    if (!operation) return false;
+    const isCurrent = state.mail.currentOperationId === operationId;
+    state.mail.operations = state.mail.operations.filter((item) => item.operationId !== operationId);
+    if (isCurrent) {
+      state.mail.currentOperationId = null;
+      state.mail.operationDraft = null;
+      state.mail.composeLocked = false;
+      state.mail.reviewed = false;
+      $('letter-review-summary').hidden = true;
+    } else state.mail.recoveryNotice = `Operation ${operationId} was confirmed not sent and released.`;
+    renderMailAccess();
     return true;
   }
   async function sendLetter() {
     if ($('letter-send').disabled || state.mail.composeLocked || !state.mail.reviewed) return;
     const base = composePayload();
     if (!base) return;
+    const intentFingerprint = letterIntentFingerprint(base);
+    const hasTransfer = base.attachments.length > 0 || base.goldAmount > 0;
+    if (!intentFingerprint || state.mail.operations.length >= MAX_UNRESOLVED_LETTERS
+      || state.mail.operations.some((operation) => operation.intentFingerprint === intentFingerprint)
+      || (hasTransfer && state.mail.operations.some((operation) => operation.hasTransfer))) {
+      renderMailAccess();
+      return;
+    }
     const operationId = newUuid();
     const payload = { operationId, ...base };
-    state.mail.operation = operationId;
-    state.mail.operationState = 'unknown';
-    state.mail.operationReceipt = null;
+    state.mail.operations.push({ operationId, state: 'unknown', intentFingerprint, hasTransfer, message: '' });
+    state.mail.currentOperationId = operationId;
     state.mail.operationDraft = { body: base.body };
     state.mail.composeLocked = true;
     renderMailAccess();
@@ -1656,26 +1796,32 @@
     } catch (error) {
       if (!isCurrentContext(context)) return;
       if (!dispatched && error.dispatched !== true) {
+        const wasCurrent = state.mail.currentOperationId === operationId;
         if (!releaseComposeOperation(operationId)) return;
-        if (error.code === 'STALE_REVISION') {
+        if (error.code === 'STALE_REVISION' && wasCurrent) {
           state.mail.inventory = null;
           state.mail.inventoryLoaded = false;
           renderInventory();
         }
-        setStatus('letter-receipt', `${localError(error)} The request was not sent; review and try again.`, 'error');
+        if (wasCurrent) setStatus('letter-receipt', `${localError(error)} The request was not sent; review and try again.`, 'error');
         renderMailAccess();
         return;
       }
-      state.mail.operationState = 'unknown';
-      state.mail.composeLocked = true;
-      renderLetterReceipt();
-      setStatus('letter-receipt', `${localError(error)} Reconcile this operation; do not send a second copy.`, 'error');
+      const operation = operationFor(operationId);
+      if (!operation) return;
+      operation.state = 'unknown';
+      operation.message = '';
+      if (state.mail.currentOperationId === operationId) {
+        state.mail.composeLocked = true;
+        setStatus('letter-receipt', `${localError(error)} Reconcile this operation; do not send a second copy.`, 'error');
+      }
       renderMailAccess();
     }
   }
   async function reconcileLetter() {
-    if (!state.mail.operation || !state.mail.composeLocked || state.inFlight.has('correspondence.reconcile')) return;
-    const operationId = state.mail.operation;
+    const selected = selectedUnresolvedOperation();
+    if (!selected || state.inFlight.has('correspondence.reconcile')) return;
+    const operationId = selected.operationId;
     const context = makeContext();
     await withBusy('correspondence.reconcile', $('letter-reconcile'), async () => {
       try {
@@ -1685,8 +1831,19 @@
         applyComposeResult(data, operationId);
       } catch (error) {
         if (!isCurrentContext(context)) return;
-        state.mail.operationState = 'unknown'; state.mail.composeLocked = true;
-        setStatus('letter-receipt', `${localError(error)} The existing operation remains unresolved.`, 'error');
+        const operation = operationFor(operationId);
+        if (operation) {
+          operation.state = 'unknown';
+          operation.message = error.boundaryCode === 'not_found'
+            ? 'Not found yet; this operation remains unresolved. Reconcile the same ID later; absence does not prove no write.'
+            : 'This operation remains unresolved. Reconcile the same ID later.';
+        }
+        if (state.mail.currentOperationId === operationId) {
+          state.mail.composeLocked = true;
+          setStatus('letter-receipt', error.boundaryCode === 'not_found'
+            ? 'Not found yet; this operation remains unresolved. Do not send its payload again.'
+            : `${localError(error)} The existing operation remains unresolved.`, 'error');
+        }
         renderMailAccess();
       }
     });
@@ -1913,7 +2070,7 @@
       state.pcv.draftText = pendingSend.envelope.payload.text;
     } else if (state.pcv.sendPending && state.pcv.sendOperationId) state.pcv.sendUnknownId = state.pcv.sendOperationId;
     if (state.pcv.mutationPending) state.pcv.mutationUnknown = true;
-    if (state.mail.operation && state.mail.composeLocked && !state.mail.operationDraft) state.mail.operationDraft = { body: $('letter-body').value };
+    if (state.mail.currentOperationId && state.mail.composeLocked && !state.mail.operationDraft) state.mail.operationDraft = { body: $('letter-body').value };
   }
   function closeView() {
     if (!state.initialized || state.closed || state.closing) return false;
@@ -2019,6 +2176,8 @@
     $('letter-review').addEventListener('click', reviewLetter);
     $('letter-send').addEventListener('click', () => invoke(sendLetter, 'letter-receipt'));
     $('letter-reconcile').addEventListener('click', () => invoke(reconcileLetter, 'letter-receipt'));
+    $('letter-operation').addEventListener('change', renderMailAccess);
+    $('letter-new').addEventListener('click', startNewLetter);
   }
 
   wireEvents();

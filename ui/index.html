@@ -122,7 +122,10 @@
               <div id="inventory-items" class="inventory-items"><p class="empty-row">Refresh inventory to see supported items.</p></div>
               <p id="attachment-count" class="notice">0 / 8 unique attachment types · Gold counts as one.</p>
             </div>
-            <div class="button-row"><button id="letter-review" class="button secondary" type="button" disabled>Review letter</button><button id="letter-send" class="button" type="button" disabled>Send sealed letter</button><button id="letter-reconcile" class="button secondary" type="button" hidden>Reconcile same operation</button></div>
+            <div id="letter-recovery" class="field-grid" aria-label="Unresolved letter operations">
+              <div class="field span-two"><label for="letter-operation">Unresolved operation</label><select id="letter-operation" disabled><option value="">No unresolved letters</option></select><small id="letter-recovery-status" role="status" aria-live="polite"></small><small id="letter-recovery-result" role="status" aria-live="polite"></small></div>
+            </div>
+            <div class="button-row"><button id="letter-review" class="button secondary" type="button" disabled>Review letter</button><button id="letter-send" class="button" type="button" disabled>Send sealed letter</button><button id="letter-reconcile" class="button secondary" type="button" hidden>Reconcile same operation</button><button id="letter-new" class="button quiet" type="button" hidden>New letter / discard draft</button></div>
             <div id="letter-review-summary" class="review-summary" hidden></div><p id="letter-receipt" class="notice" role="status" aria-live="polite"></p>
           </section>
         </div>
