@@ -48,8 +48,8 @@ Goal: clarify the authoritative repository, publish portable LF checksums, and a
 - [x] Luna/max: implement a bounded unresolved-letter UI, explicit unresolved-not-found messaging and discriminating regressions.
 - [x] Luna/max: add a minimal LF checksum writer and a real GNU consumer check.
 - [x] Root review code/callers, run browser/interaction/visual checks and confirm unchanged native/server replay inputs against accepted evidence.
-- [ ] Update verification/recovery docs and explicit allowlist; freeze, build and independently audit a new candidate.
-- [ ] Commit, push, publish prealpha.3, verify anonymous downloads with ordinary sha256sum, synchronize the clean primary checkout and finalize the review.
+- [x] Update verification/recovery docs and explicit allowlist; freeze, build and independently audit a new candidate.
+- [x] Commit, push, publish prealpha.3, verify anonymous downloads with ordinary sha256sum, synchronize the clean primary checkout and finalize the review.
 
 Ownership: letter_recovery owns UI and its browser tests; checksum_fix owns the checksum helper/test and BUILD usage; replay_review reads the existing native/server contract. Root owns source authority, task records, independent review/execution, evidence, packaging and publication. No implementation conflict or backend change is intended. No WSL runtime is needed unless a newly discovered changed boundary requires it; TEST ownership must be coordinated before any start.
 
@@ -60,3 +60,9 @@ Design review added two guards before implementation: refuse same writer/recipie
 ### Critique 3 review checkpoint
 
 Root reviewed the final Luna UI/checksum diff and the independent replay contract review. All nine recorded review findings are addressed, including detached old replies, visible not_found at capacity and auth-negative bootstrap text erasure. Root executed 39/39 functional cases, one interaction case and 11 render captures; visual review includes four tabs, unresolved recovery and compact review. The new recovery case fails against prealpha.2. GNU checksum self-check passes; actual staged/public consumer verification remains required. No backend/native input changed and no WSL runtime was started. Archive/publication remain pending at this immutable source checkpoint.
+
+### Critique 3 publication completed
+
+Published [v0.1.0-prealpha.3](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.3) from frozen source 259d7b2ff4441d88e011be25a896468ea32edb42. Root archive audit passed: 120 inputs, 115 source files, 9 game files, 24 server files and 7 notices; all 115 Git index blobs matched the freeze. Ten authenticated draft downloads and ten anonymous public downloads match, five gate receipt hashes match, all 115 tagged GitHub source files match, and ordinary GNU sha256sum verifies all nine untouched LF checksum entries. Both earlier releases retain their original tag objects and ten asset identities. The clean primary checkout was fast-forwarded to the published source.
+
+This documentation-only completion record does not move the release tag or replace frozen assets. No Department WSL session was started; native/server evidence was reused only after the 3,144 input and 25 native/five-asset rechecks. Protected AIAgent.dll and live VHD metadata match their baselines; live VHD contents were not read. Actual Skyrim acceptance remains pending, and exact dev.18 restore/init must remain serialized.
