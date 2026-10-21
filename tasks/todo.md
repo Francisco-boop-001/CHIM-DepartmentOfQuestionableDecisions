@@ -73,7 +73,7 @@ This documentation-only completion record does not move the release tag or repla
 - [x] Add real PostgreSQL facade cases and a repeatable source pairing gate.
 - [x] Root independently review, execute TEST-only checks and verify owned cleanup/protected roots.
 - [x] Freeze and audit the private preparation candidate; preserve earlier releases and obtain independent source/behavior paired acceptance.
-- [ ] Complete the final source/package closure audit, commit, push, publish prealpha.4 and verify anonymous downloads.
+- [x] Complete the final source/package closure audit, commit, push, publish prealpha.4 and verify anonymous downloads.
 
 
 First dev.20 run 20261021T195433Z-0f980029 executed all 33 cases, with 9 passing. Eleven prechecks passed. Root identified fixture errors: drift attempted to edit root-owned staged source as www-data; copied initialization/epoch-rotation omitted dev.20 matching pending sentinels. Root also found an undefined Department helper in the new close fixture and inconsistent boolean text projection. Failed source inputs and raw SQL/API evidence are preserved; source postchecks, owned PostgreSQL shutdown, TEST stop and protected baselines passed. Luna is correcting only fixture/setup code and strengthening the existing drift/close cases; no accepted pairing or product defect is inferred from this failed run.
@@ -91,3 +91,9 @@ Prealpha.4 source checkpoint: the exact source/behavior pair passed independent 
 ### Dev.20 review
 
 Luna/max implemented the bounded adapter and fixture changes. Root and Sealed Fates independently reviewed the exact runtime source and raw SQL; all 33 facade cases and 11 prechecks passed, including no-resend and signed-unknown refusal. Game files, native/UI/private route, CHIM core and live state remain unchanged. Four failed fixture runs are preserved. Final package/Git closure, publication and anonymous verification are the remaining gates at this source checkpoint.
+
+### Prealpha.4 publication completed
+
+Published [v0.1.0-prealpha.4](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.4) from frozen source 08680e31635a4ed91bd9efcb46d7d9b8f30d95e1 at 2026-10-21T22:34:20Z. Root archive/Git closure and independent Sealed Fates review passed: 128 sources, 133 inputs, five gates, 33 actual facade cases and 11 prechecks. All eleven anonymous asset downloads and 128 tagged source files match. Ordinary GNU checks pass all nine canonical entries and all four entries extracted from the public pairing sidecar. The three older tags and thirty assets are unchanged. Metadata checks used the authenticated GitHub CLI after the anonymous API rate limit; asset and source-archive downloads remained anonymous.
+
+This documentation-only completion commit leaves the frozen tag and every published asset unchanged. Native/UI/private-route execution remains reused after input checks; actual Skyrim acceptance is pending. CHIM core, installed game and live server remain untouched. TEST and the owned PostgreSQL cluster were stopped; no further Department WSL run is queued.
