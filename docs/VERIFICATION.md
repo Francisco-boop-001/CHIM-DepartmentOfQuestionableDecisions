@@ -1,0 +1,22 @@
+# PRE-ALPHA verification
+
+The original Department coordinator independently reviewed the Luna/max fixes, connected callers and preserved failure evidence. This is a test-only release; the evidence below does not establish Skyrim acceptance.
+
+| Boundary | Evidence and limit |
+| --- | --- |
+| Native contracts | 4/4 independent host CTests. The production native refusal formatter supplies the browser fixture. These tests do not execute SKSE. |
+| UI behavior and appearance | 35/35 independent browser checks from clean B2 source, plus coordinator visual review of all four tabs, recovery and compact attachment review. PRISMA/Ultralight rendering and game input focus remain untested. |
+| Clean public build inputs | Independent clean-source B2 reproduces the 690,688-byte DLL exactly. Mutagen reproduces the 185-byte ESP and 4-byte SEQ. Fresh Caprica PEX files match outside preserved compiler timestamps at offsets 8-15; they are not claimed byte-reproducible. All 25 actual build inputs are hash-bound. See BUILD.md for pinned tools and public-source exclusions. |
+| Linux regressions | PHP 8.2.29: 24 lint inputs and 13 fresh suite logs, including 162 foundation assertions, write-boundary/directory-sync guards, supported correspondence dev.14-17, MP/S&S inspectors, PCV owner/presence/context/lease checks and actual 1,100-operation companion retention. MP/S&S/correspondence adapter tests use synthetic database boundaries; they are not real PostgreSQL delivery or transfer execution. |
+| Journal retention | Actual 4,100-operation/process-reopen/tombstone check passed in an earlier preserved TEST run. Later runs reuse only that result against the same five complete dependency inputs, with explicit provenance. Cheap journal boundary and directory-capability checks execute afresh. Retained anti-replay tombstones and scan/disk growth are documented in the state policy. |
+| Private textbox stock route | 12 actual stock-server cases through comm.php/main.php/gamedata.php and real PCV preprocessing: background presence, command-sensitive refusal, pending activation, later turn, replay, canonical collision, nonmember, ordinary fallback, wrong mode, wrong target, stale scene and closure. Fresh isolated PostgreSQL uses synthetic actors/presence/monotonic timestamps and stops before providers. Raw/canonical target, FormID and literal body HMAC are checked. The stock route loads PCV; all four owner plugins were not exercised together in this runtime. |
+| Runtime preservation | Only the named TEST distro is used. Exact owned web/PostgreSQL processes are stopped; process/listener/socket inventories are empty and stock 3,081 tracked files plus 37 staged inputs remain unchanged. The installed AIAgent.dll hash and protected live VHD size/timestamp match their baseline; the VHD is not fully content-hashed. |
+| Packaging and public identity | Publication requires a fresh archive audit, exact source/member hashes and public download verification. The published input-freeze.json and five verification receipts bind the candidate inputs; SHA256SUMS.txt binds the downloadable assets. Archive verification is separate from gameplay proof. |
+
+A Windows-only full correspondence harness failed at a semantic-marker assertion and was not accepted as passing evidence. Its cause was not established by that output. The Linux suite is the server acceptance gate and passes the current dev.14-17 checks.
+
+The mod supplies its own DLL and nine game files. It does not replace AIAgent.dll, CHIM Papyrus/UI files or CHIM core. Its masterless ESL-flagged ESP occupies one light-plugin slot and no full-plugin slot. The original Private Conversation selection/input method remains the fallback.
+
+The stock NPC router can choose another same-named body after the companion checks. Detectable fresh ambiguity is refused; an atomic final speaker/body identity is not guaranteed by that stock API. A consumed PCV token proves owner-preprocessing acceptance, not audible delivery. Queued correspondence is not receipt-confirmed delivery or an observed item/gold transfer.
+
+No Skyrim session, provider generation, audio, game focus/controller behavior, transfers, save/load, performance, broad mod coexistence or power-loss durability has been accepted here. Run the [eight game checks](../packaging/COMPANION-ONLY-TEST-PACKAGE.md) in a disposable profile and save. See the [state policy](STATE-RECOVERY-POLICY.md) for uncertainty and retained replay protection.

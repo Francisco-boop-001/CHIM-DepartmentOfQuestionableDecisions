@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "commonLib": {
+    "version": "v3.7.0",
+    "commit": "c4ab853d095e81e3390b282d7ba01ab2f24ebf25",
+    "url": "https://github.com/CharmedBaryon/CommonLibSSE-NG/archive/c4ab853d095e81e3390b282d7ba01ab2f24ebf25.zip",
+    "sha256": "6777B38C42CBEB82776BCC51A03F2128C3D231A635D08467144E31B08FA48554",
+    "archiveName": "commonlib.zip",
+    "sourceDirectory": "CommonLibSSE-NG-c4ab853d095e81e3390b282d7ba01ab2f24ebf25"
+  },
+  "fmt": {
+    "version": "10.2.1",
+    "url": "https://github.com/fmtlib/fmt/archive/refs/tags/10.2.1.zip",
+    "sha256": "D368F9C39A33A3AEF800F5BE372EC1DF1C12AD57ADA1F60ADC62F24C0E348469",
+    "archiveName": "fmt.zip",
+    "sourceDirectory": "fmt-10.2.1"
+  },
+  "spdlog": {
+    "version": "v1.13.0",
+    "url": "https://github.com/gabime/spdlog/archive/refs/tags/v1.13.0.zip",
+    "sha256": "9F6763BB76FFF7DB371F5733626C83352EDD7C57899501AB00248FAFAD9CC504",
+    "archiveName": "spdlog.zip",
+    "sourceDirectory": "spdlog-1.13.0"
+  },
+  "rapidcsv": {
+    "version": "v8.84",
+    "url": "https://github.com/d99kris/rapidcsv/archive/refs/tags/v8.84.zip",
+    "sha256": "6226DF921E392EB5FA88DD1EFAF26A1A7CFDC23BC00C08A7337FC0314BF8B5A8",
+    "archiveName": "rapidcsv.zip",
+    "sourceDirectory": "rapidcsv-8.84"
+  },
+  "nlohmannJson": {
+    "version": "v3.11.3",
+    "url": "https://raw.githubusercontent.com/nlohmann/json/v3.11.3/single_include/nlohmann/json.hpp",
+    "sha256": "9BEA4C8066EF4A1C206B2BE5A36302F8926F7FDC6087AF5D20B417D0CF103EA6",
+    "relativePath": "include/nlohmann/json.hpp"
+  },
+  "prismaUi": {
+    "repository": "Dwemer-Dynamics/CHIM",
+    "commit": "5ca1bc361d1e11a3c58067599b494b1101c2c77b",
+    "url": "https://raw.githubusercontent.com/Dwemer-Dynamics/CHIM/5ca1bc361d1e11a3c58067599b494b1101c2c77b/Plugin/PrismaUI_API.h",
+    "sha256": "46F77238A8C645C84E26DAC72467471B666D64FB28F143F1D369313A41175927",
+    "relativePath": "include/PrismaUI_API.h",
+    "license": "MIT; exact upstream Plugin/LICENSE is included in packaging notices."
+  },
+  "toolchain": {
+    "cmakeVersion": "3.28.3",
+    "generator": "Visual Studio 17 2022",
+    "platform": "x64",
+    "configuration": "Release",
+    "msvcCompilerVersion": "19.41.34123.0",
+    "msvcToolsVersion": "14.41.34120",
+    "msvcPlatformToolset": "v143",
+    "windowsSdkVersion": "10.0.22621.0"
+  }
+}

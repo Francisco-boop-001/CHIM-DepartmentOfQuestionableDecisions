@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "caprica": {
+    "version": "v0.3.0",
+    "releaseUrl": "https://github.com/Orvid/Caprica/releases/download/v0.3.0/Caprica.v0.3.0.7z",
+    "archiveSha256": "0037E54CF3A1021E976278D9A637E8AE541AAF9EBEB8D274B6C2CFE32F4EE559",
+    "executableSha256": "389FEF19A803C36342FA7F733C96B6E27EF10FCD0B171AF10427E29CBE153EC6"
+  },
+  "flags": {
+    "version": "TESV_Papyrus_Flags.flg",
+    "repository": "Rukan/Grimy-Skyrim-Papyrus-Source",
+    "commit": "4ba71332b4851985240f582a76017216a3bd452f",
+    "rawUrl": "https://raw.githubusercontent.com/Rukan/Grimy-Skyrim-Papyrus-Source/4ba71332b4851985240f582a76017216a3bd452f/TESV_Papyrus_Flags.flg",
+    "sha256": "DB28D5AE6C57AA9C4797F3E571F3E22B2443348D20CE730D0AF358F2746B1666",
+    "provenance": "Pinned public community snapshot; not an official Bethesda source and not redistributed."
+  },
+  "sksePapyrus": {
+    "version": "v2.0.20",
+    "releaseUrl": "https://github.com/ianpatt/skse64/archive/refs/tags/v2.0.20.zip",
+    "archiveSha256": "BF6BCBD3953BD6CDCECF58763EC0CA3C58D1766B958F17ACC54BAF360C84AE01",
+    "scriptRoot": "scripts",
+    "fileCount": 128,
+    "treeSha256": "C4077F1E2269E36011DDFECDF7190E37AC010E36B2885FD0C9038A8BB110D621"
+  },
+  "skyuiPapyrusHeaders": {
+    "commit": "835428728e2305865e220fdfc99d791434955eb1",
+    "releaseUrl": "https://github.com/schlangster/skyui/archive/835428728e2305865e220fdfc99d791434955eb1.zip",
+    "archiveSha256": "F48B8C5EEB389899B6D91C22CECCB6346C6D2C362ADEAB0B275B97583C887B09",
+    "headersPath": "dist/Data/Scripts/Headers",
+    "fileCount": 2,
+    "treeSha256": "80F328B9057FCFCA3F3F1734089D1748B7A15E7BE7612BC30407478078C195C6"
+  }
+}

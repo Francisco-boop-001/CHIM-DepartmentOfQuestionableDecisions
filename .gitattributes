@@ -1,0 +1,2 @@
+# Pinned fixture and source hashes must survive checkout on Windows and Linux.
+* -text

@@ -1,0 +1,54 @@
+{
+    "stage": {
+        "operationId": "da2b45a7-a9f7-4c1d-8f24-010203040506",
+        "state": "prepared",
+        "token": "pcv1_eLyZJsqJ9skfzKxRBXlakgKZB-L34pPvX86g8Qu6Rn0",
+        "expiresAt": 1792498604
+    },
+    "preparedStatus": {
+        "operationId": "da2b45a7-a9f7-4c1d-8f24-010203040506",
+        "state": "prepared",
+        "expected": {
+            "activeConfigId": null,
+            "pendingConfigId": "b56c3651-114b-40c3-bff8-6b7a6f3ea52f"
+        },
+        "target": {
+            "formId": "00f00123",
+            "name": "Lydia"
+        },
+        "expiresAt": 1792498604
+    },
+    "claimedUnknownStatus": {
+        "operationId": "da2b45a7-a9f7-4c1d-8f24-010203040506",
+        "state": "unknown",
+        "expected": {
+            "activeConfigId": null,
+            "pendingConfigId": null
+        },
+        "target": null,
+        "expiresAt": null
+    },
+    "consumedStatus": {
+        "operationId": "da2b45a7-a9f7-4c1d-8f24-010203040506",
+        "state": "consumed",
+        "expected": {
+            "activeConfigId": null,
+            "pendingConfigId": "b56c3651-114b-40c3-bff8-6b7a6f3ea52f"
+        },
+        "target": {
+            "formId": "00f00123",
+            "name": "Lydia"
+        },
+        "expiresAt": 1792498604
+    },
+    "missingUnknownStatus": {
+        "operationId": "da2b45a7-a9f7-4c1d-8f24-111213141516",
+        "state": "unknown",
+        "expected": {
+            "activeConfigId": null,
+            "pendingConfigId": null
+        },
+        "target": null,
+        "expiresAt": null
+    }
+}

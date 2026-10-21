@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>World of Drama Llama: The Department of Questionable Decisions</title>
+  <link rel="stylesheet" href="./app.css">
+  <script src="./app.js" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="masthead">
+      <div class="brand">
+        <p class="eyebrow">World of Drama Llama</p>
+        <h1>The Department of Questionable Decisions</h1>
+        <p class="subtitle">Conversations, relationships, grudges, and suspicious mail.</p>
+      </div>
+      <button id="close-view" class="button quiet" type="button">Close</button>
+    </header>
+
+    <div class="connection-line">
+      <span id="connection-status" class="state-mark" data-state="waiting">Waiting for game connection</span>
+      <span id="permission-status" class="subtle">Private records remain unavailable until an authorized session is paired.</span>
+    </div>
+
+    <nav class="tabs" role="tablist" aria-label="Department tabs">
+      <button id="tab-pcv" class="tab" role="tab" type="button" aria-controls="panel-pcv" aria-selected="true" tabindex="0">Private Conversation</button>
+      <button id="tab-mp" class="tab" role="tab" type="button" aria-controls="panel-mp" aria-selected="false" tabindex="-1">Mind Poisoning</button>
+      <button id="tab-sas" class="tab" role="tab" type="button" aria-controls="panel-sas" aria-selected="false" tabindex="-1">Sworn &amp; Scorned</button>
+      <button id="tab-mail" class="tab" role="tab" type="button" aria-controls="panel-mail" aria-selected="false" tabindex="-1">Sealed Fates</button>
+    </nav>
+
+    <section id="panel-pcv" class="tab-panel" role="tabpanel" aria-labelledby="tab-pcv" tabindex="0">
+      <header class="view-heading">
+        <div><p class="eyebrow">PRIVATE CONVERSATION</p><h2>Set the next conversation</h2><p>Pending settings activate on the first accepted eligible CHIM turn. Arm only stages the scene; Active appears only after PCV status confirms it.</p></div>
+        <button id="pcv-refresh" class="button secondary" type="button">Refresh cast and status</button>
+      </header>
+      <p id="pcv-state" class="state-line" role="status" aria-live="polite">Waiting for an authorized game connection.</p>
+      <div class="pcv-summary">
+        <div><span class="field-label">Current state</span><strong id="pcv-current">Unknown</strong><small id="pcv-current-detail">No owner status has been read.</small></div>
+        <div><span class="field-label">Next eligible input</span><strong id="pcv-pending">Unknown</strong><small id="pcv-pending-detail">Queued settings are shown separately from an active scene.</small></div>
+      </div>
+
+      <div class="pcv-settings-heading">
+        <span id="pcv-settings-label">Scene settings</span>
+        <div class="pcv-settings-actions">
+          <span id="pcv-end-note" class="subtle">Ending clears PCV state after confirmation; queued audio is not canceled.</span>
+          <button id="pcv-end" class="button secondary" type="button" aria-describedby="pcv-end-note" disabled>End now</button>
+          <button id="pcv-settings-toggle" class="button quiet" type="button" aria-controls="pcv-config-fields" aria-expanded="true">Hide scene settings</button>
+        </div>
+      </div>
+      <form id="pcv-form" novalidate>
+        <fieldset id="pcv-config-fields" aria-labelledby="pcv-settings-label" disabled>
+          <legend class="sr-only">Scene settings</legend>
+          <div class="field-grid">
+            <div class="field">
+              <label for="conversation-mode">Conversation mode</label>
+              <select id="conversation-mode" name="scene_mode">
+                <option value="pair">Pair</option><option value="group">Group</option><option value="solo">Solo reflection</option><option value="free">Free scene</option>
+              </select>
+            </div>
+            <div class="field" id="actor-a-wrap"><label for="actor-a">Speaker</label><select id="actor-a" name="actor_a"><option value="">Choose an eligible NPC</option></select></div>
+            <div class="field" id="actor-b-wrap"><label for="actor-b">Second NPC</label><select id="actor-b" name="actor_b"><option value="">Choose an eligible NPC</option></select></div>
+            <div class="field group-only" id="actor-c-wrap"><label for="actor-c">Additional NPC C</label><select id="actor-c" name="actor_c"><option value="">No additional NPC</option></select></div>
+            <div class="field group-only" id="actor-d-wrap"><label for="actor-d">Additional NPC D</label><select id="actor-d" name="actor_d"><option value="">No additional NPC</option></select></div>
+            <div class="field group-only" id="opener-wrap"><label for="opener">Who speaks first</label><select id="opener" name="opener"><option value="auto">Auto</option></select></div>
+            <div class="field free-only" id="free-cap-wrap"><label for="free-cap">Free-scene cast size</label><select id="free-cap" name="free_cap"><option value="2">2 NPCs</option><option value="3">3 NPCs</option><option value="4">4 NPCs</option><option value="5">5 NPCs</option><option value="6" selected>6 NPCs</option></select></div>
+            <div class="field"><label for="bystander-mode">Other NPCs</label><select id="bystander-mode" name="bystander_mode"><option value="exclude">Exclude from this conversation</option><option value="silent">Present but silent</option></select></div>
+            <div class="field pair-only"><label for="pace">Turn length</label><select id="pace" name="pace"><option value="normal">Normal</option><option value="short">Short</option><option value="long">Long</option></select></div>
+            <div class="field span-two"><label for="scene-card">Scene direction card <span class="optional">optional</span></label><input id="scene-card" name="card" maxlength="300" autocomplete="off"><small>One line, up to 300 characters. This guides the scene; it does not supply dialogue.</small></div>
+            <div class="field player-choice"><label class="check-label"><input id="exclude-player" name="exclude_player" type="checkbox" checked><span>Exclude the player from this conversation</span></label><small>Solo reflection and Free scene always exclude the player.</small></div>
+            <fieldset class="field action-options span-two"><legend>Optional scene actions</legend>
+              <label class="check-label"><input id="action-personal" type="checkbox" name="actions" value="personal"><span>Personal — food, drink, rest, and similar actions</span></label>
+              <label class="check-label"><input id="action-physical" type="checkbox" name="actions" value="physical"><span>Physical — a bare-fisted brawl between scene members</span></label>
+              <label class="check-label"><input id="action-intimate" type="checkbox" name="actions" value="intimate"><span>Intimate — subject to the other plugin’s own rules</span></label>
+              <small>All action groups are opt-in. Physical actions are unavailable in Solo reflection.</small>
+            </fieldset>
+          </div>
+          <div class="button-row"><button id="pcv-arm" class="button" type="button">Arm conversation</button></div>
+        </fieldset>
+      </form>
+      <section class="compose-panel" aria-labelledby="pcv-input-heading">
+        <div class="section-heading"><div><p class="eyebrow">YOUR STANDARD INPUT</p><h3 id="pcv-input-heading">Send a message</h3></div><span id="pcv-send-state" class="status-chip">Not armed</span></div>
+        <p class="subtle">Enter adds a new line. Send is always explicit. This sends your own text to the selected current cast member; it does not impersonate a speaker.</p>
+        <div class="field short-field"><label for="send-target">Conversation target</label><select id="send-target" disabled><option value="">Refresh the eligible cast first</option></select></div>
+        <label class="field" for="pcv-text"><span>Your message</span><textarea id="pcv-text" rows="4" placeholder="Write your message…" disabled></textarea><span class="count-line"><span id="pcv-count">0 / 2,000</span><span>Up to 8,000 UTF-8 bytes</span></span></label>
+        <div class="button-row"><button id="pcv-send" class="button" type="button" disabled>Send message</button><button id="pcv-refresh-send" class="button secondary" type="button">Refresh send status</button><button id="pcv-discard-unknown" class="button quiet" type="button" hidden>Discard unknown draft</button></div>
+        <p id="pcv-send-note" class="notice" role="status" aria-live="polite">Sending requires confirmed Armed status and a fresh eligible exact target.</p>
+      </section>
+    </section>
+
+    <section id="panel-mp" class="tab-panel" role="tabpanel" aria-labelledby="tab-mp" tabindex="0" hidden>
+      <header class="view-heading"><div><p class="eyebrow">MIND POISONING · OUT OF CHARACTER INSPECTOR</p><h2>Relationship changes</h2><p>Directed private history, with proposed changes, confirmed outcomes, and later current values kept separate.</p></div><div class="button-row"><button id="mp-refresh" class="button secondary" type="button">Refresh relationship history</button><button id="mp-more" class="button quiet" type="button" disabled>Load older</button></div></header>
+      <div class="field-grid filter-grid"><div class="field"><label for="mp-perspective">Perspective</label><select id="mp-perspective" disabled><option value="">No authorized perspectives</option></select><small id="mp-perspective-limit"></small></div><div class="field"><label for="mp-target">Target filter <span class="optional">optional</span></label><select id="mp-target" disabled><option value="">All targets</option></select></div><div id="mp-state" class="state-line span-two" role="status" aria-live="polite">Authentication is required to inspect relationship history.</div></div>
+      <div class="table-wrap"><table><thead><tr><th>Direction · event</th><th>Proposed / applied</th><th>Historical before / after</th><th>Current now</th><th>Type, source, reason, certainty</th></tr></thead><tbody id="mp-rows"><tr><td colspan="5" class="empty-row">No authorized history has been read.</td></tr></tbody></table></div>
+      <p id="mp-limited" class="notice"></p>
+    </section>
+
+    <section id="panel-sas" class="tab-panel" role="tabpanel" aria-labelledby="tab-sas" tabindex="0" hidden>
+      <header class="view-heading"><div><p class="eyebrow">SWORN &amp; SCORNED · OUT OF CHARACTER INSPECTOR</p><h2>Grievances and promises</h2><p>Each issue stays with its recorded perspective. Reading here does not settle or alter it.</p></div><div class="button-row"><button id="sas-refresh" class="button secondary" type="button">Refresh grievances and promises</button><button id="sas-more" class="button quiet" type="button" disabled>Load older</button></div></header>
+      <div class="field-grid filter-grid"><div class="field"><label for="sas-perspective">Perspective</label><select id="sas-perspective" disabled><option value="">No authorized perspectives</option></select><small id="sas-perspective-limit"></small></div><div id="sas-state" class="state-line" role="status" aria-live="polite">Authentication is required to inspect private issues.</div></div>
+      <div class="issue-columns"><section aria-labelledby="grievances-heading"><h3 id="grievances-heading">Grievances</h3><div id="sas-grievances" class="issue-list"><p class="empty-row">No grievance history has been read.</p></div></section><section aria-labelledby="promises-heading"><h3 id="promises-heading">Promises</h3><div id="sas-promises" class="issue-list"><p class="empty-row">No promise history has been read.</p></div></section></div>
+      <p id="sas-limited" class="notice"></p>
+    </section>
+
+    <section id="panel-mail" class="tab-panel" role="tabpanel" aria-labelledby="tab-mail" tabindex="0" hidden>
+      <header class="view-heading"><div><p class="eyebrow">SEALED FATES · OUT OF CHARACTER</p><h2>Letters and mailboxes</h2><p>Compose with the player’s current supported inventory, then inspect receipt-confirmed mail.</p></div><div class="subtabs" role="tablist" aria-label="Sealed Fates views"><button id="mail-compose-tab" class="subtab" type="button" aria-selected="true">Compose</button><button id="mailbox-tab" class="subtab" type="button" aria-selected="false">Mailboxes</button></div></header>
+      <p id="mail-state" class="state-line" role="status" aria-live="polite">Authentication is required to use Sealed Fates.</p>
+      <section id="mail-compose-view" class="mail-view">
+        <div class="button-row compact-row"><button id="mail-refresh" class="button secondary" type="button">Refresh catalog and inventory</button><button id="mail-catalog-more" class="button secondary" type="button" disabled>Load more actors</button><span id="inventory-status" class="subtle">Inventory has not been read.</span></div>
+        <div class="mail-grid compose-grid">
+          <section class="compose-panel" aria-labelledby="compose-heading"><h3 id="compose-heading">Compose a letter</h3>
+            <div class="field-grid">
+              <div class="field"><label for="letter-writer">Writer</label><select id="letter-writer" disabled><option value="">No authorized writers</option></select></div>
+              <div class="field"><label for="letter-recipient">Recipient</label><select id="letter-recipient" disabled><option value="">No authorized recipients</option></select></div>
+              <label class="check-label span-two"><input id="sign-as-other" type="checkbox" disabled><span>Sign as someone else</span></label>
+              <div id="signature-wrap" class="field span-two" hidden><label for="letter-signature">Signature shown on the letter</label><select id="letter-signature" disabled><option value="">Choose an authorized signature</option></select><small>A signature is a claim. It does not change the selected writer.</small></div>
+              <div class="field span-two"><label for="letter-body">Letter body</label><textarea id="letter-body" rows="6" disabled></textarea><span class="count-line"><span id="letter-count">0 / 2,000</span><span>Written by the selected OOC writer · 2,000 characters max</span></span></div>
+            </div>
+            <div class="inventory-block"><div class="section-heading"><div><h4>Your inventory</h4><p class="subtle">Payer is fixed to the player. Only supported current holdings appear here.</p></div><div class="gold-control"><label for="gold-amount">Gold</label><input id="gold-amount" type="number" min="0" step="1" value="0" disabled></div></div>
+              <div id="inventory-items" class="inventory-items"><p class="empty-row">Refresh inventory to see supported items.</p></div>
+              <p id="attachment-count" class="notice">0 / 8 unique attachment types · Gold counts as one.</p>
+            </div>
+            <div class="button-row"><button id="letter-review" class="button secondary" type="button" disabled>Review letter</button><button id="letter-send" class="button" type="button" disabled>Send sealed letter</button><button id="letter-reconcile" class="button secondary" type="button" hidden>Reconcile same operation</button></div>
+            <div id="letter-review-summary" class="review-summary" hidden></div><p id="letter-receipt" class="notice" role="status" aria-live="polite"></p>
+          </section>
+        </div>
+      </section>
+      <section id="mailbox-view" class="mail-view" hidden><p class="notice">Recipient mailboxes list receipt-confirmed deliveries only. Reading a letter here creates no NPC exposure or player-read receipt.</p><div class="mail-grid mailbox-only"><section class="mailbox-panel wide-mailbox"><h3>Received letters</h3><div class="field"><label for="mailbox-recipient-secondary">Recipient mailbox</label><select id="mailbox-recipient-secondary" disabled><option value="">No authorized recipients</option></select></div><div class="button-row"><button id="mailbox-refresh-secondary" class="button secondary" type="button" disabled>Refresh mailbox</button><button id="mailbox-more-secondary" class="button quiet" type="button" disabled>Load older</button></div><div id="mailbox-list-secondary" class="mailbox-list"><p class="empty-row">Select a recipient and refresh.</p></div><article id="letter-detail-secondary" class="letter-detail" hidden><h4 id="detail-heading-secondary">Letter detail</h4><p id="detail-signature-secondary" class="subtle"></p><p id="detail-author-secondary" class="subtle" hidden></p><p id="detail-body-secondary" class="letter-body"></p><ul id="detail-attachments-secondary" class="detail-attachments"></ul><p class="subtle">Opening this record does not mean an NPC read or learned it.</p></article></section></div></section>
+      <p id="mail-limited" class="notice"></p>
+    </section>
+
+    <footer class="footer"><span>Private records are out of character. Reading never triggers dialogue, evaluation, or a transfer.</span><span id="scope-footer">No authorized scope.</span></footer>
+  </main>
+</body>
+</html>
