@@ -51,6 +51,21 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
         'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
     ],
+    '0.1.0-dev.20' => [
+        'manifest.json' => '5ca4a5f2ef5bf0521a73b4e31ee3a44c82946b1f669496108219d4d46b48a843',
+        'lib/runtime.php' => 'fc95fde88d422a70c5eb3caafcfdba5f3089cf05d4d5ec73d98faeea4e6b2c15',
+        'lib/store.php' => '84d0b6b3e9719dba8ddd0dc724a1c1e10bf14d3f0897c81edb758f8deaf5ee8c',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => '284b0b27eabe2f7d9139bef99743f9213a2a6a57f99c138bfc66ca3cffa5650f',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => '3ba80aede8d294439c56f9ed92c35cdfd7d1fac2684cbd28b0fb8dc8d8987a26',
+        'lib/autonomy_host.php' => 'dfa257dbb68f1ade87b7f13750e4fb25dd306c695b3c4ddd070e7ca1a4140a61',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => 'ba1405b262a60f913c2ec4a7349464a6b5400de59802a247844d8a34d2446a41',
+        'lib/offscreen_host.php' => '7c036bf86978acc8349742ba4a172d0dcc4a8ef9b8ab8b2b97b321686bc09bdb',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -153,6 +168,26 @@ function qd_correspondence_loaded_source_version(): string
     }
 }
 
+function qd_correspondence_version_uses_restore_fence(string $version): bool
+{
+    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20'], true);
+}
+
+function qd_correspondence_uses_restore_fence(): bool
+{
+    return qd_correspondence_version_uses_restore_fence(qd_correspondence_loaded_source_version());
+}
+
+function qd_correspondence_version_supports_signed_unknown(string $version): bool
+{
+    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20'], true);
+}
+
+function qd_correspondence_version_supports_operator_close(string $version): bool
+{
+    return $version === '0.1.0-dev.20';
+}
+
 function qd_correspondence_runtime_ready(): bool
 {
     try {
@@ -181,7 +216,7 @@ function qd_correspondence_load_sources(): string
         return $root;
     }
     $version = $identity['version'];
-    if ($version === '0.1.0-dev.18') {
+    if (qd_correspondence_version_uses_restore_fence($version)) {
         require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'bootstrap.php';
     } else {
         require_once $root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'runtime.php';
@@ -209,7 +244,7 @@ function qd_correspondence_load_sources(): string
             throw new QDServerFault('unavailable');
         }
     }
-    if ($version === '0.1.0-dev.18') {
+    if (qd_correspondence_version_uses_restore_fence($version)) {
         foreach ([
             'correspondenceEngineRoot' => 'lib/bootstrap.php',
             'correspondenceNativeConnection' => 'lib/bootstrap.php',
@@ -250,7 +285,7 @@ function qd_correspondence_dispatch(string $operation, stdClass $payload, array 
     ];
     $handler = $handlers[$operation] ?? null;
     if (!is_string($handler)) throw new LogicException('Unknown correspondence operation.');
-    if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.18') return $handler($payload, $context);
+    if (!qd_correspondence_uses_restore_fence()) return $handler($payload, $context);
 
     $requestKeys = ['CORRESPONDENCE_REQUEST_RESTORE_CAPTURED', 'CORRESPONDENCE_REQUEST_RESTORE_TOKEN', 'CORRESPONDENCE_REQUEST_NATIVE_TS'];
     $saved = qd_runtime_correspondence_save_globals($requestKeys);
@@ -599,7 +634,7 @@ function qd_correspondence_compose(stdClass $payload, array $context): array
     $signatureKey = $mapped['signatureKey'];
     $input = $mapped['input'];
     try {
-        if (qd_correspondence_loaded_source_version() === '0.1.0-dev.18') {
+        if (qd_correspondence_uses_restore_fence()) {
             return qd_correspondence_compose_dev18($context, $withCurrentContext, $requestId, $writerKey, $recipientKey, $signatureKey, $input);
         }
         $result = $withCurrentContext(static function () use ($context, $requestId, $writerKey, $recipientKey, $signatureKey, $input): array {
@@ -859,7 +894,11 @@ function qd_correspondence_project_result(CorrespondenceService $service, object
 function qd_correspondence_document_integrity(object $store, array $doc): bool
 {
     try {
-        correspondenceKeys($doc, ['document_id', 'playthrough_id', 'request_id', 'request_hash', 'body', 'attachments', 'operation_id', 'author', 'payer', 'recipient', 'claimed_sender', 'title', 'anchor']);
+        $version = qd_correspondence_loaded_source_version();
+        $hasOperatorClose = array_key_exists('operator_close', $doc);
+        $documentKeys = ['document_id', 'playthrough_id', 'request_id', 'request_hash', 'body', 'attachments', 'operation_id', 'author', 'payer', 'recipient', 'claimed_sender', 'title', 'anchor'];
+        if ($hasOperatorClose && qd_correspondence_version_supports_operator_close($version)) $documentKeys[] = 'operator_close';
+        correspondenceKeys($doc, $documentKeys);
         correspondenceUuidCheck($doc['document_id'] ?? null);
         correspondenceUuidCheck($doc['request_id'] ?? null);
         correspondenceBody($doc['body'] ?? null);
@@ -888,6 +927,20 @@ function qd_correspondence_document_integrity(object $store, array $doc): bool
         if (!is_array($data) || array_diff(array_keys($data), ['document_id', 'scope_token']) !== []
             || ($data['document_id'] ?? null) !== $doc['document_id']) return false;
         correspondenceUuidCheck($data['scope_token'] ?? null);
+        if ($hasOperatorClose) {
+            if (!qd_correspondence_version_supports_operator_close($version)) return false;
+            if (is_string($doc['operation_id'])) correspondenceUuidCheck($doc['operation_id']);
+            $close = $doc['operator_close'];
+            if (!is_array($close)) return false;
+            correspondenceKeys($close, ['rowid', 'ts', 'gamets', 'type', 'data', 'sess', 'localts', 'people']);
+            $rowId = $close['rowid'];
+            if ((!is_int($rowId) && (!is_string($rowId) || !ctype_digit($rowId))) || (int)$rowId < 1
+                || !is_numeric($close['ts']) || !is_numeric($close['gamets']) || !is_numeric($close['localts'])
+                || !in_array($close['type'], ['info', 'correspondence_operator_closed'], true)
+                || $close['sess'] !== 'correspondence_v1' || $close['people'] !== ''
+                || $close['data'] !== correspondenceJson(['document_id' => $doc['document_id'], 'operation_id' => $doc['operation_id'], 'reason' => 'operator_closed'])) return false;
+            // Presence stays authoritative when the owner prunes the close event.
+        }
         return true;
     } catch (Throwable) {
         return false;
@@ -943,7 +996,7 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
             return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
         }
         if ($physicalActorResolver === null) {
-            $physicalActorResolver = qd_correspondence_loaded_source_version() === '0.1.0-dev.18'
+            $physicalActorResolver = qd_correspondence_uses_restore_fence()
                 ? fn(array $actor): array => $store->physicalActor($actor)
                 : static fn(array $actor): array => qd_correspondence_physical_actor($connection, $actor);
         }
@@ -998,7 +1051,7 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
         foreach ($ownerAttachments as $item) {
             if (!is_array($item)) return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
             if ($physicalItemResolver === null) {
-                $physicalItemResolver = qd_correspondence_loaded_source_version() === '0.1.0-dev.18'
+                $physicalItemResolver = qd_correspondence_uses_restore_fence()
                     ? fn(array $candidate): array => $store->physicalItem($candidate)
                     : static fn(array $candidate): array => qd_correspondence_physical_item($connection, $candidate);
             }
@@ -1015,7 +1068,7 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
         $confirmedItems = [];
         $partial = ($receipt['note_form_id'] ?? 0) !== 0;
         $signedUnknownVersion = ($receipt['status'] ?? null) === 'unknown'
-            && in_array(qd_correspondence_loaded_source_version(), ['0.1.0-dev.17', '0.1.0-dev.18'], true);
+            && qd_correspondence_version_supports_signed_unknown(qd_correspondence_loaded_source_version());
         foreach ($receipt['attachments'] as $actual) {
             if (!is_array($actual)) return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
             correspondenceKeys($actual, ['form_id', 'quantity', 'before_source', 'after_source', 'before_recipient', 'after_recipient']);
@@ -1282,7 +1335,7 @@ function qd_correspondence_cursor_offset(?string $cursor, string $recipientKey, 
 
 function qd_correspondence_read_snapshot(string $scopeKey, callable $callback, ?array $context = null): mixed
 {
-    if (qd_correspondence_loaded_source_version() === '0.1.0-dev.18') {
+    if (qd_correspondence_uses_restore_fence()) {
         return qd_correspondence_dev18_fenced_snapshot($scopeKey, qd_correspondence_dev18_authority($context ?? []), $callback);
     }
     return qd_runtime_with_core_db(static function ($connection) use ($scopeKey, $callback): mixed {
