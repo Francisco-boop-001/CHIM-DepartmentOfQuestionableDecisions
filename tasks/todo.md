@@ -155,8 +155,8 @@ Goal: support the three newly published exact owner versions while retaining MP0
 - [x] Review exact immutable owner diffs; port PCV companion overlay and update adapter pin/capability selections only where necessary.
 - [x] Run focused positive/refusal and changed-boundary compatibility checks; preserve historical/runtime proof limits.
 - [x] Update deterministic package construction, source allowlist and user upgrade documentation for the actual server delta.
-- [ ] Root independently review and audit, freeze source, construct package, verify ordinary checksums and publish.
-- [ ] Verify anonymous downloads and previous release immutability; synchronize clean primary and record completion.
+- [x] Root independently review and audit, freeze source, construct package, verify ordinary checksums and publish.
+- [x] Verify anonymous downloads and previous release immutability; synchronize clean primary and record completion.
 
 Scope: preserve prealpha.6 and earlier tags/assets, unresolved operation history, replay/restore protection, game files and fallback. A source pairing cannot establish Skyrim or new database behavior. The previously recorded critique defects are outside this compatibility update unless a changed owner boundary makes one necessary to solve here. Existing untracked dist/evidence trees are preserved.
 
@@ -169,3 +169,11 @@ Focused host verification passed: PCV source/temporary-state receipt (7 pins/8 c
 Root inspected all changed PCV callback code and confirmed the three stock .23 owner changes are retained. The merged preprocessing file and the two mechanically updated PowerShell source maps parse without invoking builders/compilers. MP0.1.30 and native/UI inputs remain unchanged. S&S and SF owners report no new Department-facing contract issue. No WSL, database, HTTP/provider, installed-server or Skyrim execution occurred. Prior critique findings and runtime limits remain. Frozen archive audit and publication follow the final source checkpoint.
 
 Final source checkpoint: root reviewed all production and packaging deltas, corrected the server manifest delta expectation before building, and ran a bounded in-memory repack gate self-check. All three false owner receipts and an adapter hash mismatch were refused. The explicit allowlist is 134 paths; stale .22 overlay copies are retired from current source while old tags remain immutable. The upgrade guide preserves separate verified stock .23 rollback copies. Archive construction/audit, commit push and public verification follow this checkpoint.
+
+### Prealpha.7 publication completed
+
+Published [v0.1.0-prealpha.7](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.7) from immutable source 56368f42590894388f7151405fe74429af9ff358 at 2026-10-22T20:42:52Z. Root independently checked all 134 committed source files, all 24 server members, the exact nine changed/one added/one removed server delta, all 14 receipt members, nine unchanged game files/DLL and seven unchanged notices. MP0.1.30 remains byte-identical. Ordinary GNU sha256sum passed all nine entries; all ten uploaded digests and all ten anonymous public downloads matched. Six earlier releases' 61 assets and twelve prior remote tag refs remain unchanged.
+
+Two older release descriptions showed dash-to-replacement-character text drift during the final comparison; that metadata was not edited by this task, and no blanket body-immutability claim is made. The first API list after draft creation was briefly stale; the existing single draft was resolved by ID without recreating it or duplicating assets. Evidence is in artifacts/department-prealpha7-owners, including the preserved failed/prerequisite runs and stopped-retention cleanup record.
+
+This documentation-only completion record does not move the release tag or change any asset. The supported matrix is PCV0.1.23 with the matched seven-file overlay, MP0.1.30, S&S0.1.12 and SFdev.22 (earlier supported SF pins retained). The original PCV fallback and owner .23 fixes are preserved. No DLL/Papyrus/UI compilation, WSL/server/database/provider/gameplay start, installation, CHIM core or live change occurred. Focused source/temporary-state checks establish the reviewed compatibility boundary, not Skyrim or physical-transfer acceptance. Previously recorded critique defects remain outside this update.
