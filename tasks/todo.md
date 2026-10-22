@@ -112,8 +112,12 @@ Root compared all 26 owner server files against dev.20: only manifest.json and l
 ## Prealpha.5 dev.21 downloadable repack
 
 - [x] Prepare the deterministic repack script and source checkpoint using public prealpha.4 inputs; archive construction follows this commit.
-- [ ] Root review: validate archive paths/member hashes, exact one-file server delta, unchanged game/DLL bytes and ordinary checksums; no broad suites or runtime starts.
-- [ ] Publish a new immutable pre-release, download its assets once and confirm hashes; leave earlier releases unchanged.
+- [x] Root review: validate archive paths/member hashes, exact one-file server delta, unchanged game/DLL bytes and ordinary checksums; no broad suites or runtime starts.
+- [x] Publish a new immutable pre-release, download its assets once and confirm hashes; leave earlier releases unchanged.
 
 ### Review
 Source checkpoint: Luna/max implemented the bounded repack and root reviewed its complete data flow. Root caught and fixed the checksum asset-set split before execution. Exact committed blobs and the source allowlist gate the source archive; old component/member hashes gate reused input. Package execution, independent archive/checksum review and public verification follow this immutable source checkpoint. Publication is authorized; installation is not performed. Historical dev.20 runtime evidence remains historical.
+
+### Publication completed
+
+Published [v0.1.0-prealpha.5](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.5) from immutable source 2847e21541b7f241ee48c55ee441b12b82e46f39 at 2026-10-22T01:00:11Z. Root independently verified all 130 committed source files, 24 server members with only the correspondence adapter changed, nine unchanged game files/DLL, seven unchanged notices, and isolated historical evidence. Ordinary GNU sha256sum passed all nine entries. GitHub draft upload digests matched all ten assets, then one anonymous public download pass matched all ten assets and checksum entries. All four older releases and 41 asset identities/digests remain unchanged. GitHub draft metadata was read by release ID after its tag endpoint returned 404; no draft/upload was duplicated. No native/Papyrus recompilation, broad suite, WSL/server/database/provider start, installation, CHIM core or live change occurred. Package/publication evidence is in artifacts/department-prealpha5-dev21. This documentation-only completion record does not move the frozen release tag or modify any release asset.
