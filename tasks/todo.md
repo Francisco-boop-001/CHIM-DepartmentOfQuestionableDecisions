@@ -129,8 +129,8 @@ Goal: replace only the exact MP source identity with reviewed 0.1.30, retaining 
 - [x] Luna/max: update MP pins, focused source-contract probe and current package/docs.
 - [x] Luna/max: adapt the existing deterministic repack for the MP-only delta.
 - [x] Root: review complete diff, run narrow source readiness/drift and unchanged-owner checks, and record owner coordination.
-- [ ] Root: commit frozen source, build/audit exact archives and ordinary checksums, push/tag and publish.
-- [ ] Root: verify public downloads and prior release immutability; synchronize clean primary and finish review.
+- [x] Root: commit frozen source, build/audit exact archives and ordinary checksums, push/tag and publish.
+- [x] Root: verify public downloads and prior release immutability; synchronize clean primary and finish review.
 
 Scope: implementation workers own pins/test/docs and repack separately; root owns task records, independent verification, Git and publication. Known critique findings remain outside this compatibility update. Source-only proof must not be presented as new database or Skyrim acceptance.
 
@@ -141,3 +141,9 @@ Root reviewed the complete MP production diff (version plus four changed hashes)
 MP, S&S and Sealed Fates owners reported no concrete new source-contract conflict. Root checked six exact S&S0.1.11 tag pins, thirteen SFdev.21 frozen pins, and all seven retained PCV0.1.22 companion-overlay pins. PCV stock files are intentionally different from the documented companion overlay; no stock-only pairing is claimed. Automatic approval review rejected messaging PCV, citing a restriction to leave PCV to its own task; its retained contract was checked locally. PCV0.1.23, S&S0.1.12 and SFdev.22 remain unpinned/refused. No compatibility claim is made for those newer versions.
 
 The ten prealpha.5 base files match their published GitHub digests. Source/package proof remains separate from historical runtime receipts. Known critique defects remain unresolved. Frozen archive construction, independent checksum/member review, publication and public verification follow this source checkpoint. No WSL, database/server/provider/gameplay execution, installed modifications or CHIM core/live changes occurred.
+
+### Prealpha.6 publication completed
+
+Published [v0.1.0-prealpha.6](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.6) from immutable source 1c50d3eb9fd07ad8ebae95629964488bb315a29d at 2026-10-22T19:55:49Z. Root independently verified 131 clean Git source files, all 24 server members with only adapters/mp.php changed, nine byte-identical game files including the DLL, seven unchanged notices, and nine receipt members with historical evidence preserved. Ordinary GNU sha256sum passed all nine entries. All ten uploaded digests and ten anonymous public downloads match. Five earlier releases, 51 asset identities/digests and ten existing remote tag refs remain unchanged.
+
+This documentation-only completion record does not move the frozen tag or change any asset. No DLL/Papyrus compilation, broad suite, WSL, server/database/provider/gameplay start, installation, CHIM core or live change occurred. MP0.1.30 is now the exact accepted MP identity; PCV0.1.22 with its documented companion overlay, S&S0.1.11 and SFdev.21 remain unchanged. Newer PCV0.1.23/S&S0.1.12/SFdev.22 are not accepted. Known critique defects remain; runtime/Skyrim acceptance is still pending. Evidence is in artifacts/department-prealpha6-mp30.
