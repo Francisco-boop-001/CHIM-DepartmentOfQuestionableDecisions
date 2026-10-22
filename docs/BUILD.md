@@ -187,3 +187,19 @@ py -3 packaging/repack-source-compatibility.py --base-assets $prealpha4Assets --
 ```
 
 Use the immutable prealpha.5 source commit and its published source-readiness receipt (inside verification-receipts.zip). The source archive follows the committed explicit allowlist; untracked files are excluded. Output must be a new directory. The repack records current package/source hashes and keeps the old receipts/freeze under historical-prealpha4/ only. Ordinary sha256sum --check SHA256SUMS.txt verifies the nine canonical assets. This is source/package evidence; dev.21 PostgreSQL, HTTP, providers and Skyrim are not rerun or certified.
+
+## Reproduce the prealpha.6 MP source-compatibility repack
+
+Use the exact frozen Mind Poisoning 0.1.30 owner source and a fresh source-readiness receipt. The probe is source-only and requires no database, HTTP/provider, Skyrim, or native build:
+
+~~~powershell
+$readinessLines = & php -n server/tests/mp/source-contract.php --owner-root $mpServerRoot
+$readinessExitCode = $LASTEXITCODE
+$readinessText = ($readinessLines -join [char]10) + [char]10
+[IO.File]::WriteAllText($sourceReadinessJson, $readinessText, [Text.UTF8Encoding]::new($false))
+if ($readinessExitCode -ne 0) { throw "MP source check failed with exit code $readinessExitCode" }
+
+py -3 packaging/repack-source-compatibility.py --base-assets $prealpha5Assets --source-commit $releaseCommit --readiness $sourceReadinessJson --output $newReleaseDirectory
+~~~
+
+The base must be the exact public prealpha.5 release assets, and output must be a new directory. The repack verifies the old checksums and unchanged game/DLL/notices payloads, admits only committed source from the allowlist, and records the MP receipt with the current source identity. It preserves the prealpha.5 freeze and seven old receipt members under historical-prealpha5/ without recertifying them. This creates source/package evidence only; it does not build native or Papyrus components or establish runtime/gameplay behavior.

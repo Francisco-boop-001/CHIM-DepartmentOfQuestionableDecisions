@@ -1,19 +1,19 @@
 <?php
 declare(strict_types=1);
 
-const QD_MP_EXPECTED_VERSION = '0.1.29';
+const QD_MP_EXPECTED_VERSION = '0.1.30';
 const QD_MP_LEDGER_MAX_BYTES = 65536;
 const QD_MP_RELATIONSHIP_MAX_BYTES = 16384;
 const QD_MP_IDENTITY_CATALOG_MAX = 65536;
 const QD_MP_EXPECTED_RELATIONSHIP_MANAGER_SHA256 = '4497443c9480c7d7ff5d5deabcec9ad5ab4cdec6f28f1fd044f89594d71e06ab';
 const QD_MP_EXPECTED_SOURCE_HASHES = [
-    'manifest.json' => '4df9569876b96229b542fb354372edbabe6a2817919b4745e92b2d5efe220586',
-    'dashboard_data.php' => 'ca1706218326b7d434596cd6022b42cd8f869c43b3bb208268e16b8bb395c99a',
-    'store.php' => '269ba8e71ef78ced97f522fd98b21157c08d997acad3926d2e33bd7a7b4905f8',
+    'manifest.json' => 'd2ac602e075768399b1495795c7de9735615e82e2d5047da6b99e69aac6c50da',
+    'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
+    'store.php' => '3d91e0756559cb892d218cace864b93e57200f2a4e53bfbb7ff9504afd93ba78',
     'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
     'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
     'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
-    'restore_policy.php' => 'e29694a176e4c38a8c7810c7aee08856371f660cc8a95d0f922a97ac25366e99',
+    'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
 ];
 
 function qd_mp_source_root(): string

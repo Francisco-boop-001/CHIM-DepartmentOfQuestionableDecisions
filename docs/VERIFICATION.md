@@ -47,3 +47,16 @@ No Skyrim session, provider generation, audio, game focus/controller behavior, p
 This release changes only the installed Correspondence adapter from prealpha.4. The game/DLL and notices archives are reused unchanged, and the source archive follows the committed explicit source allowlist. The focused dev.21 regression and source-only pairing probe passed against the exact 13-file closure; the unchanged dev.20 source-contract control passed. This is not a rerun of the historical dev.20 PostgreSQL gate or native/private-route/UI suites.
 
 Package verification covers safe unique archive members, exact source/member hashes, the single-file server delta, unchanged game/DLL bytes, ordinary LF checksums and downloaded release bytes. The manifest and receipts distinguish this new source/package evidence from the original five prealpha.4 gate receipts stored under historical-prealpha4/. No old dev.20 pairing-proof sidecar is presented as dev.21 proof. Skyrim/gameplay and real transfer acceptance remain pending.
+
+## Prealpha.6 source/package candidate
+
+The prealpha.6 candidate updates the Mind Poisoning source adapter for exact owner version 0.1.30, source commit 3ce96b5640796db948dae33444dd403ea4ed74a6. Its source-readiness receipt binds the Department protocol and adapter hashes, all seven ordered owner-source hashes, and the five fail-closed checks. The focused probe passed all seven pins and all five checks; the current adapter SHA-256 is a86e04435796400023b6f9d7aa484a6e1cda7a4005f11e795e58b9214f895f37.
+
+| Boundary | Evidence and limit |
+| --- | --- |
+| Exact MP source | The seven pinned files are manifest.json, dashboard_data.php, store.php, influence.php, intimacy.php, logging.php, and restore_policy.php. Exact source acceptance, read-only store acceptance, old/unsupported version refusal, and refusal after drift of every pin all pass. |
+| Runtime boundary | Pure owner source readers and the Department read-only inspector interface are loaded. The owner runtime is not loaded; no database, HTTP/provider, Skyrim, native, or gameplay run is claimed. |
+| Package delta | Only ext/questionable_decisions/adapters/mp.php changes against prealpha.5. Game, DLL, and notices payloads are byte-identical to the public prealpha.5 base. Other pins remain PCV 0.1.22 with its required documented overlay, SAS 0.1.11, and Sealed Fates dev.21. PCV 0.1.23, SAS 0.1.12, and Sealed Fates dev.22 remain unsupported. |
+| Historical receipts | The prealpha.5 freeze and its seven existing receipt members are preserved beneath historical-prealpha5/ with their original contents. They remain evidence for their original identities only; no older Sealed Fates/runtime receipt is recertified by the MP probe. |
+
+This remains a TEST/PRE-ALPHA source/package update, not Skyrim acceptance. Previously recorded critique findings and known limits remain unresolved.

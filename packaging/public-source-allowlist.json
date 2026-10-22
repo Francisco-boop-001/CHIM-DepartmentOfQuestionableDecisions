@@ -117,6 +117,7 @@
     { "path": "server/tests/dev20-pg/seed_unknown_receipt.php" },
     { "path": "server/tests/foundation/journal.php" },
     { "path": "server/tests/foundation/run.php" },
+    { "path": "server/tests/mp/source-contract.php" },
     { "path": "server/tests/pcv/adapter.php" },
     { "path": "server/tests/pcv/companion_owner_seam.php" },
     { "path": "server/tests/pcv/companion_presence_reader.php" },

@@ -121,3 +121,23 @@ Source checkpoint: Luna/max implemented the bounded repack and root reviewed its
 ### Publication completed
 
 Published [v0.1.0-prealpha.5](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.5) from immutable source 2847e21541b7f241ee48c55ee441b12b82e46f39 at 2026-10-22T01:00:11Z. Root independently verified all 130 committed source files, 24 server members with only the correspondence adapter changed, nine unchanged game files/DLL, seven unchanged notices, and isolated historical evidence. Ordinary GNU sha256sum passed all nine entries. GitHub draft upload digests matched all ten assets, then one anonymous public download pass matched all ten assets and checksum entries. All four older releases and 41 asset identities/digests remain unchanged. GitHub draft metadata was read by release ID after its tag endpoint returned 404; no draft/upload was duplicated. No native/Papyrus recompilation, broad suite, WSL/server/database/provider start, installation, CHIM core or live change occurred. Package/publication evidence is in artifacts/department-prealpha5-dev21. This documentation-only completion record does not move the frozen release tag or modify any release asset.
+
+## MP 0.1.30 pin and prealpha.6 package
+
+Goal: replace only the exact MP source identity with reviewed 0.1.30, retaining PCV 0.1.22, S&S 0.1.11 and SF dev.21. Reuse prealpha.5 game/DLL/notices bytes, preserve fail-closed drift checks and publish a new immutable TEST-only pre-release. No WSL, compilation, core/live/installed changes or broad suite reruns.
+
+- [x] Luna/max: update MP pins, focused source-contract probe and current package/docs.
+- [x] Luna/max: adapt the existing deterministic repack for the MP-only delta.
+- [x] Root: review complete diff, run narrow source readiness/drift and unchanged-owner checks, and record owner coordination.
+- [ ] Root: commit frozen source, build/audit exact archives and ordinary checksums, push/tag and publish.
+- [ ] Root: verify public downloads and prior release immutability; synchronize clean primary and finish review.
+
+Scope: implementation workers own pins/test/docs and repack separately; root owns task records, independent verification, Git and publication. Known critique findings remain outside this compatibility update. Source-only proof must not be presented as new database or Skyrim acceptance.
+
+### Review checkpoint
+
+Root reviewed the complete MP production diff (version plus four changed hashes), the standalone source regression and deterministic repack changes. The new probe passed all seven exact pins and five checks: source acceptance, pure StoreDb reads/write refusal, old/unsupported version refusal and individual drift refusal for all seven files. The same probe against the unchanged prealpha.5 adapter refused MP0.1.30. The new adapter SHA-256 is a86e04435796400023b6f9d7aa484a6e1cda7a4005f11e795e58b9214f895f37.
+
+MP, S&S and Sealed Fates owners reported no concrete new source-contract conflict. Root checked six exact S&S0.1.11 tag pins, thirteen SFdev.21 frozen pins, and all seven retained PCV0.1.22 companion-overlay pins. PCV stock files are intentionally different from the documented companion overlay; no stock-only pairing is claimed. Automatic approval review rejected messaging PCV, citing a restriction to leave PCV to its own task; its retained contract was checked locally. PCV0.1.23, S&S0.1.12 and SFdev.22 remain unpinned/refused. No compatibility claim is made for those newer versions.
+
+The ten prealpha.5 base files match their published GitHub digests. Source/package proof remains separate from historical runtime receipts. Known critique defects remain unresolved. Frozen archive construction, independent checksum/member review, publication and public verification follow this source checkpoint. No WSL, database/server/provider/gameplay execution, installed modifications or CHIM core/live changes occurred.

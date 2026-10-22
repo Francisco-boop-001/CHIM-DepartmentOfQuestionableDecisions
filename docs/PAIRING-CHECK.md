@@ -32,7 +32,7 @@ A focused native-PHP self-check covers the current dev.20 candidate, the prealph
 
 ## Dev.21 pin update
 
-Current `main` adds exact dev.21 to the existing dev.20 restore-fence, signed-unknown and operator-close selections. The 13-file closure differs only in `manifest.json` and `lib/offscreen.php`; the latter removes NPC metadata shape checks that could defer otherwise eligible mail. Runtime/store/bootstrap/migrations remain byte-identical to the accepted dev.20 pins. Do not edit the owner manifest to bypass version refusal. Published prealpha.4 remains unchanged and refuses dev.21.
+Prealpha.5 added exact dev.21 to the existing dev.20 restore-fence, signed-unknown and operator-close selections. The 13-file closure differs only in `manifest.json` and `lib/offscreen.php`; the latter removes NPC metadata shape checks that could defer otherwise eligible mail. Runtime/store/bootstrap/migrations remain byte-identical to the accepted dev.20 pins. Do not edit the owner manifest to bypass version refusal. Published prealpha.4 remains unchanged and refuses dev.21.
 
 Run the focused regression with the exact dev.21 server directory, then the normal source pairing command above:
 
@@ -41,3 +41,15 @@ Run the focused regression with the exact dev.21 server directory, then the norm
 ```
 
 These checks establish exact source readiness, capability selection and fail-closed drift handling. They do not rerun the historical dev.20 PostgreSQL gate or certify dev.21 gameplay. No native recompilation is needed.
+
+## Prealpha.6 Mind Poisoning 0.1.30 source check
+
+Run the focused contract against the exact frozen Mind Poisoning 0.1.30 server source that will be packaged:
+
+~~~powershell
+php -n server/tests/mp/source-contract.php --owner-root <frozen MP server>
+~~~
+
+The accepted source identity is commit 3ce96b5640796db948dae33444dd403ea4ed74a6. A successful source-readiness receipt binds the exact Department protocol and adapters/mp.php hashes plus seven ordered owner pins: manifest.json, dashboard_data.php, store.php, influence.php, intimacy.php, logging.php, and restore_policy.php. Its checks exactSourceReady, storeReadAccepted, oldVersionRefused, unsupportedVersionRefused, and everyPinDriftRefused must all be true.
+
+The prealpha.6 probe passed all seven pins and all five checks. It loads only the pinned pure reader sources and the Department read-only inspector interface. The receipt records sourceOnly=true, database=false, http=false, skyrim=false, ownerRuntimeLoaded=false, and ownerPureReadersLoaded=true. This is exact source/read-only contract evidence; it does not execute the owner runtime, database, HTTP/provider path, or Skyrim gameplay.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a deterministic source-only dev.21 compatibility release from pinned inputs."""
+"""Build a deterministic source-only MP 0.1.30 compatibility release from pinned inputs."""
 
 import argparse
 import hashlib
@@ -15,9 +15,9 @@ from pathlib import Path
 
 
 KIND = "department-source-compatibility-repack"
-BASE_TAG = "v0.1.0-prealpha.4"
-BASE_SOURCE_COMMIT = "08680e31635a4ed91bd9efcb46d7d9b8f30d95e1"
-CANDIDATE_TAG = "v0.1.0-prealpha.5"
+BASE_TAG = "v0.1.0-prealpha.5"
+BASE_SOURCE_COMMIT = "2847e21541b7f241ee48c55ee441b12b82e46f39"
+CANDIDATE_TAG = "v0.1.0-prealpha.6"
 GUIDE = "PRE-ALPHA-RELEASE.md"
 FREEZE = "input-freeze.json"
 MANIFEST = "package-manifest.json"
@@ -28,12 +28,11 @@ SERVER = "WorldOfDramaLlama-department-pre-alpha-server.zip"
 SOURCE = "WorldOfDramaLlama-department-pre-alpha-source.zip"
 NOTICES = "WorldOfDramaLlama-department-pre-alpha-notices.zip"
 CANDIDATE = "WorldOfDramaLlama-department-pre-alpha-candidate.zip"
-PAIRING_SIDECAR = "Department-SealedFates-dev20-pairing.zip"
 COMPONENT_NAMES = (GAME, SERVER, SOURCE, NOTICES)
 SUM_ORDER = (GUIDE, CANDIDATE, GAME, NOTICES, SERVER, SOURCE, FREEZE, MANIFEST, RECEIPTS)
 OUTPUT_NAMES = (*SUM_ORDER, SUMS)
-SERVER_ADAPTER = "ext/questionable_decisions/adapters/correspondence.php"
-SOURCE_ADAPTER = "server/adapters/correspondence.php"
+SERVER_ADAPTER = "ext/questionable_decisions/adapters/mp.php"
+SOURCE_ADAPTER = "server/adapters/mp.php"
 PROTOCOL_SOURCE = "server/lib/protocol.php"
 OLD_GATE_MEMBERS = {
     "critique": "critique.json",
@@ -43,11 +42,20 @@ OLD_GATE_MEMBERS = {
     "ui": "ui.json",
 }
 READINESS_CHECKS = (
-    "adapterLoaded",
-    "manifestReady",
-    "sourceIdentityReady",
-    "runtimeReady",
-    "stagedClosureMatches",
+    "exactSourceReady",
+    "storeReadAccepted",
+    "oldVersionRefused",
+    "unsupportedVersionRefused",
+    "everyPinDriftRefused",
+)
+OWNER_PINS = (
+    "manifest.json",
+    "dashboard_data.php",
+    "store.php",
+    "influence.php",
+    "intimacy.php",
+    "logging.php",
+    "restore_policy.php",
 )
 
 
@@ -227,13 +235,12 @@ def run(args):
     )
     require(resolved_output != readiness_path and resolved_output not in readiness_path.parents, "--output cannot contain or replace the readiness receipt")
 
-    expected_base_files = set(OUTPUT_NAMES) | {PAIRING_SIDECAR}
+    expected_base_files = set(OUTPUT_NAMES)
     base_entries = list(base.iterdir())
     require(all(not p.is_symlink() and p.is_file() for p in base_entries), "Base assets directory may contain only regular files")
     base_names = {p.name for p in base_entries}
-    require(base_names in (set(OUTPUT_NAMES), expected_base_files), "Unexpected prealpha.4 asset set")
-    base_files = {p.name: p.read_bytes() for p in base_entries if p.name != PAIRING_SIDECAR}
-    require(set(base_files) == set(OUTPUT_NAMES), "Missing a canonical prealpha.4 asset")
+    require(base_names == expected_base_files, "Unexpected prealpha.5 asset set")
+    base_files = {p.name: p.read_bytes() for p in base_entries}
 
     base_sums = parse_base_checksums(base_files[SUMS])
     for name, digest in base_sums.items():
@@ -242,10 +249,20 @@ def run(args):
     base_manifest = json.loads(base_files[MANIFEST].decode("utf-8"))
     base_freeze = json.loads(base_files[FREEZE].decode("utf-8"))
     require(base_manifest.get("schemaVersion") == 1, "Unsupported base manifest schema")
-    require(base_freeze.get("candidateTag") == BASE_TAG and base_freeze.get("testOnly") is True, "Base freeze is not prealpha.4")
+    require(
+        base_manifest.get("kind") == KIND
+        and base_manifest.get("candidateTag") == BASE_TAG
+        and base_manifest.get("source", {}).get("commit") == BASE_SOURCE_COMMIT,
+        "Base manifest is not the pinned prealpha.5 source release",
+    )
+    require(
+        base_freeze.get("candidateTag") == BASE_TAG
+        and base_freeze.get("source", {}).get("commit") == BASE_SOURCE_COMMIT,
+        "Base freeze is not the pinned prealpha.5 source release",
+    )
     require(base_manifest.get("freeze", {}).get("sha256") == sha256(base_files[FREEZE]), "Base manifest freeze hash mismatch")
     old_components = {item.get("name"): item for item in base_manifest.get("components", [])}
-    require(set(old_components) == set(COMPONENT_NAMES), "Unexpected prealpha.4 component manifest")
+    require(set(old_components) == set(COMPONENT_NAMES), "Unexpected prealpha.5 component manifest")
     base_members = {}
     for name in COMPONENT_NAMES:
         record = old_components[name]
@@ -262,13 +279,30 @@ def run(args):
         base_members[name] = members
 
     old_receipts = zip_members(base_files[RECEIPTS], RECEIPTS)
-    gate_hashes = base_manifest.get("gates", {})
-    require(set(gate_hashes) == set(OLD_GATE_MEMBERS), "Unexpected historical prealpha.4 gate set")
     old_receipt_map = {name: payload for name, payload, _mode in old_receipts}
-    require(len(old_receipt_map) == len(OLD_GATE_MEMBERS), "Unexpected historical receipt member count")
-    for gate, filename in OLD_GATE_MEMBERS.items():
-        path = f"evidence/companion-only/accepted-prealpha4-20261021/{filename}"
-        require(path in old_receipt_map and gate_hashes[gate].get("sha256") == sha256(old_receipt_map[path]), f"Historical receipt hash mismatch: {gate}")
+    old_gate_paths = {
+        f"historical-prealpha4/evidence/companion-only/accepted-prealpha4-20261021/{filename}"
+        for filename in OLD_GATE_MEMBERS.values()
+    }
+    require(
+        set(old_receipt_map) == old_gate_paths | {"historical-prealpha4/input-freeze.json", "source-readiness.json"},
+        "Unexpected prealpha.5 historical receipt member set",
+    )
+    base_readiness = base_manifest.get("sourceReadiness", {})
+    require(
+        base_readiness.get("path") == "source-readiness.json"
+        and base_readiness.get("sha256") == sha256(old_receipt_map["source-readiness.json"])
+        and base_readiness.get("ownerVersion") == "0.1.0-dev.21",
+        "Prealpha.5 source-readiness provenance mismatch",
+    )
+    base_history = base_manifest.get("historicalEvidence", {})
+    require(
+        base_history.get("tag") == "v0.1.0-prealpha.4"
+        and base_history.get("pathPrefix") == "historical-prealpha4/"
+        and base_history.get("gateReceiptCount") == len(OLD_GATE_MEMBERS)
+        and base_history.get("certifiesCandidate") is False,
+        "Prealpha.5 historical evidence provenance mismatch",
+    )
 
     source_records = committed_tree(repo, commit)
     source_blobs = committed_blobs(repo, source_records)
@@ -286,18 +320,23 @@ def run(args):
     limits = readiness.get("limits", {})
     pins = owner.get("selectedClosurePins", [])
     require(readiness.get("ready") is True and readiness.get("errorReason") is None, "Source pairing readiness is not ready")
-    require(owner.get("version") == "0.1.0-dev.21", "Readiness receipt is not for dev.21")
-    require(len(pins) == 13 and all(pin.get("matches") is True and pin.get("expectedSha256") == pin.get("actualSha256") for pin in pins), "Readiness receipt does not contain 13 matched closure pins")
+    require(owner.get("version") == "0.1.30", "Readiness receipt is not for MP 0.1.30")
+    require(
+        [pin.get("file") for pin in pins] == list(OWNER_PINS)
+        and all(pin.get("matches") is True and pin.get("expectedSha256") == pin.get("actualSha256") for pin in pins),
+        "Readiness receipt does not contain the seven matched MP 0.1.30 pins",
+    )
     require(set(checks) == set(READINESS_CHECKS) and all(checks[name] is True for name in READINESS_CHECKS), "Readiness receipt does not pass all five source checks")
     require(
         limits.get("sourceOnly") is True
-        and all(limits.get(name) is False for name in ("database", "http", "skyrim", "ownerRuntimeLoaded")),
+        and all(limits.get(name) is False for name in ("database", "http", "skyrim", "ownerRuntimeLoaded"))
+        and limits.get("ownerPureReadersLoaded") is True,
         "Readiness receipt exceeds its source-only boundary",
     )
     protocol = readiness.get("department", {}).get("protocol", {})
     adapter = readiness.get("department", {}).get("adapter", {})
     require(protocol.get("file") == "lib/protocol.php" and protocol.get("sha256") == sha256(source_blobs[PROTOCOL_SOURCE]), "Readiness protocol hash does not match committed source")
-    require(adapter.get("file") == "adapters/correspondence.php" and adapter.get("sha256") == sha256(source_blobs[SOURCE_ADAPTER]), "Readiness adapter hash does not match committed source")
+    require(adapter.get("file") == "adapters/mp.php" and adapter.get("sha256") == sha256(source_blobs[SOURCE_ADAPTER]), "Readiness MP adapter hash does not match committed source")
 
     source_members = [
         (path, source_blobs[path], 0o755 if mode == b"100755" else 0o644)
@@ -324,7 +363,7 @@ def run(args):
     }
     require(len(new_component_members[GAME]) == 9, "Game archive must contain exactly nine members")
     game_dll = next((payload for name, payload, _mode in new_component_members[GAME] if name == "Data/SKSE/Plugins/WorldOfDramaLlama.dll"), None)
-    require(game_dll is not None and sha256(game_dll) == "1c6d0a0370a2f9e8133deef574be2f2ecc0ee7ac1065e9eedddd7cc8554aea13", "Game DLL identity differs from the verified prealpha.4 input")
+    require(game_dll is not None and sha256(game_dll) == "1c6d0a0370a2f9e8133deef574be2f2ecc0ee7ac1065e9eedddd7cc8554aea13", "Game DLL identity differs from the verified prealpha.5 input")
     server_delta = [
         name
         for name, old_payload, _mode in base_members[SERVER]
@@ -337,8 +376,8 @@ def run(args):
     )
 
     guide = source_blobs["packaging/COMPANION-ONLY-TEST-PACKAGE.md"]
-    historical_members = [("historical-prealpha4/input-freeze.json", base_files[FREEZE], 0o644)]
-    historical_members.extend((f"historical-prealpha4/{name}", payload, mode) for name, payload, mode in old_receipts)
+    historical_members = [("historical-prealpha5/input-freeze.json", base_files[FREEZE], 0o644)]
+    historical_members.extend((f"historical-prealpha5/{name}", payload, mode) for name, payload, mode in old_receipts)
     historical_members.append(("source-readiness.json", readiness_bytes, 0o644))
     receipts_archive = make_zip(sorted(historical_members, key=lambda item: item[0]))
 
@@ -354,13 +393,17 @@ def run(args):
         "sha256": readiness_hash,
         "ownerVersion": owner["version"],
         "closurePins": {"matched": len(pins), "total": len(pins)},
+        "department": {
+            "protocol": {"file": protocol["file"], "sha256": protocol["sha256"]},
+            "adapter": {"file": adapter["file"], "sha256": adapter["sha256"]},
+        },
         "checks": checks,
         "limits": limits,
     }
     limitations = [
-        "This package carries source-only dev.21 owner pairing evidence; no database, HTTP, Skyrim, owner-runtime, or gameplay execution is claimed.",
-        "The historical prealpha.4 receipts and freeze are retained under historical-prealpha4/ for provenance and do not certify dev.21.",
-        "The game-data archive, including the DLL, is reused byte-for-byte from the verified prealpha.4 download.",
+        "This package carries source-only MP 0.1.30 pairing evidence: seven closure pins and five read-only source checks passed. Pure owner readers were loaded; no database, HTTP, Skyrim, owner runtime, or gameplay execution is claimed.",
+        "The prealpha.5 freeze and seven existing receipt members are retained under historical-prealpha5/; their dev.21 readiness remains historical and does not certify MP 0.1.30 or this candidate.",
+        "The game-data and notices archives, including the DLL, are reused byte-for-byte from the verified prealpha.5 download.",
     ]
     source_summary = {
         "commit": commit,
@@ -404,8 +447,10 @@ def run(args):
         "freeze": {"name": FREEZE, "sha256": sha256(freeze_bytes)},
         "historicalEvidence": {
             "tag": BASE_TAG,
-            "pathPrefix": "historical-prealpha4/",
-            "gateReceiptCount": len(old_receipts),
+            "pathPrefix": "historical-prealpha5/",
+            "freezePath": "historical-prealpha5/input-freeze.json",
+            "receiptMemberCount": len(old_receipts),
+            "readinessPath": "historical-prealpha5/source-readiness.json",
             "certifiesCandidate": False,
         },
         "inputs": {
@@ -455,7 +500,16 @@ def run(args):
     require(all(generated_candidate[name] == data for name, data, _mode in candidate_members), "Candidate archive contains mismatched assets")
     generated_receipts = {name: payload for name, payload, _mode in zip_members(receipts_archive, RECEIPTS)}
     require(generated_receipts["source-readiness.json"] == readiness_bytes, "Source readiness evidence changed in the receipt archive")
-    require("historical-prealpha4/Department-SealedFates-dev20-pairing.zip" not in generated_receipts, "Dev.20 pairing sidecar must not be included as dev.21 evidence")
+    require(len(generated_receipts) == len(old_receipts) + 2, "Historical receipts or current readiness member count changed")
+    require(generated_receipts["historical-prealpha5/input-freeze.json"] == base_files[FREEZE], "Prealpha.5 freeze evidence changed in the receipt archive")
+    require(
+        all(generated_receipts[f"historical-prealpha5/{name}"] == payload for name, payload, _mode in old_receipts),
+        "Historical receipt payloads changed in the receipt archive",
+    )
+    require(
+        not any(name.endswith("Department-SealedFates-dev20-pairing.zip") for name in generated_receipts),
+        "Dev.20 pairing sidecar must not be included as current evidence",
+    )
 
     output.mkdir(exist_ok=True)
     for name in OUTPUT_NAMES:
@@ -464,16 +518,16 @@ def run(args):
     require({path.name for path in output.iterdir()} == set(OUTPUT_NAMES), "Written release asset set differs from the checksum manifest")
     for name in OUTPUT_NAMES:
         require(sha256((output / name).read_bytes()) == sha256(assets[name]), f"Written asset self-check failed: {name}")
-    print(f"Prepared {len(OUTPUT_NAMES)} deterministic prealpha.5 assets from source {commit}.")
-    print(f"Source-only readiness: dev.21, {len(pins)}/{len(pins)} closure pins, five checks passed.")
+    print(f"Prepared {len(OUTPUT_NAMES)} deterministic prealpha.6 assets from source {commit}.")
+    print(f"Source-only readiness: MP 0.1.30, {len(pins)}/{len(pins)} closure pins, five checks passed.")
     print(f"Server payload delta: {SERVER_ADAPTER}; game and notices archives reused byte-for-byte.")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--base-assets", required=True, help="verified prealpha.4 public downloads directory")
+    parser.add_argument("--base-assets", required=True, help="verified prealpha.5 public downloads directory")
     parser.add_argument("--source-commit", required=True, help="full committed Git SHA-1 for the exact source tree")
-    parser.add_argument("--readiness", required=True, help="source-only dev.21 pairing receipt JSON")
+    parser.add_argument("--readiness", required=True, help="source-only MP 0.1.30 pairing receipt JSON")
     parser.add_argument("--output", required=True, help="new absent or empty release asset directory")
     args = parser.parse_args()
     try:
