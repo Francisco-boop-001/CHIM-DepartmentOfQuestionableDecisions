@@ -97,3 +97,14 @@ Luna/max implemented the bounded adapter and fixture changes. Root and Sealed Fa
 Published [v0.1.0-prealpha.4](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.4) from frozen source 08680e31635a4ed91bd9efcb46d7d9b8f30d95e1 at 2026-10-21T22:34:20Z. Root archive/Git closure and independent Sealed Fates review passed: 128 sources, 133 inputs, five gates, 33 actual facade cases and 11 prechecks. All eleven anonymous asset downloads and 128 tagged source files match. Ordinary GNU checks pass all nine canonical entries and all four entries extracted from the public pairing sidecar. The three older tags and thirty assets are unchanged. Metadata checks used the authenticated GitHub CLI after the anonymous API rate limit; asset and source-archive downloads remained anonymous.
 
 This documentation-only completion commit leaves the frozen tag and every published asset unchanged. Native/UI/private-route execution remains reused after input checks; actual Skyrim acceptance is pending. CHIM core, installed game and live server remain untouched. TEST and the owned PostgreSQL cluster were stopped; no further Department WSL run is queued.
+
+## Sealed Fates dev.21 pin update
+
+Goal: accept exact dev.21 sources through the existing dev.20 behavior paths, with no native/UI/core or owner changes. Reuse this idle worktree; no new artifact tree or WSL runtime.
+
+- [x] Luna/max: add exact dev.21 closure pins and the three existing capability selections, plus one focused regression.
+- [x] Root: review the complete small diff; verify exact source pairing, drift refusal, unchanged dev.20 acceptance and unsupported-version refusal.
+- [x] Record verification limits and prepare the bounded source update for commit/push; no release repackaging.
+
+### Review
+Root compared all 26 owner server files against dev.20: only manifest.json and lib/offscreen.php changed. The unmodified adapter refused dev.21 with owner_version_unsupported. The updated adapter passed the focused dev21 source-contract regression, the unchanged dev20 source-contract control, and the real source-only pairing CLI (13/13 closure pins, all five readiness checks, no owner runtime/database/HTTP/Skyrim). The regression checks both changed-file drift refusals and unlisted dev.19/dev.22 capability/version refusal. Only the new exact source table and three existing capability selections change production behavior. README and pairing notes distinguish current main from the immutable prealpha.4 package. This is a source commit checkpoint; commit/push follows verification. No new artifact tree, WSL/runtime start, native build, owner/core/live change or installation occurred. Historical dev.20 behavior evidence is not a newly executed dev.21 PostgreSQL or gameplay result.

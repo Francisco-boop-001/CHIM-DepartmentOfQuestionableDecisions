@@ -29,3 +29,15 @@ A focused native-PHP self-check covers the current dev.20 candidate, the prealph
 ```
 
 `$publishedDepartmentServerRoot` must contain the published prealpha.3 adapter at `adapters/correspondence.php` and its matching protocol at `lib/protocol.php`. The self-check creates private temporary owner copies for negative cases and removes them afterward; it does not edit the shared candidate. One harmless fake adapter intentionally includes a staged owner stub to confirm the checker sets ownerRuntimeLoaded and refuses readiness.
+
+## Dev.21 pin update
+
+Current `main` adds exact dev.21 to the existing dev.20 restore-fence, signed-unknown and operator-close selections. The 13-file closure differs only in `manifest.json` and `lib/offscreen.php`; the latter removes NPC metadata shape checks that could defer otherwise eligible mail. Runtime/store/bootstrap/migrations remain byte-identical to the accepted dev.20 pins. Do not edit the owner manifest to bypass version refusal. Published prealpha.4 remains unchanged and refuses dev.21.
+
+Run the focused regression with the exact dev.21 server directory, then the normal source pairing command above:
+
+```powershell
+& $php -n server/tests/correspondence/dev21-source-contract.php --owner-root $ownerServerRoot
+```
+
+These checks establish exact source readiness, capability selection and fail-closed drift handling. They do not rerun the historical dev.20 PostgreSQL gate or certify dev.21 gameplay. No native recompilation is needed.
