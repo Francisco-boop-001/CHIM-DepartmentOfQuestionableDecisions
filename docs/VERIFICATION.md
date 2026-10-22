@@ -41,3 +41,9 @@ The mod supplies its own DLL and nine game files. It does not replace AIAgent.dl
 The stock NPC router can choose another same-named body after companion checks. Detectable fresh ambiguity is refused; that stock API does not guarantee atomic final speaker/body identity. A consumed PCV token proves owner-preprocessing acceptance, not audible delivery. Queued correspondence is not receipt-confirmed delivery or observed item/gold transfer. Signed unknown deltas remain unconfirmed and must not trigger automatic resend.
 
 No Skyrim session, provider generation, audio, game focus/controller behavior, physical transfers, save/load, performance, broad mod coexistence or power-loss durability is accepted here. Run the [eight game checks](../packaging/COMPANION-ONLY-TEST-PACKAGE.md) in a disposable profile and save.
+
+## Prealpha.5: dev.21 source-compatibility repack
+
+This release changes only the installed Correspondence adapter from prealpha.4. The game/DLL and notices archives are reused unchanged, and the source archive follows the committed explicit source allowlist. The focused dev.21 regression and source-only pairing probe passed against the exact 13-file closure; the unchanged dev.20 source-contract control passed. This is not a rerun of the historical dev.20 PostgreSQL gate or native/private-route/UI suites.
+
+Package verification covers safe unique archive members, exact source/member hashes, the single-file server delta, unchanged game/DLL bytes, ordinary LF checksums and downloaded release bytes. The manifest and receipts distinguish this new source/package evidence from the original five prealpha.4 gate receipts stored under historical-prealpha4/. No old dev.20 pairing-proof sidecar is presented as dev.21 proof. Skyrim/gameplay and real transfer acceptance remain pending.

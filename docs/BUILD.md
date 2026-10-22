@@ -177,3 +177,13 @@ $releaseAssetsDirectory = 'C:\path\to\fresh-release-assets'
 The generated assets are a 185-byte ESP and a 4-byte SEQ; they use one light-plugin slot and no full-plugin slot. The candidate bundles nine game files, 24 server files, seven notices, and the explicit source allowlist at the archive root. It does not reuse an older game-data ZIP. The PCV 0.1.22 overlay is seven flat files and must be installed over the complete supported owner release.
 
 Before testing, read the [project overview](../README.md), [test-profile setup](TEST-PROFILE-SETUP.md), [state-recovery policy](STATE-RECOVERY-POLICY.md), and [verification record](VERIFICATION.md). The verification record and package guide retain the stock router's same-name final body-selection limitation. Consumed PCV text is acceptance at the owner preprocessing boundary; it does not prove model processing or audio. Queued correspondence is not receipt-confirmed delivery or an observed transfer. The eight game checks in [the release guide](../packaging/COMPANION-ONLY-TEST-PACKAGE.md) remain pending until performed in Skyrim.
+
+## Reproduce the prealpha.5 source-compatibility repack
+
+This release reuses exact public prealpha.4 game/notices archives and replaces only the committed Correspondence adapter in its server archive. It does not invoke the native/Papyrus/full-candidate builders or create new runtime acceptance evidence. Preserve the downloaded base assets and verify their original SHA256SUMS.txt first.
+
+```powershell
+py -3 packaging/repack-source-compatibility.py --base-assets $prealpha4Assets --source-commit $releaseCommit --readiness $sourceReadinessJson --output $newReleaseDirectory
+```
+
+Use the immutable prealpha.5 source commit and its published source-readiness receipt (inside verification-receipts.zip). The source archive follows the committed explicit allowlist; untracked files are excluded. Output must be a new directory. The repack records current package/source hashes and keeps the old receipts/freeze under historical-prealpha4/ only. Ordinary sha256sum --check SHA256SUMS.txt verifies the nine canonical assets. This is source/package evidence; dev.21 PostgreSQL, HTTP, providers and Skyrim are not rerun or certified.

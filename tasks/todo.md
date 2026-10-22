@@ -108,3 +108,12 @@ Goal: accept exact dev.21 sources through the existing dev.20 behavior paths, wi
 
 ### Review
 Root compared all 26 owner server files against dev.20: only manifest.json and lib/offscreen.php changed. The unmodified adapter refused dev.21 with owner_version_unsupported. The updated adapter passed the focused dev21 source-contract regression, the unchanged dev20 source-contract control, and the real source-only pairing CLI (13/13 closure pins, all five readiness checks, no owner runtime/database/HTTP/Skyrim). The regression checks both changed-file drift refusals and unlisted dev.19/dev.22 capability/version refusal. Only the new exact source table and three existing capability selections change production behavior. README and pairing notes distinguish current main from the immutable prealpha.4 package. This is a source commit checkpoint; commit/push follows verification. No new artifact tree, WSL/runtime start, native build, owner/core/live change or installation occurred. Historical dev.20 behavior evidence is not a newly executed dev.21 PostgreSQL or gameplay result.
+
+## Prealpha.5 dev.21 downloadable repack
+
+- [x] Prepare the deterministic repack script and source checkpoint using public prealpha.4 inputs; archive construction follows this commit.
+- [ ] Root review: validate archive paths/member hashes, exact one-file server delta, unchanged game/DLL bytes and ordinary checksums; no broad suites or runtime starts.
+- [ ] Publish a new immutable pre-release, download its assets once and confirm hashes; leave earlier releases unchanged.
+
+### Review
+Source checkpoint: Luna/max implemented the bounded repack and root reviewed its complete data flow. Root caught and fixed the checksum asset-set split before execution. Exact committed blobs and the source allowlist gate the source archive; old component/member hashes gate reused input. Package execution, independent archive/checksum review and public verification follow this immutable source checkpoint. Publication is authorized; installation is not performed. Historical dev.20 runtime evidence remains historical.
