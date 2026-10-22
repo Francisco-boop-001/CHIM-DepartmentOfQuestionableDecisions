@@ -53,3 +53,24 @@ php -n server/tests/mp/source-contract.php --owner-root <frozen MP server>
 The accepted source identity is commit 3ce96b5640796db948dae33444dd403ea4ed74a6. A successful source-readiness receipt binds the exact Department protocol and adapters/mp.php hashes plus seven ordered owner pins: manifest.json, dashboard_data.php, store.php, influence.php, intimacy.php, logging.php, and restore_policy.php. Its checks exactSourceReady, storeReadAccepted, oldVersionRefused, unsupportedVersionRefused, and everyPinDriftRefused must all be true.
 
 The prealpha.6 probe passed all seven pins and all five checks. It loads only the pinned pure reader sources and the Department read-only inspector interface. The receipt records sourceOnly=true, database=false, http=false, skyrim=false, ownerRuntimeLoaded=false, and ownerPureReadersLoaded=true. This is exact source/read-only contract evidence; it does not execute the owner runtime, database, HTTP/provider path, or Skyrim gameplay.
+
+## Prealpha.7 owner source matrix
+
+| Owner | Exact supported source | Department source gate |
+| --- | --- | --- |
+| Private Conversation | private_conversation-v0.1.23, commit 77265202d7f4a47b88e1eb88131b21f4b0752020 | server/tests/pcv/owner_source_contract.php; checks the seven-file .23 overlay, adapter pins, owner reader shape, callback locks, and preserved original input fallback. |
+| Mind Poisoning | 0.1.30, commit 3ce96b5640796db948dae33444dd403ea4ed74a6 | Retained from prealpha.6. The package requires its adapter bytes to match the prealpha.6 server member; the old receipt stays historical. |
+| Sworn & Scorned | sworn_and_scorned-v0.1.12, commit 9479f407c5936c008884442be49bced37ccbd06e | server/tests/sas/source-contract.php; six exact owner pins and the focused adapter/reader refusal checks. |
+| Sealed Fates | correspondence-v0.1.0-dev.22, commit 4989d9e5fe4f75d4e235c1233e715f65a0c71378 | server/tests/correspondence/check-owner-pairing.php; the exact 13-file closure and Department protocol/adapter pairing. |
+
+Run the three current source checks against their exact inputs:
+
+~~~powershell
+php -n server/tests/pcv/owner_source_contract.php
+php -n server/tests/sas/source-contract.php --owner-root <SAS-0.1.12-server-root>
+php -n server/tests/correspondence/check-owner-pairing.php --owner-root <Sealed-Fates-dev.22-server-root> --department-root <Department-server-root>
+~~~
+
+The PCV checker reads the committed .23 staged owner source and packaging/companion-only/pcv-0.1.23-source-manifest.json. That manifest lists the seven installed filenames and each upstream baseSha256 and shipped postimageSha256. Before installing the overlay, compare every existing file under ext/private_conversation/ with its base hash; stop on any mismatch. Install the complete PCV 0.1.23 owner release first, then apply the seven overlay files. The overlay does not replace CHIM core or the complete owner release. The original PCV input method remains available when the Department companion is disabled.
+
+The combined package receipt extracts the three owner JSON reports and binds them to the exact Department adapter source hashes and hashes for changed installed production inputs. PCV and SAS receipts are focused source contracts; Correspondence uses the full 13-pin pairing CLI. MP 0.1.30 has no new pairing probe in this repack: its adapter is byte-compared with the prealpha.6 server payload and its earlier readiness receipt is preserved as historical. These checks establish source identity and adapter pairing only. They do not execute owner runtimes, databases, HTTP/provider paths, native code, or Skyrim gameplay.

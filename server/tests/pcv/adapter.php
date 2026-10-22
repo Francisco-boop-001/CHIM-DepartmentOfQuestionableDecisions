@@ -5,12 +5,12 @@ require_once __DIR__ . '/../../adapters/runtime_support.php';
 require_once __DIR__ . '/../../adapters/pcv.php';
 require_once __DIR__ . '/../../lib/protocol.php';
 
-$pcvRoot = dirname(__DIR__, 3) . '/pcv-companion/private-conversation-v0.1.22/server';
+$pcvRoot = dirname(__DIR__, 3) . '/pcv-companion/private-conversation-v0.1.23/server';
 putenv('QD_PCV_ROOT=' . $pcvRoot);
 putenv('QD_CHIM_ROOT=' . dirname(__DIR__) . '/pcv/fixtures/installed-dev14-core');
 $manifest = json_decode((string)file_get_contents($pcvRoot . '/manifest.json'), true, 8, JSON_THROW_ON_ERROR);
-if (($manifest['version'] ?? null) !== '0.1.22') {
-    throw new RuntimeException('fixture must use the pinned Private Conversation 0.1.22 source');
+if (($manifest['version'] ?? null) !== '0.1.23') {
+    throw new RuntimeException('fixture must use the pinned Private Conversation 0.1.23 source');
 }
 qd_pcv_load_owner_sources();
 

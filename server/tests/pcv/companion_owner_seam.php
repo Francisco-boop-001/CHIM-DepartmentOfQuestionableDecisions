@@ -4,7 +4,7 @@ declare(strict_types=1);
 define('PCV_LOG_TESTING', true);
 $implementationRoot = dirname(__DIR__, 3);
 $pinnedOwnerRoot = $implementationRoot . DIRECTORY_SEPARATOR . 'pcv-companion' . DIRECTORY_SEPARATOR
-    . 'private-conversation-v0.1.22' . DIRECTORY_SEPARATOR . 'server';
+    . 'private-conversation-v0.1.23' . DIRECTORY_SEPARATOR . 'server';
 
 function companion_owner_check(bool $condition, string $message): void
 {
@@ -67,7 +67,7 @@ mkdir($fixtureOwnerRoot, 0700, true);
 $logSource = file_get_contents($pinnedOwnerRoot . DIRECTORY_SEPARATOR . 'log.php');
 companion_owner_check(is_string($logSource)
     && hash_equals('0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56', strtolower(hash('sha256', $logSource))),
-    'the isolated test must start from the exact frozen PCV 0.1.22 logger.');
+    'the isolated test must start from the exact frozen PCV 0.1.23 logger.');
 $uidFunction = <<<'SOURCE'
 function pcv_log_effective_uid(): ?int
 {
@@ -399,6 +399,18 @@ try {
     companion_owner_check(($activeKept['_companionOutcome'] ?? null) === 'known_no_write' && $activeGuardAccepted === true,
         'An already-active send must authorize the target from the owner in-scene map.');
 
+    $rejectedReplacement = pcv_stage($key, $config, $known, $stateDirectory);
+    companion_owner_check(($rejectedReplacement['status'] ?? null) === 'active'
+        && is_string($rejectedReplacement['pending_config_id'] ?? null),
+        'an active-scene replacement must be staged with its own pending identity.');
+    $rejectedReplacementBegin = pcv_begin_request($key, true, $stateDirectory, ['2' => 'Aela'], ['1' => 'Lydia', '2' => 'Aela']);
+    $afterRejectedReplacement = pcv_load_store($stateDirectory);
+    companion_owner_check(($rejectedReplacementBegin['reason'] ?? null) === 'scene_not_eligible'
+        && ($rejectedReplacementBegin['pending'] ?? null) === false
+        && ($afterRejectedReplacement['state']['active']['config_id'] ?? null) === $originalPendingId
+        && ($afterRejectedReplacement['state']['pending'] ?? null) === null,
+        'a rejected replacement must be consumed while the existing active scene remains unchanged.');
+
     $strictOnlyActiveAccepted = null;
     $strictOnlyActive = pcv_begin_request($key, true, $stateDirectory, ['1' => 'Lydia', '2' => 'Aela'], null, null, null, true,
         static function (array $before, array $after, array $metadata, callable $commit) use (&$strictOnlyActiveAccepted, $activePacket, $known): array {
@@ -439,11 +451,18 @@ try {
         && ($includedInput['game_request'][3] ?? null) === 'Dragonborn:' . $literal,
         'the frozen owner must preserve the original UTF-8, pipe, and newline origin dialogue when the player is included.');
 
+    $sceneDirectionInput = pcvPrepareScopedInput($ownerInput, [], $includedScope, 'Dragonborn', 'STANDARD', true);
+    companion_owner_check(($sceneDirectionInput['status'] ?? null) === 'applied'
+        && ($sceneDirectionInput['game_request'][0] ?? null) === 'instruction'
+        && ($sceneDirectionInput['game_request'][3] ?? null) === 'Dragonborn: ' . $literal,
+        'an explicit wrap-up direction must use the owner instruction route even when the player is included.');
+
     $ownerPreprocessingPath = $pinnedOwnerRoot . DIRECTORY_SEPARATOR . 'preprocessing.php';
     $ownerPreprocessingSource = file_get_contents($ownerPreprocessingPath);
     companion_owner_check(is_string($ownerPreprocessingSource)
         && str_contains($ownerPreprocessingSource, '$gameRequest = $GLOBALS[\'gameRequest\'] ?? null;')
         && str_contains($ownerPreprocessingSource, '$GLOBALS[\'gameRequest\'] = $prepared[\'game_request\'];')
+        && str_contains($ownerPreprocessingSource, '$prepared = pcvPrepareScopedInput($gameRequest, $snapshot, $resolvedScope, $playerName, $mode, $wrapUp);')
         && str_contains($ownerPreprocessingSource, '\'origin_dialogue\' => is_string($gameRequest[3] ?? null) ? $gameRequest[3] : null,'),
         'the nested-include regression must remain tied to the pinned owner request, prepare, and origin assignments.');
     $nestedOwnerProbePath = $tempRoot . DIRECTORY_SEPARATOR . 'nested-owner-probe.php';

@@ -1,10 +1,10 @@
 <?php
 declare(strict_types=1);
 
-const QD_SAS_EXPECTED_VERSION = '0.1.11';
+const QD_SAS_EXPECTED_VERSION = '0.1.12';
 const QD_SAS_LEDGER_MAX_BYTES = 65536;
 const QD_SAS_EXPECTED_SOURCE_HASHES = [
-    'manifest.json' => 'b208a439407fba5c26ec15b3e75829f37b4bde43c6306bc8f38a9323ec60bd39',
+    'manifest.json' => 'cca252133723d6667d65b93034d6c3b6173fb6a71a3f18b41e4ec322dcd96743',
     'ledger.php' => 'cb59355c40fc74a8bd7119d810de2c82457a5b8e6b6453923e226900e4a80375',
     'substance.php' => '30c4086c46a280009c11cfc22f3964f1ed9d72d8a6779938d6790d5057021852',
     'vocab.php' => 'a24b6d116d304adbf504eafc1be29899dbc15b89e4a3d4b9ed0fdf458bec5d5b',

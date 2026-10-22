@@ -330,6 +330,7 @@ if ($isContinuation) {
 // 0.1.14 G6: "wrap up: <how>" makes this the closing turn of a pair, group or free scene; the scene ends after it.
 $wrapUp = false;
 if (($inGameCommand['command'] ?? null) === 'wrap' && ($resolvedScope['scene_mode'] ?? 'pair') !== 'solo') {
+    // Normalize before the shared prefix check; $wrapUp makes included-player input use that same validation path.
     $gameRequest[3] = $playerName . ': ' . $inGameCommand['direction'];
     $wrapUp = true;
 }
@@ -369,7 +370,7 @@ try {
         }
         $GLOBALS['gameRequest'] = $gameRequest;
     }
-    $prepared = pcvPrepareScopedInput($gameRequest, $snapshot, $resolvedScope, $playerName, $mode);
+    $prepared = pcvPrepareScopedInput($gameRequest, $snapshot, $resolvedScope, $playerName, $mode, $wrapUp);
 } catch (Throwable $error) {
     pcvRoutingLogException('preprocessing', $error, $state);
     throw $error;
@@ -385,10 +386,11 @@ if (($prepared['status'] ?? null) !== 'applied') {
     pcvBlockRequest('Private Conversation input could not be routed safely; request stopped.', $reason, 'preprocessing', $state);
 }
 $GLOBALS['gameRequest'] = $prepared['game_request'];
+$gameRequest = $prepared['game_request'];
 $GLOBALS['requestRoutingSnapshot'] = $prepared['routing_snapshot'];
 $route = ($resolvedScope['scene_mode'] ?? 'pair') === 'solo'
     ? 'solo_reflection'
-    : (($resolvedScope['exclude_player'] ?? true) ? 'scene_direction' : 'player_speech');
+    : (($wrapUp || ($resolvedScope['exclude_player'] ?? true)) ? 'scene_direction' : 'player_speech');
 $baselineOutputLog = is_array($GLOBALS['DEBUG_DATA'] ?? null) && is_string($GLOBALS['DEBUG_DATA']['OUTPUT_LOG'] ?? null)
     ? $GLOBALS['DEBUG_DATA']['OUTPUT_LOG'] : '';
 // Group scenes: the member named earliest in the direction opens, else the picked opener, else the first member.

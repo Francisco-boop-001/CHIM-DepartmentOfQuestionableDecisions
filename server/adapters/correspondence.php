@@ -81,6 +81,21 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
         'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
     ],
+    '0.1.0-dev.22' => [
+        'manifest.json' => '5f097681f29917d6e00614fc62cbd71e8e98d414eec240dce5d9348ef2e6bbc5',
+        'lib/runtime.php' => 'dd12d1389c0547b71eaf4d4e5be242b8aed2a45763a95626ada83434cf014e12',
+        'lib/store.php' => '84d0b6b3e9719dba8ddd0dc724a1c1e10bf14d3f0897c81edb758f8deaf5ee8c',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => '284b0b27eabe2f7d9139bef99743f9213a2a6a57f99c138bfc66ca3cffa5650f',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => '0c656dd2db24a13cca49261d0e57d3c0f5da0e3a02a54c2843140d737aad9f6c',
+        'lib/autonomy_host.php' => 'dfa257dbb68f1ade87b7f13750e4fb25dd306c695b3c4ddd070e7ca1a4140a61',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => '2361f65178d08649e1056a79fc8abd80fd7983e5eda6e7fb18aa5851bc52b568',
+        'lib/offscreen_host.php' => '3b5fbb791b93bf9b719da8bbeeee7313be3699375fd2eb04aa050f8c3242a1f1',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -185,7 +200,7 @@ function qd_correspondence_loaded_source_version(): string
 
 function qd_correspondence_version_uses_restore_fence(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21'], true);
+    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22'], true);
 }
 
 function qd_correspondence_uses_restore_fence(): bool
@@ -195,12 +210,12 @@ function qd_correspondence_uses_restore_fence(): bool
 
 function qd_correspondence_version_supports_signed_unknown(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21'], true);
+    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22'], true);
 }
 
 function qd_correspondence_version_supports_operator_close(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21'], true);
+    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22'], true);
 }
 
 function qd_correspondence_runtime_ready(): bool

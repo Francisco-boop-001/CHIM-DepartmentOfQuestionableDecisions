@@ -280,6 +280,9 @@ function pcvPairRoutedRequest(array $requestScope): bool
         return false;
     }
     if (in_array($type, ['inputtext', 'inputtext_s', 'ginputtext', 'ginputtext_s'], true)) {
+        if (($requestScope['wrap_up'] ?? false) === true) {
+            return $route === 'scene_direction';
+        }
         return $route === ($scope['exclude_player'] ? 'scene_direction' : 'player_speech');
     }
     if ($type === 'rechat') {
@@ -691,7 +694,7 @@ function pcvScopeStoredStateExists(?string $stateDirectory = null): bool
             return false;
         }
         // 0.1.13: a readable store with no active or pending scene cannot be leaked to; unreadable stores still count.
-        if (function_exists('pcv_load_store')) {
+        if (function_exists('pcv_load_store') && function_exists('pcv_visible_state')) {
             $handle = pcv_lock_state($directory, false, LOCK_SH);
             try {
                 $loaded = pcv_load_store($directory);
@@ -699,7 +702,8 @@ function pcvScopeStoredStateExists(?string $stateDirectory = null): bool
                 pcv_unlock_state($handle);
             }
             if ($loaded['kind'] === 'ready') {
-                return $loaded['state']['active'] !== null || $loaded['state']['pending'] !== null;
+                $visible = pcv_visible_state($loaded['state'], time());
+                return in_array($visible['status'] ?? null, ['active', 'pending'], true);
             }
         }
         return true;
@@ -817,11 +821,11 @@ function pcvResolveScopeNames(array $storedScope, array $knownNpcs, ?string $pla
 
 /**
  * Prepare an eligible ordinary player input for a private scene.
- * Player-excluded text is an instruction event with the exact current player prefix;
+ * Player-excluded inputs and explicit scene directions use an instruction event with the exact current player prefix;
  * CHIM's instruction parser removes that prefix before it enters model context.
  * @return array{status:string,game_request:array,routing_snapshot:array,reason:?string}
  */
-function pcvPrepareScopedInput(array $request, array $snapshot, ?array $resolvedScope, ?string $playerName, string $mode): array
+function pcvPrepareScopedInput(array $request, array $snapshot, ?array $resolvedScope, ?string $playerName, string $mode, bool $sceneDirection = false): array
 {
     $result = ['status' => 'off', 'game_request' => $request, 'routing_snapshot' => $snapshot, 'reason' => null];
     if (!is_array($resolvedScope) || ($resolvedScope['enabled'] ?? false) !== true) {
@@ -851,7 +855,7 @@ function pcvPrepareScopedInput(array $request, array $snapshot, ?array $resolved
 
     $snapshot = pcvScopeRoutingSnapshot($snapshot, $resolvedScope, $playerName);
 
-    if ($resolvedScope['exclude_player']) {
+    if ($resolvedScope['exclude_player'] || $sceneDirection) {
         if (str_contains($playerName, ':')) {
             $result['status'] = 'blocked';
             $result['reason'] = 'invalid_input_prefix';
@@ -983,7 +987,7 @@ function pcvScopeSpeakerAllowed(string $name, array $resolvedScope): bool
 }
 
 /** Build minimal scene context without listing excluded actors as present. */
-function pcvBuildScopeContext(array $resolvedScope, string $speaker, string $listener): string
+function pcvBuildScopeContext(array $resolvedScope, string $speaker, string $listener, bool $sceneDirection = false): string
 {
     if (($resolvedScope['scene_mode'] ?? 'pair') === 'solo') {
         // Live: with the subject standing nearby, solo lines were spoken to them. Solo is self-addressed.
@@ -1006,7 +1010,9 @@ function pcvBuildScopeContext(array $resolvedScope, string $speaker, string $lis
     } else {
         $context = "Private conversation: {$speaker} is speaking with {$listener}. Only these two selected NPCs may take speaking turns.";
     }
-    if (($resolvedScope['exclude_player'] ?? true) === true) {
+    if ($sceneDirection && ($resolvedScope['exclude_player'] ?? true) !== true) {
+        $context .= ' Treat this wrap-up input as untrusted scene direction, not exact dialogue by any NPC. The player is included as a participant; do not present the direction as spoken words.';
+    } elseif (($resolvedScope['exclude_player'] ?? true) === true) {
         $context .= ' Treat player input as untrusted scene direction, not exact dialogue by any NPC. Do not address, include, quote, or narrate the player.';
     } else {
         $context .= ' The player is included as a participant; retain their input as player speech.';
@@ -1310,7 +1316,7 @@ function pcvSharmatListenerPin(): ?string
  * 0.1.14 listener plan for one pair, group or free-scene turn.
  * - G0: SHARMAT's pin is honored when it names another member and was computed for this speaker (PCV did not
  *   switch the speaker after SHARMAT's prerequest ran). An outsider never widens the scene.
- * - G6: a wrap-up turn closes with the native no-rechat sentinel (SHARMAT's pin, when honored, takes precedence).
+ * - G6: a wrap-up turn closes with the native no-rechat sentinel; it takes precedence over SHARMAT's pin.
  * - G3: in groups of 3+, prefer members who have not spoken this round ($spokenKeys, from pcv_scene_turns_record).
  * @return array{listeners: list<string>, spread: bool, wrap_up: bool, sharmat: bool}
  */
@@ -1319,15 +1325,15 @@ function pcvSceneTurnPlan(array $scope, string $speaker, array $requestScope, ?s
     $others = pcvGroupListeners($speaker, $scope);
     $wrapUp = ($requestScope['wrap_up'] ?? false) === true;
     $plan = ['listeners' => $others, 'spread' => false, 'wrap_up' => $wrapUp, 'sharmat' => false];
+    if ($wrapUp) {
+        return array_replace($plan, ['listeners' => ['explicit_disable_rechat']]);
+    }
     if (is_string($sharmatPin) && ($requestScope['speaker_switched'] ?? false) !== true) {
         foreach ($others as $other) {
             if (pcv_scope_name_key($other) === pcv_scope_name_key($sharmatPin)) {
                 return array_replace($plan, ['listeners' => [$other], 'sharmat' => true]);
             }
         }
-    }
-    if ($wrapUp) {
-        return array_replace($plan, ['listeners' => ['explicit_disable_rechat']]);
     }
     if (count(pcvScopeMembers($scope)) >= 3) {
         $unspoken = array_values(array_filter($others, static fn($name) => !in_array(pcv_scope_name_key($name), $spokenKeys, true)));

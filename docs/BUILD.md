@@ -174,9 +174,11 @@ $releaseAssetsDirectory = 'C:\path\to\fresh-release-assets'
 
 ## Identity and acceptance limits
 
-The generated assets are a 185-byte ESP and a 4-byte SEQ; they use one light-plugin slot and no full-plugin slot. The candidate bundles nine game files, 24 server files, seven notices, and the explicit source allowlist at the archive root. It does not reuse an older game-data ZIP. The PCV 0.1.22 overlay is seven flat files and must be installed over the complete supported owner release.
+The generated assets are a 185-byte ESP and a 4-byte SEQ; they use one light-plugin slot and no full-plugin slot. The candidate bundles nine game files, 24 server files, seven notices, and the explicit source allowlist at the archive root. It does not reuse an older game-data ZIP. The PCV 0.1.23 overlay is seven flat files and must be installed over the complete supported owner release.
 
 Before testing, read the [project overview](../README.md), [test-profile setup](TEST-PROFILE-SETUP.md), [state-recovery policy](STATE-RECOVERY-POLICY.md), and [verification record](VERIFICATION.md). The verification record and package guide retain the stock router's same-name final body-selection limitation. Consumed PCV text is acceptance at the owner preprocessing boundary; it does not prove model processing or audio. Queued correspondence is not receipt-confirmed delivery or an observed transfer. The eight game checks in [the release guide](../packaging/COMPANION-ONLY-TEST-PACKAGE.md) remain pending until performed in Skyrim.
+
+Prealpha.5 and prealpha.6 reproduction recipes below refer to their original repack-script versions and base assets. Reproduce either release from its matching immutable tag; the current worktree recipe below is for prealpha.7.
 
 ## Reproduce the prealpha.5 source-compatibility repack
 
@@ -203,3 +205,27 @@ py -3 packaging/repack-source-compatibility.py --base-assets $prealpha5Assets --
 ~~~
 
 The base must be the exact public prealpha.5 release assets, and output must be a new directory. The repack verifies the old checksums and unchanged game/DLL/notices payloads, admits only committed source from the allowlist, and records the MP receipt with the current source identity. It preserves the prealpha.5 freeze and seven old receipt members under historical-prealpha5/ without recertifying them. This creates source/package evidence only; it does not build native or Papyrus components or establish runtime/gameplay behavior.
+
+## Reproduce the prealpha.7 multi-owner source/package repack
+
+Use exact owner source roots for Private Conversation 0.1.23, Sworn & Scorned 0.1.12, and Sealed Fates dev.22, plus the Department source tree at the frozen commit. MP 0.1.30 is carried forward unchanged from prealpha.6. The focused checks produce source-only JSON receipts:
+
+~~~powershell
+$pcvReceiptLines = & php -n server/tests/pcv/owner_source_contract.php
+if ($LASTEXITCODE -ne 0) { throw "PCV source check failed" }
+
+$sasReceiptLines = & php -n server/tests/sas/source-contract.php --owner-root $sasServerRoot
+if ($LASTEXITCODE -ne 0) { throw "SAS source check failed" }
+
+$departmentServerRoot = (Resolve-Path server).Path
+$sfReceiptLines = & php -n server/tests/correspondence/check-owner-pairing.php --owner-root $sfServerRoot --department-root $departmentServerRoot
+if ($LASTEXITCODE -ne 0) { throw "Correspondence pairing check failed" }
+~~~
+
+The PCV probe uses the committed .23 staged source and its seven-file source manifest. The SAS probe requires the exact .12 owner server directory. The Correspondence check requires the exact dev.22 owner server and this Department server directory. Capture their JSON outputs without altering the owner fields. The combined UTF-8 readiness receipt passed as $currentSourceReadinessJson has ready, owners.pcv, owners.sas, owners.correspondence, department.adapters, department.runtimeFiles, and the exact outer limits sourceOnly=true, database=false, http=false, skyrim=false, ownerRuntimeLoaded=false. The adapter map binds all three adapter source hashes; runtimeFiles binds changed server-component source inputs to their committed hashes, including the production files and packaged PCV provenance. The repack rejects a false check, pin mismatch, unbound adapter, or changed installed source omitted from that map.
+
+~~~powershell
+py -3 packaging/repack-source-compatibility.py --base-assets $prealpha6Assets --source-commit $releaseCommit --readiness $currentSourceReadinessJson --output $newReleaseDirectory
+~~~
+
+Use the exact public prealpha.6 assets and a new output directory outside the source worktree and base-assets directory. The source archive uses only the exact committed tracked tree covered by the explicit allowlist. The server archive is rebuilt from the explicit source-to-member map: it carries PCV 0.1.23, SAS 0.1.12, Correspondence dev.22, and the seven PCV overlay postimages, while the MP 0.1.30 adapter must equal the prealpha.6 bytes. The repack verifies the PCV manifest base/postimage hashes, the exact changed/added/removed server members, archive/member hashes, and unchanged game/DLL/notices bytes. It retains all nine prealpha.6 receipt members plus that freeze under historical-prealpha6/ byte-for-byte; their prealpha.5 history remains nested and historical. Four current receipt files contain the combined readiness input and the extracted PCV, SAS, and Correspondence receipts. The package establishes source/package identity only: it does not compile native/Papyrus components or establish database, HTTP/provider, Skyrim, or gameplay behavior.

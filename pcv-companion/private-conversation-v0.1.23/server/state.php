@@ -2326,6 +2326,11 @@ function pcv_begin_request(string $key, bool $eligible, ?string $stateDirectory 
             }
             if (!is_array($narrowed)) {
                 $blockedPending = $pending;
+                // Only a live scene can consume a rejected replacement; initial ARM remains retryable.
+                if (is_array($state['active'])) {
+                    $state['pending'] = null;
+                    $changed = true;
+                }
             } else {
                 if (array_key_exists('config_id', $pending) && !pcv_valid_config_id($configId)) {
                     $configId = null;
@@ -2469,8 +2474,14 @@ function pcv_begin_request(string $key, bool $eligible, ?string $stateDirectory 
             pcv_log_event('state.scope_skipped', 'info', 'skipped', 'scene_not_eligible', [
                 'operation' => 'begin', 'scene_mode' => $sceneMode,
             ]);
-            return pcv_result('unavailable', null, true, pcv_config_with_scene_mode($blockedPending['config']), null,
-                is_string($pendingConfigId) ? $pendingConfigId : null, 'scene_not_eligible');
+            $remainingPending = is_array($state['pending'] ?? null) ? $state['pending'] : null;
+            $remainingPendingConfigId = $remainingPending['config_id'] ?? null;
+            if (!is_string($remainingPendingConfigId) || !pcv_log_valid_uuid($remainingPendingConfigId)) {
+                $remainingPendingConfigId = null;
+            }
+            return pcv_result('unavailable', null, is_array($remainingPending),
+                is_array($remainingPending) ? pcv_config_with_scene_mode($remainingPending['config']) : null,
+                null, $remainingPendingConfigId, 'scene_not_eligible');
         }
         if (is_array($blockedActive)) {
             $activeConfigId = $blockedActive['config_id'] ?? null;

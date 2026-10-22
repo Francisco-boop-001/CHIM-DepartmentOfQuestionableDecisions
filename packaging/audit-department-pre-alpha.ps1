@@ -61,14 +61,14 @@ $script:ServerSpecs = @(
 	[pscustomobject]@{ Path = 'ext/pcv_companion/companion.php'; Source = 'pcv-companion/companion.php' }
 	[pscustomobject]@{ Path = 'ext/pcv_companion/globals.php'; Source = 'pcv-companion/globals.php' }
 	[pscustomobject]@{ Path = 'ext/pcv_companion/preprocessing.php'; Source = 'pcv-companion/preprocessing.php' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/installation_guard.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/installation_guard.php' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/log.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/log.php' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/manifest.json'; Source = 'pcv-companion/private-conversation-v0.1.22/server/manifest.json' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/preprocessing.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/preprocessing.php' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/reflection.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/reflection.php' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/scope.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/scope.php' }
-	[pscustomobject]@{ Path = 'ext/private_conversation/state.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/state.php' }
-	[pscustomobject]@{ Path = 'docs/pcv-0.1.22-source-manifest.json'; Source = 'packaging/companion-only/pcv-0.1.22-source-manifest.json' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/installation_guard.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/installation_guard.php' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/log.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/log.php' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/manifest.json'; Source = 'pcv-companion/private-conversation-v0.1.23/server/manifest.json' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/preprocessing.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/preprocessing.php' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/reflection.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/reflection.php' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/scope.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/scope.php' }
+	[pscustomobject]@{ Path = 'ext/private_conversation/state.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/state.php' }
+	[pscustomobject]@{ Path = 'docs/pcv-0.1.23-source-manifest.json'; Source = 'packaging/companion-only/pcv-0.1.23-source-manifest.json' }
 	[pscustomobject]@{ Path = 'docs/PCV-PROVENANCE.md'; Source = 'packaging/companion-only/PCV-PROVENANCE.md' }
 )
 $script:NoticeSpecs = @(
@@ -477,14 +477,14 @@ try {
 		[pscustomobject]@{ Path = 'ext/pcv_companion/companion.php'; Source = 'pcv-companion/companion.php' }
 		[pscustomobject]@{ Path = 'ext/pcv_companion/globals.php'; Source = 'pcv-companion/globals.php' }
 		[pscustomobject]@{ Path = 'ext/pcv_companion/preprocessing.php'; Source = 'pcv-companion/preprocessing.php' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/installation_guard.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/installation_guard.php' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/log.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/log.php' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/manifest.json'; Source = 'pcv-companion/private-conversation-v0.1.22/server/manifest.json' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/preprocessing.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/preprocessing.php' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/reflection.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/reflection.php' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/scope.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/scope.php' }
-		[pscustomobject]@{ Path = 'ext/private_conversation/state.php'; Source = 'pcv-companion/private-conversation-v0.1.22/server/state.php' }
-		[pscustomobject]@{ Path = 'docs/pcv-0.1.22-source-manifest.json'; Source = 'packaging/companion-only/pcv-0.1.22-source-manifest.json' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/installation_guard.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/installation_guard.php' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/log.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/log.php' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/manifest.json'; Source = 'pcv-companion/private-conversation-v0.1.23/server/manifest.json' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/preprocessing.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/preprocessing.php' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/reflection.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/reflection.php' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/scope.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/scope.php' }
+		[pscustomobject]@{ Path = 'ext/private_conversation/state.php'; Source = 'pcv-companion/private-conversation-v0.1.23/server/state.php' }
+		[pscustomobject]@{ Path = 'docs/pcv-0.1.23-source-manifest.json'; Source = 'packaging/companion-only/pcv-0.1.23-source-manifest.json' }
 		[pscustomobject]@{ Path = 'docs/PCV-PROVENANCE.md'; Source = 'packaging/companion-only/PCV-PROVENANCE.md' }
 	)
 	$script:NoticeSpecs = @(
@@ -571,7 +571,7 @@ try {
 		}
 	}
 
-	$pcvManifestInput = $script:InputRecords['packaging/companion-only/pcv-0.1.22-source-manifest.json']
+	$pcvManifestInput = $script:InputRecords['packaging/companion-only/pcv-0.1.23-source-manifest.json']
 	$pcvManifest = ConvertFrom-Json -InputObject (Convert-StrictUtf8 -Bytes ([IO.File]::ReadAllBytes($pcvManifestInput.fullPath)) -Label 'PCV source manifest') -AsHashtable -Depth 16
 	if ($pcvManifest.schemaVersion -ne 1 -or $pcvManifest.installDirectory -cne 'ext/private_conversation' -or $pcvManifest.files -isnot [array] -or $pcvManifest.files.Count -ne 7) {
 		throw 'PCV source manifest does not describe the seven-file companion input.'

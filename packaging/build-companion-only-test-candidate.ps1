@@ -62,14 +62,14 @@ $serverSpecs = @(
 	[pscustomobject]@{ Source = 'pcv-companion/companion.php'; Target = 'ext/pcv_companion/companion.php' }
 	[pscustomobject]@{ Source = 'pcv-companion/globals.php'; Target = 'ext/pcv_companion/globals.php' }
 	[pscustomobject]@{ Source = 'pcv-companion/preprocessing.php'; Target = 'ext/pcv_companion/preprocessing.php' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/installation_guard.php'; Target = 'ext/private_conversation/installation_guard.php' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/log.php'; Target = 'ext/private_conversation/log.php' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/manifest.json'; Target = 'ext/private_conversation/manifest.json' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/preprocessing.php'; Target = 'ext/private_conversation/preprocessing.php' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/reflection.php'; Target = 'ext/private_conversation/reflection.php' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/scope.php'; Target = 'ext/private_conversation/scope.php' }
-	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.22/server/state.php'; Target = 'ext/private_conversation/state.php' }
-	[pscustomobject]@{ Source = 'evidence/companion-only/server/pcv-0.1.22-source-manifest.json'; Target = 'docs/pcv-0.1.22-source-manifest.json' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/installation_guard.php'; Target = 'ext/private_conversation/installation_guard.php' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/log.php'; Target = 'ext/private_conversation/log.php' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/manifest.json'; Target = 'ext/private_conversation/manifest.json' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/preprocessing.php'; Target = 'ext/private_conversation/preprocessing.php' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/reflection.php'; Target = 'ext/private_conversation/reflection.php' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/scope.php'; Target = 'ext/private_conversation/scope.php' }
+	[pscustomobject]@{ Source = 'pcv-companion/private-conversation-v0.1.23/server/state.php'; Target = 'ext/private_conversation/state.php' }
+	[pscustomobject]@{ Source = 'evidence/companion-only/server/pcv-0.1.23-source-manifest.json'; Target = 'docs/pcv-0.1.23-source-manifest.json' }
 	[pscustomobject]@{ Source = 'packaging/companion-only/PCV-PROVENANCE.md'; Target = 'docs/PCV-PROVENANCE.md' }
 )
 $noticeSpecs = @(
@@ -85,8 +85,8 @@ $script:generatedInputsRootFullPath = $null
 if ($PreAlpha) {
 	$noticeSpecs += [pscustomobject]@{ Source = 'packaging/companion-only/notices/CHIM-Plugin-MIT-LICENSE.txt'; Target = 'notices/CHIM-Plugin-MIT-LICENSE.txt' }
 	$serverSpecs = @($serverSpecs | ForEach-Object {
-		$source = if ($_.Source -ceq 'evidence/companion-only/server/pcv-0.1.22-source-manifest.json') {
-			'packaging/companion-only/pcv-0.1.22-source-manifest.json'
+		$source = if ($_.Source -ceq 'evidence/companion-only/server/pcv-0.1.23-source-manifest.json') {
+			'packaging/companion-only/pcv-0.1.23-source-manifest.json'
 		} else { $_.Source }
 		[pscustomobject]@{ Source = $source; Target = $_.Target }
 	})
@@ -446,17 +446,17 @@ function Assert-RootFreeze {
 			throw 'PRE-ALPHA root freeze file set differs from the exact package input allowlist.'
 		}
 	}
-	$pcvManifestRelative = if ($PreAlpha) { 'packaging/companion-only/pcv-0.1.22-source-manifest.json' } else { 'evidence/companion-only/server/pcv-0.1.22-source-manifest.json' }
+	$pcvManifestRelative = if ($PreAlpha) { 'packaging/companion-only/pcv-0.1.23-source-manifest.json' } else { 'evidence/companion-only/server/pcv-0.1.23-source-manifest.json' }
 	$pcvManifest = Get-Content -LiteralPath (Resolve-ProjectFile $pcvManifestRelative) -Raw | ConvertFrom-Json -AsHashtable -Depth 16
-	$pcvSpecs = @($serverSpecs | Where-Object { $_.Source.StartsWith('pcv-companion/private-conversation-v0.1.22/server/', [StringComparison]::Ordinal) })
+	$pcvSpecs = @($serverSpecs | Where-Object { $_.Source.StartsWith('pcv-companion/private-conversation-v0.1.23/server/', [StringComparison]::Ordinal) })
 	$pcvInstallDirectory = [string]$pcvManifest.installDirectory
 	if ($pcvInstallDirectory -cne 'ext/private_conversation' -or $pcvSpecs.Count -ne 7 -or $pcvManifest.files -isnot [array] -or $pcvManifest.files.Count -ne 7) {
-		throw 'The PCV 0.1.22 install manifest or seven-file allowlist is malformed.'
+		throw 'The PCV 0.1.23 install manifest or seven-file allowlist is malformed.'
 	}
 	$manifestFiles = @{}
 	foreach ($file in $pcvManifest.files) {
 		if ($file.path -isnot [string] -or $file.path -notmatch '\A[A-Za-z0-9_.-]+\z' -or $file.postimageSha256 -cnotmatch '\A[0-9a-f]{64}\z' -or $manifestFiles.ContainsKey($file.path)) {
-			throw 'The PCV 0.1.22 source manifest has a malformed or duplicate file entry.'
+			throw 'The PCV 0.1.23 source manifest has a malformed or duplicate file entry.'
 		}
 		$manifestFiles[$file.path] = $file.postimageSha256
 	}

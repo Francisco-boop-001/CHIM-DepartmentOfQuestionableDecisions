@@ -33,3 +33,5 @@
 - Check new SQL against the pinned migration, including JSON-only fields. Keep client idempotency/request IDs separate from owner-generated operation UUIDs; verify links through the real document and operations row instead of equating independent identifiers.
 
 Preserve UTF-8 and existing per-file line endings during documentation edits. Scan changed prose for mojibake before freezing. In a byte-preserving repository, run Git whitespace checks with cr-at-eol rather than normalizing executed or frozen CRLF inputs; ordinary trailing spaces still fail.
+
+- Before reusing a test, inspect its loops and platform prerequisites. Run only changed-boundary checks; retention/load suites need a specific changed dependency to justify them. Enable the actual Unicode extension for Unicode fixtures, and keep stopped or prerequisite-failed runs separate from passing evidence.

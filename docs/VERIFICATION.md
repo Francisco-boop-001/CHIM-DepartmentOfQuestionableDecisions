@@ -60,3 +60,17 @@ The prealpha.6 candidate updates the Mind Poisoning source adapter for exact own
 | Historical receipts | The prealpha.5 freeze and its seven existing receipt members are preserved beneath historical-prealpha5/ with their original contents. They remain evidence for their original identities only; no older Sealed Fates/runtime receipt is recertified by the MP probe. |
 
 This remains a TEST/PRE-ALPHA source/package update, not Skyrim acceptance. Previously recorded critique findings and known limits remain unresolved.
+
+## Prealpha.7 source/package candidate
+
+The prealpha.7 source/package candidate advances the Private Conversation, Sworn & Scorned, and Sealed Fates Department adapters to exact owner sources while retaining the prealpha.6 Mind Poisoning 0.1.30 adapter. The package gate accepts only a combined readiness input whose nested receipts bind the PCV 0.1.23 seven-file closure, SAS 0.1.12 six-file closure, Correspondence dev.22 13-file closure, the three Department adapter hashes, and the hashes of changed installed production inputs. The PCV manifest separately records upstream base and shipped postimage hashes.
+
+| Boundary | Evidence and limit |
+| --- | --- |
+| Owner source matrix | PCV private_conversation-v0.1.23 at 77265202d7f4a47b88e1eb88131b21f4b0752020; SAS sworn_and_scorned-v0.1.12 at 9479f407c5936c008884442be49bced37ccbd06e; Sealed Fates correspondence-v0.1.0-dev.22 at 4989d9e5fe4f75d4e235c1233e715f65a0c71378; MP 0.1.30 remains unchanged from prealpha.6. |
+| PCV overlay | Seven files target ext/private_conversation/. The .23 source manifest binds each upstream base hash to the shipped postimage; it is not a complete PCV release. The owner-source probe checks the staged closure and Department hook contract. |
+| Package delta | The server archive updates the three owner adapters, the PCV companion identity pins, four modified PCV overlay files, and packaged PCV provenance; it renames the packaged PCV source manifest from .22 to .23. The MP adapter remains byte-identical. Game/DLL and notices archives are reused byte-for-byte from the public prealpha.6 base. |
+| Current receipts | verification-receipts.zip contains the combined current-source-readiness.json input, three extracted current owner receipts, and the prealpha.6 freeze plus nine prior receipt members under historical-prealpha6/. Old receipt payloads are retained unchanged and are not recertified. |
+| Proof boundary | Source, adapter, overlay, archive/member, and checksum identity only. No new database, HTTP/provider, native, Skyrim, or gameplay acceptance is established by this repack. |
+
+This remains a TEST/PRE-ALPHA source/package update. Previously recorded critique findings and known limits remain unresolved.

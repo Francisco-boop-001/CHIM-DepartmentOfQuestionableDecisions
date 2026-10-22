@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "upstream": {
-    "version": "0.1.22",
-    "tag": "private_conversation-v0.1.22",
-    "commit": "066ffdabcc132e5c43a6c620e8ffeff70f19854a"
+    "version": "0.1.23",
+    "tag": "private_conversation-v0.1.23",
+    "commit": "77265202d7f4a47b88e1eb88131b21f4b0752020"
   },
-  "stagedSourceDirectory": "pcv-companion/private-conversation-v0.1.22/server",
+  "stagedSourceDirectory": "pcv-companion/private-conversation-v0.1.23/server",
   "installDirectory": "ext/private_conversation",
   "files": [
     {
@@ -22,14 +22,14 @@
     },
     {
       "path": "manifest.json",
-      "baseSha256": "ffaef9c859e3e379b49e6754752199b2d9a8aa0cda4710cc1c92ab71b745ce0f",
-      "postimageSha256": "ffaef9c859e3e379b49e6754752199b2d9a8aa0cda4710cc1c92ab71b745ce0f",
+      "baseSha256": "f045b9b6bd3e13a84cdabbf400a73ef4581acd8fa440e1e84f51b1dd0cb5f84e",
+      "postimageSha256": "f045b9b6bd3e13a84cdabbf400a73ef4581acd8fa440e1e84f51b1dd0cb5f84e",
       "modified": false
     },
     {
       "path": "preprocessing.php",
-      "baseSha256": "e1881d60901f3cc47dc0fafe0430ac8fd8fd909e482bede08c181a3c5f19fb5e",
-      "postimageSha256": "c5589a50ef4be2523257f3e46d52d89d18c565e9f52360ca8f26528b86042d82",
+      "baseSha256": "5a0d46d3b29ba5f1a986f90b1fa7bbc8ce41402dd6b8d30f49a2fcba7783d49c",
+      "postimageSha256": "01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950",
       "modified": true
     },
     {
@@ -40,14 +40,14 @@
     },
     {
       "path": "scope.php",
-      "baseSha256": "078912784620a27c3f4e4173cc252fb492ce004d7d7be8e93033d10fa53305f6",
-      "postimageSha256": "35ce545549b51167e947489770f228a4d513bac14091104bef25a8acb4a8a54a",
+      "baseSha256": "763ff62b129086f7c3d91fbccbb80e8db0ec71b04d11fc150c4881420bbe6992",
+      "postimageSha256": "aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398",
       "modified": true
     },
     {
       "path": "state.php",
-      "baseSha256": "af117608cbbd74c38013630b334ad4dffae4f81a4d7e3a746b12cd8962c7f2e0",
-      "postimageSha256": "12cc4e38630aa141559d5da282a969351473f531668222321c1bff276bc047ab",
+      "baseSha256": "142f5a026740dfb629af925005c7e931396aa3dcde0d534002fb42b545c5664d",
+      "postimageSha256": "1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b",
       "modified": true
     }
   ]

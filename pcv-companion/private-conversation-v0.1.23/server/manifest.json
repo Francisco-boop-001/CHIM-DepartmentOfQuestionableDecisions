@@ -1,6 +1,6 @@
 {
   "name": "private_conversation",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "schema_version": 2,
   "git_repo": "Francisco-boop-001/CHIM-PrivateConversation",
   "description": "BETA: Stage pair, group, free, or solo scenes on ordinary Standard input with cast-scoped actions and clearer eligibility feedback.",

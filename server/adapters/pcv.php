@@ -1,15 +1,15 @@
 <?php
 declare(strict_types=1);
 
-const QD_PCV_EXPECTED_VERSION = '0.1.22';
+const QD_PCV_EXPECTED_VERSION = '0.1.23';
 const QD_PCV_CATALOG_MAX_ROWS = 4096;
 const QD_PCV_EXPECTED_CORE_MAIN_SHA256 = '3619049e6d54493a77b19c09f8b70420e3c35427545a8bb6e95e93c6fe57ebac';
 const QD_PCV_EXPECTED_CORE_MAIN_WINDOWS_CRLF_SHA256 = '9686a446bb4a2e2c02def2b59c87190734b30ba4382781bd71ea0df96baf6ff9';
 const QD_PCV_EXPECTED_OWNER_SOURCE_HASHES = [
-    'manifest.json' => 'ffaef9c859e3e379b49e6754752199b2d9a8aa0cda4710cc1c92ab71b745ce0f',
-    'state.php' => '12cc4e38630aa141559d5da282a969351473f531668222321c1bff276bc047ab',
-    'scope.php' => '35ce545549b51167e947489770f228a4d513bac14091104bef25a8acb4a8a54a',
-    'preprocessing.php' => 'c5589a50ef4be2523257f3e46d52d89d18c565e9f52360ca8f26528b86042d82',
+    'manifest.json' => 'f045b9b6bd3e13a84cdabbf400a73ef4581acd8fa440e1e84f51b1dd0cb5f84e',
+    'state.php' => '1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b',
+    'scope.php' => 'aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398',
+    'preprocessing.php' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
     'log.php' => '0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56',
     'installation_guard.php' => '082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d',
     'reflection.php' => 'd33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540',

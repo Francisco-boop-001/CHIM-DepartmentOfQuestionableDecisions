@@ -4,7 +4,7 @@ declare(strict_types=1);
 $serverRoot = dirname(__DIR__, 2);
 $implementationRoot = dirname($serverRoot);
 $pcvRoot = $implementationRoot . DIRECTORY_SEPARATOR . 'pcv-companion' . DIRECTORY_SEPARATOR
-    . 'private-conversation-v0.1.22' . DIRECTORY_SEPARATOR . 'server';
+    . 'private-conversation-v0.1.23' . DIRECTORY_SEPARATOR . 'server';
 
 putenv('QD_PCV_ROOT=' . $pcvRoot);
 require_once $serverRoot . DIRECTORY_SEPARATOR . 'adapters' . DIRECTORY_SEPARATOR . 'runtime_support.php';
