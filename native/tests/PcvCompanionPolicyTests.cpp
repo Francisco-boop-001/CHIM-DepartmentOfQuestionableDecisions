@@ -120,6 +120,9 @@ int main()
 		CHECK(!dql::companion::IsValidOpaqueToken("pcv1_short"));
 		CHECK(!dql::companion::IsValidOpaqueToken("pcv1_" + std::string(42, 'A') + "="));
 		CHECK(!dql::companion::IsValidOpaqueToken("xpcv1_" + std::string(43, 'A')));
+		CHECK(dql::companion::IsValidPairingToken("qd1_" + std::string(43, 'A')));
+		CHECK(!dql::companion::IsValidPairingToken("qd1_" + std::string(42, 'A')));
+		CHECK(!dql::companion::IsValidPairingToken("qd1_" + std::string(42, 'A') + "+"));
 		CHECK(dql::companion::IsFormId("00001234"));
 		CHECK(dql::companion::IsFormId("aBcD1234"));
 		CHECK(!dql::companion::IsFormId("1234"));
@@ -133,6 +136,32 @@ int main()
 		CHECK(dql::companion::FormIdHex(0x00F00123) == "00f00123");
 		CHECK(dql::companion::CanUseStockDestination(kExplicitIni, kExplicitIni,
 			"http://127.0.0.1:8081/HerikaServer"));
+		const auto derivedBase = dql::companion::DeriveStockServerBase(kExplicitIni);
+		CHECK(derivedBase && *derivedBase == "http://127.0.0.1:8081/HerikaServer");
+		CHECK(dql::companion::IsExactHttpDestination("HTTP://127.0.0.1:08081/HerikaServer/", *derivedBase));
+		CHECK(!dql::companion::IsExactHttpDestination("http://127.0.0.1:8082/HerikaServer", *derivedBase));
+		CHECK(!dql::companion::IsExactHttpDestination("https://127.0.0.1:8081/HerikaServer", *derivedBase));
+		const auto remoteIni = "SERVER=chim.example.test\r\nPORT=80\r\nPATH=/HerikaServer/comm.php\r\n";
+		const auto remoteBase = dql::companion::DeriveStockServerBase(remoteIni);
+		CHECK(remoteBase && *remoteBase == "http://chim.example.test:80/HerikaServer");
+		const auto customPathIni = "SERVER=chim.example.test\r\nPORT=80\r\nPATH=/custom/chim/comm.php\r\n";
+		const auto customPathBase = dql::companion::DeriveStockServerBase(customPathIni);
+		CHECK(customPathBase && *customPathBase == "http://chim.example.test:80/custom/chim");
+		const auto rootPathIni = "SERVER=chim.example.test\r\nPORT=80\r\nPATH=/comm.php\r\n";
+		const auto rootPathBase = dql::companion::DeriveStockServerBase(rootPathIni);
+		CHECK(rootPathBase && *rootPathBase == "http://chim.example.test:80");
+		const auto discoveredBase = dql::companion::DeriveChimDiscoveryServerBase("172.19.128.4:8081\r\n");
+		CHECK(discoveredBase && *discoveredBase == "http://172.19.128.4:8081/HerikaServer");
+		const auto normalizedDiscovery = dql::companion::DeriveChimDiscoveryServerBase("001.002.003.004:08081");
+		CHECK(normalizedDiscovery && *normalizedDiscovery == "http://1.2.3.4:8081/HerikaServer");
+		CHECK(!dql::companion::DeriveChimDiscoveryServerBase("2001:db8::1:8081"));
+		CHECK(!dql::companion::DeriveChimDiscoveryServerBase("256.1.2.3:8081"));
+		CHECK(!dql::companion::DeriveChimDiscoveryServerBase("172.19.128.4:0"));
+		CHECK(!dql::companion::DeriveChimDiscoveryServerBase("172.19.128.4:8081/other"));
+		CHECK(!dql::companion::DeriveChimDiscoveryServerBase("172.19.128.4:8081\r\nAuthorization: Bearer secret"));
+		CHECK(!dql::companion::DeriveStockServerBase("SERVER=chim.example.test\r\nPORT=0\r\n"));
+		CHECK(!dql::companion::DeriveStockServerBase("SERVER=chim.example.test\r\nPORT=8081\r\nPATH=/Other/index.php\r\n"));
+		CHECK(!dql::companion::DeriveStockServerBase("SERVER=chim.example.test\r\nPORT=8081\r\nPATH=/HerikaServer/../comm.php\r\n"));
 		CHECK(dql::companion::CanUseStockDestination(kExplicitIni, kExplicitIni,
 			"HTTP://127.0.0.1:08081/HerikaServer/"));
 		CHECK(!dql::companion::CanUseStockDestination({}, {}, "http://127.0.0.1:8081/HerikaServer"));

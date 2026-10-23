@@ -20,13 +20,21 @@ The [prealpha.5 download](https://github.com/Francisco-boop-001/CHIM-DepartmentO
 
 Prealpha.6 was a source/package-only update from prealpha.5 for exact Mind Poisoning 0.1.30. At that release, only the MP adapter changed; PCV 0.1.22, SAS 0.1.11 and Sealed Fates dev.21 remained pinned. That matrix was superseded by prealpha.7 below. Its source-readiness probe did not establish database, HTTP, provider, native or Skyrim proof; the earlier candidate remains immutable.
 
-## Current prealpha.7 source matrix
+## Current prealpha.8 candidate
 
-Prealpha.7 pairs Private Conversation 0.1.23 (with the required seven-file Department overlay), Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, and exact source-pinned Sealed Fates dev.14–18 plus dev.20, dev.21, and dev.22. The PCV, SAS, and Correspondence adapters use focused source-only readiness receipts; the MP 0.1.30 adapter remains byte-identical to prealpha.6. The package reuses prealpha.6 game/DLL and notices bytes. This is source/package evidence, not database, HTTP/provider, native, Skyrim, or gameplay acceptance. The original PCV input path remains available when the Department companion is disabled. Previously recorded critique findings and known limits remain unresolved. See [the pairing record](docs/PAIRING-CHECK.md), [verification record](docs/VERIFICATION.md), and [test-package guide](packaging/COMPANION-ONLY-TEST-PACKAGE.md).
+Prealpha.8 keeps the PCV 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, and source-pinned Sealed Fates matrix described in [the pairing record](docs/PAIRING-CHECK.md). It adds an in-game connection approval flow and bundles the Department's two schema-4 CHIM server packages in one normal MO2 mod archive. The seven-file PCV overlay remains a setup action over the complete PCV owner release; this package does not contain or replace that plugin. The original PCV input path remains available when the Department companion is disabled.
 
-## Installation and testing
+This is still a PRE-ALPHA candidate. Native, browser, synthetic server, and package checks do not establish installation on a CHIM server or behavior in Skyrim. Previously recorded critique findings and known limits remain in [the verification record](docs/VERIFICATION.md).
 
-Follow the [installation guide](packaging/COMPANION-ONLY-TEST-PACKAGE.md) and [test-profile setup](docs/TEST-PROFILE-SETUP.md) before installing anything. Use a profile-local endpoint override and a new test pairing. The private textbox currently requires a matching literal `http://127.0.0.1` destination for both stock CHIM and the companion, with verified Windows-to-test-server forwarding and ordinary CHIM streaming. Restart Skyrim after endpoint changes.
+## Installation and connection
+
+Install the single `WorldOfDramaLlama-0.1.0-prealpha.8.zip` through MO2 as an ordinary mod. Enable it with its required Skyrim/SKSE, Address Library, PRISMA UI, SkyUI, CHIM, and owner-plugin requirements. CHIM detects the bundled server packages when its normal game/plugin synchronization runs. The package has no `AIAgent.dll` and does not patch CHIM core.
+
+Open the Department UI in Skyrim and choose **Connect to CHIM**. Approve the request on the CHIM Plugin Page opened by the mod, return to Skyrim, and choose **Check connection**. The Department creates the pairing credential and stores it in Windows Credential Manager for that CHIM endpoint; the shipped `WorldOfDramaLlama.ini` keeps `BaseUrl` and `PairToken` blank. Do not copy tokens or edit either INI for the normal setup. See the [install-and-use guide](packaging/COMPANION-ONLY-TEST-PACKAGE.md) for connection and optional PCV setup details.
+
+The native mod derives the server destination from CHIM's startup configuration. When CHIM's `AIAgent.ini` is absent, it uses CHIM's pinned local discovery request and matching default. This is a one-time source-equivalent startup snapshot: CHIM exposes no public getter for its already-cached destination. A present but malformed or incompatible `AIAgent.ini` is refused rather than bypassed. Restart Skyrim after changing CHIM's endpoint. Plain HTTP is accepted only for the exact CHIM-derived destination and provides no confidentiality from other systems on that network; use a trusted network.
+
+For the Private Conversation tab, install the complete supported PCV 0.1.23 owner plugin separately. The CHIM Plugin Page offers an optional setup action that verifies the seven pinned stock files, saves a backup, and applies only the Department overlay. If the owner files differ, setup refuses and the other Department tabs remain available.
 
 Send once. If a write or text send becomes uncertain, use its status/reconciliation control and the [state recovery policy](docs/STATE-RECOVERY-POLICY.md). Do not resend it or delete its state to remove a lock. A consumed text token records acceptance by the PCV route, not audible delivery. Durable replay protection means private server history grows and needs disk monitoring.
 

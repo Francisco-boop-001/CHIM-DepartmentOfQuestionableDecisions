@@ -29,7 +29,7 @@ $cmake = 'C:\path\to\cmake.exe' # Set this to the installed, pinned CMake 3.28.3
   -OutputRoot $nativeOutput -EvidenceRoot $nativeEvidence
 ```
 
-The native host build runs the four CTest targets. Portable build A produced a 690,688-byte DLL with SHA-256 `1c6d0a0370a2f9e8133deef574be2f2ecc0e7ac1065e9eedddd7cc8554aea13`; the coordinator's independent clean-source build B2 produced the same DLL bytes and passed all four host tests. Its recorded compiler, toolset and SDK match the pins above; this does not establish Skyrim runtime behavior. `nativeOutput` also receives two synthetic refusal JSON fixtures from the linked production formatter. They contain only generic messages and synthetic correlations; the compose payload sentinel is omitted. To run the UI's native-producer refusal case, pass `NATIVE_REFUSAL_FIXTURE` the exact `c2-02-refusal-fixture.json` path from that fresh output. The UI test rebinds only `requestId`, `operation`, and `context` to the live synthetic browser request; it preserves the fixture's producer error object. This exercises a formatter-shaped response in the browser test; it does not invoke SKSE or a native transport.
+The prealpha.7 native host build ran four CTest targets. Portable build A produced a 690,688-byte DLL with SHA-256 `1c6d0a0370a2f9e8133deef574be2f2ecc0e7ac1065e9eedddd7cc8554aea13`; the coordinator's independent clean-source build B2 produced the same DLL bytes and passed all four host tests. Prealpha.8 adds the connection protocol test target, so the current native host suite has five CTest targets. Compiler, toolset and SDK pins remain as recorded above; these source/build checks do not establish Skyrim runtime behavior. `nativeOutput` also receives synthetic refusal JSON fixtures from the linked production formatter. They contain only generic messages and synthetic correlations; the compose payload sentinel is omitted. To run the UI's native-producer refusal case, pass `NATIVE_REFUSAL_FIXTURE` the exact `c2-02-refusal-fixture.json` path from that fresh output. The UI test rebinds only `requestId`, `operation`, and `context` to the live synthetic browser request; it preserves the fixture's producer error object. This exercises a formatter-shaped response in the browser test; it does not invoke SKSE or a native transport.
 
 The negative dependency preflight can be checked with:
 
@@ -178,7 +178,38 @@ The generated assets are a 185-byte ESP and a 4-byte SEQ; they use one light-plu
 
 Before testing, read the [project overview](../README.md), [test-profile setup](TEST-PROFILE-SETUP.md), [state-recovery policy](STATE-RECOVERY-POLICY.md), and [verification record](VERIFICATION.md). The verification record and package guide retain the stock router's same-name final body-selection limitation. Consumed PCV text is acceptance at the owner preprocessing boundary; it does not prove model processing or audio. Queued correspondence is not receipt-confirmed delivery or an observed transfer. The eight game checks in [the release guide](../packaging/COMPANION-ONLY-TEST-PACKAGE.md) remain pending until performed in Skyrim.
 
-Prealpha.5 and prealpha.6 reproduction recipes below refer to their original repack-script versions and base assets. Reproduce either release from its matching immutable tag; the current worktree recipe below is for prealpha.7.
+## Build the installable prealpha.8 package
+
+Use a reviewed prealpha.8 x64 DLL, the verified prealpha.7 game-data ZIP, and the full commit ID of the current source checkout. The builder checks the base ZIP and reuses only the Department ESP, SEQ, and two Papyrus files; it takes the UI, blank INI, notices, server components, and source ZIP from committed allowlisted blobs. It writes a normal MO2 mod-root ZIP, a source ZIP, two standalone DWPkg audit copies, and `SHA256SUMS.txt`. The checksum manifest covers only the two flat ZIP assets intended for publication; each DWPkg has its own embedded manifest and checksum file. The standalone component copies are audit evidence, while the MO2 ZIP embeds those same packages at the CHIM synchronization paths. The builder does not compile the supplied DLL, install the mod, or publish assets.
+
+Run from the source root in PowerShell and choose a new output directory outside the checkout:
+
+~~~powershell
+$python = 'C:\path\to\python.exe' # Python 3.12 or later.
+$git = 'C:\path\to\git.exe'
+$dll = 'C:\path\to\reviewed\WorldOfDramaLlama.dll'
+$prealpha7GameZip = 'C:\path\to\WorldOfDramaLlama-department-pre-alpha-game-data.zip'
+$releaseCommit = (& $git rev-parse HEAD).Trim()
+$packageOutput = Join-Path $env:TEMP ('dql-prealpha8-package-' + [guid]::NewGuid().ToString('N'))
+
+& $python .\packaging\build-installable-prealpha8.py build `
+  --dll $dll `
+  --prealpha7-game-zip $prealpha7GameZip `
+  --source-commit $releaseCommit `
+  --output-dir $packageOutput `
+  --git $git
+if ($LASTEXITCODE -ne 0) { throw "Package build failed with exit code $LASTEXITCODE" }
+
+& $python .\packaging\build-installable-prealpha8.py audit `
+  --source-commit $releaseCommit `
+  --output-dir $packageOutput `
+  --git $git
+if ($LASTEXITCODE -ne 0) { throw "Package audit failed with exit code $LASTEXITCODE" }
+~~~
+
+The main archive is `WorldOfDramaLlama-0.1.0-prealpha.8.zip`; install that single ZIP as an ordinary MO2 mod. The source archive is `WorldOfDramaLlama-0.1.0-prealpha.8-source.zip`. The two component audit copies are in `component-packages/`. The independent audit reopens all archives, verifies exact members and source-canonical payloads, compares the reused game assets to pinned hashes, validates the DLL as x64 PE, and checks both the outer ZIP checksum manifest and each DWPkg's internal checksums. Source/package checks do not establish CHIM installation, in-game connection, or Skyrim behavior.
+
+Prealpha.5 through prealpha.7 reproduction recipes below refer to their original repack-script versions and base assets. Reproduce those releases from their matching immutable tags; they are historical procedures.
 
 ## Reproduce the prealpha.5 source-compatibility repack
 

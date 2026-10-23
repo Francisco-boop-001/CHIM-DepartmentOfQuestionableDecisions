@@ -47,6 +47,10 @@ int main(int argc, char** argv)
 	CHECK(good.envelope.has_value());
 	CHECK(good.envelope->operation == "bootstrap");
 	CHECK(!good.envelope->serverContext.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("connection.begin", "null")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("connection.status", "null")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("connection.begin", "\"scope-1\"")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("connection.status", "null", "{\"serverBase\":\"http://x\"}")).envelope.has_value());
 
 	auto normal = dql::contract::ParseRequest(MakeRequest("view.close", "\"scope-1\""));
 	CHECK(normal.envelope.has_value());

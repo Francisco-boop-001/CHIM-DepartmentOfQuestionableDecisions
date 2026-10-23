@@ -60,6 +60,7 @@ namespace dql::companion
 	};
 
 	[[nodiscard]] bool IsValidOpaqueToken(std::string_view token) noexcept;
+	[[nodiscard]] bool IsValidPairingToken(std::string_view token) noexcept;
 	[[nodiscard]] bool IsFormId(std::string_view formId) noexcept;
 	[[nodiscard]] bool NamesMatchManagedActor(std::string_view rosterName, std::string_view currentName) noexcept;
 
@@ -81,6 +82,9 @@ namespace dql::companion
 
 	[[nodiscard]] bool CanUseStockDestination(std::string_view startupIni, std::string_view currentIni,
 		std::string_view facadeBase);
+	[[nodiscard]] std::optional<std::string> DeriveStockServerBase(std::string_view agentIni);
+	[[nodiscard]] std::optional<std::string> DeriveChimDiscoveryServerBase(std::string_view responseBody);
+	[[nodiscard]] bool IsExactHttpDestination(std::string_view candidate, std::string_view trustedBase);
 	[[nodiscard]] std::string FormIdHex(std::uint32_t formId);
 	[[nodiscard]] bool IsKnownCompanionState(std::string_view state) noexcept;
 	[[nodiscard]] bool IsValidStageData(const dql::contract::Json& data, std::string_view operationId);

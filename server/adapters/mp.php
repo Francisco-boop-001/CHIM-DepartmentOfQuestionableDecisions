@@ -19,8 +19,8 @@ const QD_MP_EXPECTED_SOURCE_HASHES = [
 function qd_mp_source_root(): string
 {
     $configured = getenv('QD_MP_ROOT');
-    if (!is_string($configured) || $configured === '' || str_contains($configured, "\0")) {
-        throw new RuntimeException('The trusted MP source root is not configured.');
+    if (!is_string($configured) || $configured === '') {
+        $configured = qd_runtime_extension_root('mind_poisoning');
     }
     $root = realpath($configured);
     if (!is_string($root) || !is_dir($root) || is_link($configured)) {

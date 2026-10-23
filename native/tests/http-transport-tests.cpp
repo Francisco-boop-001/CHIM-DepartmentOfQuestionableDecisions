@@ -27,6 +27,7 @@ using dql::http::HttpRequest;
 using dql::http::HttpResult;
 using dql::http::HttpTransport;
 using dql::http::Outcome;
+using dql::http::Route;
 
 	void Check(bool condition, const char* message)
 	{
@@ -48,10 +49,11 @@ using dql::http::Outcome;
 	public:
 		LocalServer(std::string response, bool hold = false, bool watchAdditional = false,
 			std::size_t bodyChunkSize = 0, std::chrono::milliseconds bodyChunkDelay = 0ms,
-			std::size_t headerChunkSize = 0, std::chrono::milliseconds headerChunkDelay = 0ms) :
+			std::size_t headerChunkSize = 0, std::chrono::milliseconds headerChunkDelay = 0ms,
+			std::string bindAddress = "127.0.0.1") :
 			response_(std::move(response)), watchAdditional_(watchAdditional),
 			bodyChunkSize_(bodyChunkSize), bodyChunkDelay_(bodyChunkDelay),
-			headerChunkSize_(headerChunkSize), headerChunkDelay_(headerChunkDelay)
+			headerChunkSize_(headerChunkSize), headerChunkDelay_(headerChunkDelay), bindAddress_(std::move(bindAddress))
 		{
 			WSADATA data{};
 			Check(WSAStartup(MAKEWORD(2, 2), &data) == 0, "WSAStartup succeeds");
@@ -59,7 +61,8 @@ using dql::http::Outcome;
 			Check(listener_ != INVALID_SOCKET, "loopback listener socket opens");
 			sockaddr_in address{};
 			address.sin_family = AF_INET;
-			address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+			Check(inet_pton(AF_INET, bindAddress_.c_str(), &address.sin_addr) == 1,
+				"loopback fixture bind address parses");
 			address.sin_port = 0;
 			Check(bind(listener_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0,
 				"loopback listener binds");
@@ -71,6 +74,10 @@ using dql::http::Outcome;
 			released_ = !hold;
 			worker_ = std::thread([this] { ServeOne(); });
 		}
+
+		LocalServer(std::string response, std::string bindAddress) : LocalServer(
+			std::move(response), false, false, 0, 0ms, 0, 0ms, std::move(bindAddress))
+		{}
 
 		~LocalServer()
 		{
@@ -95,7 +102,7 @@ using dql::http::Outcome;
 
 		[[nodiscard]] std::wstring BaseUrl() const
 		{
-			return L"http://127.0.0.1:" + std::to_wstring(port_);
+			return L"http://" + std::wstring(bindAddress_.begin(), bindAddress_.end()) + L":" + std::to_wstring(port_);
 		}
 
 		bool WaitForRequest(std::chrono::milliseconds timeout = 3000ms)
@@ -232,6 +239,7 @@ using dql::http::Outcome;
 		std::chrono::milliseconds bodyChunkDelay_{};
 		std::size_t headerChunkSize_{};
 		std::chrono::milliseconds headerChunkDelay_{};
+		std::string bindAddress_;
 	};
 
 	HttpRequest MakeRequest(const std::wstring& base, std::string operation = "bootstrap", bool isWrite = false)
@@ -337,6 +345,102 @@ using dql::http::Outcome;
 		tooLarge.envelopeJson.assign(65537, 'x');
 		reject(std::move(tooLarge), ErrorCode::requestTooLarge);
 		Check(!server.WaitForRequest(250ms), "invalid inputs never open a network request");
+		transport.Shutdown();
+	}
+
+	void TestNonLiteralHttpRequiresExactNativeDestination()
+	{
+		const std::wstring destination = L"http://192.168.50.27:8081/custom/chim";
+		HttpTransport transport;
+
+		auto untrusted = MakeRequest(destination);
+		const auto untrustedResult = transport.Submit(std::move(untrusted), [](HttpResult) {});
+		Check(!untrustedResult.queued && untrustedResult.errorCode == ErrorCode::invalidBaseUrl,
+			"non-literal HTTP host is rejected without a native-derived trust binding");
+
+		auto mismatch = MakeRequest(destination);
+		mismatch.trustedHttpBase = L"http://192.168.50.28:8081/custom/chim";
+		const auto mismatchResult = transport.Submit(std::move(mismatch), [](HttpResult) {});
+		Check(!mismatchResult.queued && mismatchResult.errorCode == ErrorCode::invalidBaseUrl,
+			"non-literal HTTP host is rejected when the native-derived destination differs");
+
+		const auto exact = dql::http::CanonicalDestinationKey(destination, destination);
+		Check(exact.has_value(), "exact native-derived HTTP destination is accepted without broad private-IP trust");
+	}
+
+	void TestCanonicalCredentialDestinationAndApprovalUrl()
+	{
+		const auto canonical = dql::http::CanonicalDestinationKey(L"HTTP://127.0.0.1:08080/HerikaServer/");
+		const auto same = dql::http::CanonicalDestinationKey(L"http://127.0.0.1:8080/HerikaServer");
+		Check(canonical && same && *canonical == *same,
+			"credential destination key canonicalizes case, numeric port, and trailing slash");
+		Check(!dql::http::CanonicalDestinationKey(L"http://chim.example.test:80/HerikaServer"),
+			"remote plain HTTP cannot produce a credential destination without the stock trust binding");
+		const auto secure = dql::http::CanonicalDestinationKey(L"HTTPS://CHIM.Example.test:443/custom/");
+		const auto secureSame = dql::http::CanonicalDestinationKey(L"https://chim.example.test/custom");
+		Check(secure && secureSame && *secure == *secureSame,
+			"credential destination key canonicalizes secure scheme, host, default port, and trailing slash");
+		const auto approval = dql::http::BuildApprovalUrl(L"https://chim.example.test:443/custom/",
+			"33333333-3333-4333-8333-333333333333");
+		Check(approval && *approval == L"https://chim.example.test:443/custom/ext/questionable_decisions/index.php?claim=33333333-3333-4333-8333-333333333333",
+			"approval URL is built from the configured endpoint and fixed native path");
+		Check(!dql::http::BuildApprovalUrl(L"https://chim.example.test", "bad-claim"),
+			"approval URL builder refuses an invalid claim identifier");
+	}
+
+	void TestFixedConnectionRouteAndWriteTracking()
+	{
+		LocalServer server(Response(200, "OK", "{\"ok\":true}"), true);
+		HttpTransport transport;
+		auto request = MakeRequest(server.BaseUrl(), "connection.begin", true);
+		request.route = Route::connection;
+		request.envelopeJson = "{\"action\":\"begin\",\"claimId\":\"33333333-3333-4333-8333-333333333333\",\"tokenHash\":\"" +
+			std::string(64, 'a') + "\"}";
+		request.bearerToken.clear();
+		std::promise<HttpResult> promise;
+		auto result = promise.get_future();
+		const auto submitted = transport.Submit(std::move(request),
+			[&](HttpResult value) { promise.set_value(std::move(value)); });
+		Check(submitted.queued, "connection begin queues on its fixed native route");
+		Check(server.WaitForRequest(), "connection begin reaches the local HTTP fixture");
+		Check(transport.HasInFlightWrites(), "connection begin is tracked as an in-flight write");
+		const auto sent = server.RequestText();
+		Check(sent.starts_with("POST /ext/questionable_decisions/connect.php HTTP/1.1\r\n"),
+			"connection route uses the fixed connect endpoint");
+		Check(sent.find("Authorization:") == std::string::npos,
+			"connection begin sends no bearer authorization header");
+		server.Release();
+		const auto response = AwaitResult(result);
+		Check(response.outcome == Outcome::completed && response.statusCode == 200,
+			"connection begin completes through the fixed route");
+		transport.Shutdown();
+		Check(!transport.HasInFlightWrites(), "completed connection begin leaves no in-flight write");
+	}
+
+	void TestConnectionStatusIsNotAWrite()
+	{
+		LocalServer server(Response(200, "OK", "{\"ok\":true}"), true);
+		HttpTransport transport;
+		auto request = MakeRequest(server.BaseUrl(), "connection.status", false);
+		request.route = Route::connection;
+		request.envelopeJson = "{\"action\":\"status\",\"claimId\":\"33333333-3333-4333-8333-333333333333\"}";
+		request.bearerToken.clear();
+		std::promise<HttpResult> promise;
+		auto result = promise.get_future();
+		const auto submitted = transport.Submit(std::move(request),
+			[&](HttpResult value) { promise.set_value(std::move(value)); });
+		Check(submitted.queued, "connection status queues on its fixed native route");
+		Check(server.WaitForRequest(), "connection status reaches the local HTTP fixture");
+		Check(!transport.HasInFlightWrites(), "connection status is not counted as an in-flight write");
+		const auto sent = server.RequestText();
+		Check(sent.starts_with("POST /ext/questionable_decisions/connect.php HTTP/1.1\r\n"),
+			"connection status uses the fixed connect endpoint");
+		Check(sent.find("Authorization:") == std::string::npos,
+			"connection status sends no bearer authorization header");
+		server.Release();
+		const auto response = AwaitResult(result);
+		Check(response.outcome == Outcome::completed && response.statusCode == 200,
+			"connection status completes through the fixed route");
 		transport.Shutdown();
 	}
 
@@ -569,6 +673,10 @@ int main()
 {
 	TestFixedPostAndRedirectPolicy();
 	TestRejectsUnsafeRequestInputsBeforeNetwork();
+	TestNonLiteralHttpRequiresExactNativeDestination();
+	TestCanonicalCredentialDestinationAndApprovalUrl();
+	TestFixedConnectionRouteAndWriteTracking();
+	TestConnectionStatusIsNotAWrite();
 	TestInstallationPathPrefixIsPreserved();
 	TestUnauthenticatedBootstrapOmitsAuthorization();
 	TestResponseLimit();

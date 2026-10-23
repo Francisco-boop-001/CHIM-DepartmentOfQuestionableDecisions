@@ -15,8 +15,8 @@ const QD_SAS_EXPECTED_SOURCE_HASHES = [
 function qd_sas_source_root(): string
 {
     $configured = getenv('QD_SAS_ROOT');
-    if (!is_string($configured) || $configured === '' || str_contains($configured, "\0")) {
-        throw new RuntimeException('The trusted S&S source root is not configured.');
+    if (!is_string($configured) || $configured === '') {
+        $configured = qd_runtime_extension_root('sworn_and_scorned');
     }
     $root = realpath($configured);
     if (!is_string($root) || !is_dir($root) || is_link($configured)) {

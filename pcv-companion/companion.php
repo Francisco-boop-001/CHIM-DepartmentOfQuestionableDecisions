@@ -107,11 +107,13 @@ function pcv_companion_load_owner_sources(bool $includePreprocessing = false): s
 function pcv_companion_with_current_pair_context(array $operation, callable $callback): mixed
 {
     $configuredRoot = getenv('QD_CHIM_ROOT');
-    if (!is_string($configuredRoot) || $configuredRoot === '' || str_contains($configuredRoot, "\0")) {
-        throw new RuntimeException('The trusted CHIM root is unavailable.');
+    if (!is_string($configuredRoot) || $configuredRoot === '') {
+        // Installed at ext/pcv_companion/companion.php.
+        $configuredRoot = dirname(__DIR__, 2);
     }
-    $coreRoot = realpath($configuredRoot);
-    if (!is_string($coreRoot) || !is_dir($coreRoot)) {
+    $coreRoot = str_contains($configuredRoot, "\0") ? false : realpath($configuredRoot);
+    if (!is_string($coreRoot) || !is_dir($coreRoot)
+        || !is_file($coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'questionable_decisions' . DIRECTORY_SEPARATOR . 'api.php')) {
         throw new RuntimeException('The trusted CHIM root is unavailable.');
     }
     $apiPath = $coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR

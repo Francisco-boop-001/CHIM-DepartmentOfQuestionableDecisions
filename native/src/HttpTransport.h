@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -14,6 +15,12 @@ namespace dql::http
 		completed,
 		unknown,
 		rejected
+	};
+
+	enum class Route
+	{
+		departmentApi,
+		connection
 	};
 
 	enum class ErrorCode
@@ -39,8 +46,10 @@ namespace dql::http
 		std::string operation;
 		std::string envelopeJson;
 		std::wstring serverBase;
+		std::wstring trustedHttpBase;
 		std::wstring bearerToken;
 		bool isWrite{};
+		Route route{ Route::departmentApi };
 	};
 
 	struct HttpResult
@@ -56,6 +65,13 @@ namespace dql::http
 		bool queued{};
 		ErrorCode errorCode{ ErrorCode::none };
 	};
+
+	[[nodiscard]] std::optional<std::wstring> CanonicalDestinationKey(std::wstring_view base,
+		std::wstring_view trustedHttpBase = {});
+	// Mirrors CHIM's pinned startup discovery request to its local launcher service.
+	[[nodiscard]] std::optional<std::wstring> DiscoverChimServerBase();
+	[[nodiscard]] std::optional<std::wstring> BuildApprovalUrl(std::wstring_view base,
+		std::string_view claimId, std::wstring_view trustedHttpBase = {});
 
 	class HttpTransport final
 	{
@@ -74,6 +90,7 @@ namespace dql::http
 
 		// A rejected Submit has no callback. Accepted requests complete exactly once on the worker thread.
 		[[nodiscard]] SubmitResult Submit(HttpRequest request, Completion completion);
+		[[nodiscard]] bool HasInFlightWrites() noexcept;
 		void CancelView(std::string_view viewToken, std::string_view nativeGeneration,
 			bool invalidateGeneration = false) noexcept;
 		void Shutdown() noexcept;

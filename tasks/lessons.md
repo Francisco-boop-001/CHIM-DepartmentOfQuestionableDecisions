@@ -35,3 +35,5 @@
 Preserve UTF-8 and existing per-file line endings during documentation edits. Scan changed prose for mojibake before freezing. In a byte-preserving repository, run Git whitespace checks with cr-at-eol rather than normalizing executed or frozen CRLF inputs; ordinary trailing spaces still fail.
 
 - Before reusing a test, inspect its loops and platform prerequisites. Run only changed-boundary checks; retention/load suites need a specific changed dependency to justify them. Enable the actual Unicode extension for Unicode fixtures, and keep stopped or prerequisite-failed runs separate from passing evidence.
+
+- A downloadable game mod is not install-and-use when it still requires Linux CLI provisioning, web-worker environment edits, or hand-copied tokens. Verify the actual fresh-user install and connection path before handing off Skyrim functional tests; expose missing configuration distinctly from rejected authentication and preserve the real error in the UI.

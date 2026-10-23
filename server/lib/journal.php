@@ -31,7 +31,24 @@ function qd_journal_directory(array $settings): string
     if (!is_string($statePath) || !is_string($webRoot)) {
         throw new QDServerFault('unavailable');
     }
-    $safeStatePath = qd_external_file_path($statePath, $webRoot, false);
+    $privateRoot = is_string($settings['privateRoot'] ?? null) ? $settings['privateRoot'] : null;
+    $protectedRoot = is_string($settings['coreRoot'] ?? null) ? $settings['coreRoot'] : null;
+    $storage = qd_storage_file_path($statePath, $webRoot, $privateRoot, false, $protectedRoot);
+    if ($storage === null) {
+        throw new QDServerFault('unavailable');
+    }
+    if ($storage['guarded']) {
+        if (!is_string($privateRoot)) {
+            throw new QDServerFault('unavailable');
+        }
+        $directory = qd_managed_directory_path($privateRoot . DIRECTORY_SEPARATOR . 'journal', $privateRoot, true);
+        if ($directory === null) {
+            throw new QDServerFault('unavailable');
+        }
+        qd_journal_fsync_directory($privateRoot);
+        return $directory;
+    }
+    $safeStatePath = $storage['path'];
     if ($safeStatePath === null) {
         throw new QDServerFault('unavailable');
     }
@@ -55,13 +72,16 @@ function qd_journal_directory(array $settings): string
     return $realDirectory;
 }
 
-function qd_journal_file_path(string $directory, string $webRoot, string $name): string
+function qd_journal_file_path(string $directory, string $webRoot, string $name, ?string $privateRoot = null): string
 {
     if (preg_match('/\A[a-f0-9]{64}(?:\.pending|\.recent)?\.json\z/D', $name) !== 1) {
         throw new QDServerFault('unavailable');
     }
-    $path = $directory . DIRECTORY_SEPARATOR . $name;
-    $safePath = qd_external_file_path($path, $webRoot, false);
+    $managed = is_string($privateRoot) && qd_path_is_lexically_within($directory, $privateRoot);
+    $path = $directory . DIRECTORY_SEPARATOR . $name . ($managed ? '.php' : '');
+    $safePath = $managed
+        ? qd_managed_file_path($path, $privateRoot, false)
+        : qd_external_file_path($path, $webRoot, false);
     if ($safePath === null || is_link($path)) {
         throw new QDServerFault('unavailable');
     }
@@ -75,7 +95,12 @@ function qd_journal_transaction(array $settings, callable $callback): mixed
         throw new QDServerFault('unavailable');
     }
     $directory = qd_journal_directory($settings);
-    $lockPath = qd_external_file_path($directory . DIRECTORY_SEPARATOR . 'journal.lock', $webRoot, false);
+    $privateRoot = is_string($settings['privateRoot'] ?? null) ? $settings['privateRoot'] : null;
+    $managed = is_string($privateRoot) && qd_path_is_lexically_within($directory, $privateRoot);
+    $lockCandidate = $directory . DIRECTORY_SEPARATOR . ($managed ? 'journal.lock.php' : 'journal.lock');
+    $lockPath = $managed
+        ? qd_managed_file_path($lockCandidate, $privateRoot, false)
+        : qd_external_file_path($lockCandidate, $webRoot, false);
     if ($lockPath === null || is_link($lockPath)) {
         throw new QDServerFault('unavailable');
     }
@@ -88,7 +113,27 @@ function qd_journal_transaction(array $settings, callable $callback): mixed
     }
     @chmod($lockPath, 0600);
     try {
-        return $callback($directory, $webRoot);
+        if ($managed) {
+            $lockSize = @filesize($lockPath);
+            if (!is_int($lockSize)) {
+                throw new QDServerFault('unavailable');
+            }
+            if ($lockSize === 0) {
+                if (fwrite($lock, QD_GUARDED_JSON_PREFIX) !== strlen(QD_GUARDED_JSON_PREFIX) || !fflush($lock)) {
+                    throw new QDServerFault('unavailable');
+                }
+                if (function_exists('fsync') && !fsync($lock)) {
+                    throw new QDServerFault('unavailable');
+                }
+            } else {
+                rewind($lock);
+                $lockPrefix = fread($lock, strlen(QD_GUARDED_JSON_PREFIX));
+                if (!is_string($lockPrefix) || !hash_equals(QD_GUARDED_JSON_PREFIX, $lockPrefix)) {
+                    throw new QDServerFault('unavailable');
+                }
+            }
+        }
+        return $callback($directory, $webRoot, $privateRoot);
     } finally {
         flock($lock, LOCK_UN);
         fclose($lock);
@@ -106,12 +151,22 @@ function qd_journal_read_json(string $path, int $maxBytes): ?array
     if (!is_file($path)) {
         throw new QDServerFault('unavailable');
     }
+    $guarded = str_ends_with(strtolower(basename($path)), '.json.php');
     $size = @filesize($path);
-    if (!is_int($size) || $size > $maxBytes) {
+    if (!is_int($size) || $size > $maxBytes + ($guarded ? strlen(QD_GUARDED_JSON_PREFIX) : 0)) {
         throw new QDServerFault('unavailable');
     }
     $raw = @file_get_contents($path);
-    if (!is_string($raw) || strlen($raw) > $maxBytes) {
+    if (!is_string($raw)) {
+        throw new QDServerFault('unavailable');
+    }
+    if ($guarded) {
+        if (!str_starts_with($raw, QD_GUARDED_JSON_PREFIX)) {
+            throw new QDServerFault('unavailable');
+        }
+        $raw = substr($raw, strlen(QD_GUARDED_JSON_PREFIX));
+    }
+    if (strlen($raw) > $maxBytes) {
         throw new QDServerFault('unavailable');
     }
     try {
@@ -135,7 +190,7 @@ function qd_journal_write_json(string $path, array $value, int $maxBytes): void
     if (strlen($json) > $maxBytes) {
         throw new QDServerFault('unavailable');
     }
-    qd_atomic_write($path, $json);
+    qd_atomic_write($path, $json, str_ends_with(strtolower(basename($path)), '.json.php'));
     qd_journal_fsync_directory(dirname($path));
 }
 
@@ -168,12 +223,12 @@ function qd_journal_record_is_valid(array $record): bool
         && (($record['dataJson'] ?? null) === null || (is_string($record['dataJson']) && strlen($record['dataJson']) <= QD_MAX_JOURNAL_RESULT_BYTES));
 }
 
-function qd_journal_load_record(string $directory, string $webRoot, string $key): ?array
+function qd_journal_load_record(string $directory, string $webRoot, string $key, ?string $privateRoot = null): ?array
 {
     if (preg_match('/\A[a-f0-9]{64}\z/D', $key) !== 1) {
         throw new QDServerFault('unavailable');
     }
-    $record = qd_journal_read_json(qd_journal_file_path($directory, $webRoot, $key . '.json'), QD_JOURNAL_RECORD_BYTES);
+    $record = qd_journal_read_json(qd_journal_file_path($directory, $webRoot, $key . '.json', $privateRoot), QD_JOURNAL_RECORD_BYTES);
     if ($record !== null && !qd_journal_record_is_valid($record)) {
         throw new QDServerFault('unavailable');
     }
@@ -185,9 +240,9 @@ function qd_journal_semantic_key(string $pairId, string $scopeHash, string $oper
     return hash('sha256', implode("\0", [$pairId, $scopeHash, $operation, $semanticHash]));
 }
 
-function qd_journal_semantic_pointer(string $directory, string $webRoot, string $semanticKey): ?array
+function qd_journal_semantic_pointer(string $directory, string $webRoot, string $semanticKey, ?string $privateRoot = null): ?array
 {
-    $pointer = qd_journal_read_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json'), 256);
+    $pointer = qd_journal_read_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot), 256);
     if ($pointer === null) {
         return null;
     }
@@ -233,26 +288,28 @@ function qd_journal_assert_pointer_record(array $pointer, string $operationKey, 
     }
 }
 
-function qd_journal_outstanding_count(string $directory, string $webRoot): int
+function qd_journal_outstanding_count(string $directory, string $webRoot, ?string $privateRoot = null): int
 {
-    $files = glob($directory . DIRECTORY_SEPARATOR . '*.pending.json');
+    $managed = is_string($privateRoot) && qd_path_is_lexically_within($directory, $privateRoot);
+    $files = glob($directory . DIRECTORY_SEPARATOR . ($managed ? '*.pending.json.php' : '*.pending.json'));
     if (!is_array($files)) {
         throw new QDServerFault('unavailable');
     }
     $count = 0;
     foreach ($files as $path) {
-        if (preg_match('/\A([a-f0-9]{64})\.pending\.json\z/D', basename($path), $matches) !== 1) {
+        $pattern = $managed ? '/\A([a-f0-9]{64})\.pending\.json\.php\z/D' : '/\A([a-f0-9]{64})\.pending\.json\z/D';
+        if (preg_match($pattern, basename($path), $matches) !== 1) {
             throw new QDServerFault('unavailable');
         }
         $semanticKey = $matches[1];
-        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey);
+        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey, $privateRoot);
         if ($pointer === null) {
             continue;
         }
         $operationKey = $pointer['operationKey'];
-        $record = qd_journal_load_record($directory, $webRoot, $operationKey);
+        $record = qd_journal_load_record($directory, $webRoot, $operationKey, $privateRoot);
         if ($record === null && ($pointer['version'] ?? null) === 2 && $pointer['commitEntered'] === false) {
-            qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json'));
+            qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot));
             continue;
         }
         if ($record === null) {
@@ -263,7 +320,7 @@ function qd_journal_outstanding_count(string $directory, string $webRoot): int
         if (($record['state'] ?? null) === 'pending') {
             $count++;
         } else {
-            qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json'));
+            qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot));
         }
     }
     return $count;
@@ -290,19 +347,19 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
     }
     $key = hash('sha256', implode("\0", [$pairId, $scopeHash, $operation, $operationId]));
     $semanticKey = qd_journal_semantic_key($pairId, $scopeHash, $operation, $semanticHash);
-    return qd_journal_transaction($settings, static function (string $directory, string $webRoot) use ($pairId, $scopeHash, $operation, $operationId, $payloadHash, $semanticHash, $key, $semanticKey): array {
-        $existing = qd_journal_load_record($directory, $webRoot, $key);
+    return qd_journal_transaction($settings, static function (string $directory, string $webRoot, ?string $privateRoot) use ($pairId, $scopeHash, $operation, $operationId, $payloadHash, $semanticHash, $key, $semanticKey): array {
+        $existing = qd_journal_load_record($directory, $webRoot, $key, $privateRoot);
         if ($existing !== null) {
             $existingSemanticKey = qd_journal_semantic_key($existing['pairId'], $existing['scopeHash'], $existing['operation'], $existing['semanticHash']);
             qd_journal_assert_record_identity($existing, $key, $existingSemanticKey);
-            $existingPointer = qd_journal_semantic_pointer($directory, $webRoot, $existingSemanticKey);
+            $existingPointer = qd_journal_semantic_pointer($directory, $webRoot, $existingSemanticKey, $privateRoot);
             if (($existing['state'] ?? null) === 'pending' && $existingPointer === null) {
                 throw new QDServerFault('unavailable');
             }
             if ($existingPointer !== null) {
                 qd_journal_assert_pointer_record($existingPointer, $key, $existingSemanticKey, $existing);
                 if (($existing['state'] ?? null) === 'completed') {
-                    qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $existingSemanticKey . '.pending.json'));
+                    qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $existingSemanticKey . '.pending.json', $privateRoot));
                 }
             }
             if (($existing['payloadHash'] ?? null) !== $payloadHash || ($existing['semanticHash'] ?? null) !== $semanticHash) {
@@ -322,10 +379,10 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
             throw new QDServerFault('conflict');
         }
 
-        $pointerPath = qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json');
-        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey);
+        $pointerPath = qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot);
+        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey, $privateRoot);
         if ($pointer !== null) {
-            $pointedRecord = qd_journal_load_record($directory, $webRoot, $pointer['operationKey']);
+            $pointedRecord = qd_journal_load_record($directory, $webRoot, $pointer['operationKey'], $privateRoot);
             if ($pointedRecord === null) {
                 if (($pointer['version'] ?? null) !== 2 || $pointer['commitEntered'] !== false) {
                     throw new QDServerFault('conflict');
@@ -339,13 +396,13 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
             qd_journal_delete_file($pointerPath);
         }
 
-        if (qd_journal_outstanding_count($directory, $webRoot) >= QD_JOURNAL_MAX_OUTSTANDING) {
+        if (qd_journal_outstanding_count($directory, $webRoot, $privateRoot) >= QD_JOURNAL_MAX_OUTSTANDING) {
             throw new QDServerFault('unavailable');
         }
 
         // Reserve the semantic slot first: an interrupted second write then fails closed.
         qd_journal_write_json($pointerPath, ['version' => 2, 'operationKey' => $key, 'commitEntered' => false], 256);
-        $recordPath = qd_journal_file_path($directory, $webRoot, $key . '.json');
+        $recordPath = qd_journal_file_path($directory, $webRoot, $key . '.json', $privateRoot);
         qd_journal_write_json($recordPath, [
             'version' => 1,
             'pairId' => $pairId,
@@ -364,20 +421,20 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
 
 function qd_journal_mark_commit(array $settings, string $key): void
 {
-    qd_journal_transaction($settings, static function (string $directory, string $webRoot) use ($key): bool {
-        $record = qd_journal_load_record($directory, $webRoot, $key);
+    qd_journal_transaction($settings, static function (string $directory, string $webRoot, ?string $privateRoot) use ($key): bool {
+        $record = qd_journal_load_record($directory, $webRoot, $key, $privateRoot);
         if ($record === null || ($record['state'] ?? null) !== 'pending') {
             throw new QDServerFault('unavailable');
         }
         $semanticKey = qd_journal_semantic_key($record['pairId'], $record['scopeHash'], $record['operation'], $record['semanticHash']);
         qd_journal_assert_record_identity($record, $key, $semanticKey);
-        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey);
+        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey, $privateRoot);
         if ($pointer === null) {
             throw new QDServerFault('unavailable');
         }
         qd_journal_assert_pointer_record($pointer, $key, $semanticKey, $record);
         if (($pointer['version'] ?? null) !== 2 || $pointer['commitEntered'] !== true) {
-            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json'), [
+            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot), [
                 'version' => 2,
                 'operationKey' => $key,
                 'commitEntered' => true,
@@ -385,7 +442,7 @@ function qd_journal_mark_commit(array $settings, string $key): void
         }
         if (!$record['commitEntered']) {
             $record['commitEntered'] = true;
-            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $key . '.json'), $record, QD_JOURNAL_RECORD_BYTES);
+            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $key . '.json', $privateRoot), $record, QD_JOURNAL_RECORD_BYTES);
         }
         return true;
     });
@@ -393,14 +450,14 @@ function qd_journal_mark_commit(array $settings, string $key): void
 
 function qd_journal_abandon_no_write(array $settings, string $key): void
 {
-    qd_journal_transaction($settings, static function (string $directory, string $webRoot) use ($key): bool {
-        $record = qd_journal_load_record($directory, $webRoot, $key);
+    qd_journal_transaction($settings, static function (string $directory, string $webRoot, ?string $privateRoot) use ($key): bool {
+        $record = qd_journal_load_record($directory, $webRoot, $key, $privateRoot);
         if ($record === null || ($record['state'] ?? null) !== 'pending') {
             return true;
         }
         $semanticKey = qd_journal_semantic_key($record['pairId'], $record['scopeHash'], $record['operation'], $record['semanticHash']);
         qd_journal_assert_record_identity($record, $key, $semanticKey);
-        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey);
+        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey, $privateRoot);
         if ($pointer === null) {
             throw new QDServerFault('unavailable');
         }
@@ -409,16 +466,16 @@ function qd_journal_abandon_no_write(array $settings, string $key): void
             return true;
         }
         // Delete the record first; an orphan pointer blocks a retry, while the reverse can admit one.
-        qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $key . '.json'));
-        $pointerPath = qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json');
+        qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $key . '.json', $privateRoot));
+        $pointerPath = qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot);
         qd_journal_delete_file($pointerPath);
         return true;
     });
 }
 
-function qd_journal_recent_keys(string $directory, string $webRoot, string $pairId): array
+function qd_journal_recent_keys(string $directory, string $webRoot, string $pairId, ?string $privateRoot = null): array
 {
-    $path = qd_journal_file_path($directory, $webRoot, hash('sha256', $pairId) . '.recent.json');
+    $path = qd_journal_file_path($directory, $webRoot, hash('sha256', $pairId) . '.recent.json', $privateRoot);
     $recent = qd_journal_read_json($path, 16 * 1024);
     if ($recent === null) {
         return [$path, []];
@@ -450,20 +507,20 @@ function qd_journal_complete(array $settings, string $key, string $dataJson): vo
     if (!is_object($data)) {
         throw new QDServerFault('unavailable');
     }
-    qd_journal_transaction($settings, static function (string $directory, string $webRoot) use ($key, $dataJson): bool {
-        $record = qd_journal_load_record($directory, $webRoot, $key);
+    qd_journal_transaction($settings, static function (string $directory, string $webRoot, ?string $privateRoot) use ($key, $dataJson): bool {
+        $record = qd_journal_load_record($directory, $webRoot, $key, $privateRoot);
         if ($record === null || ($record['state'] ?? null) !== 'pending') {
             throw new QDServerFault('unavailable');
         }
         $semanticKey = qd_journal_semantic_key($record['pairId'], $record['scopeHash'], $record['operation'], $record['semanticHash']);
         qd_journal_assert_record_identity($record, $key, $semanticKey);
-        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey);
+        $pointer = qd_journal_semantic_pointer($directory, $webRoot, $semanticKey, $privateRoot);
         if ($pointer === null) {
             throw new QDServerFault('unavailable');
         }
         qd_journal_assert_pointer_record($pointer, $key, $semanticKey, $record);
         if (($pointer['version'] ?? null) !== 2 || $pointer['commitEntered'] !== true) {
-            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json'), [
+            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot), [
                 'version' => 2,
                 'operationKey' => $key,
                 'commitEntered' => true,
@@ -471,16 +528,16 @@ function qd_journal_complete(array $settings, string $key, string $dataJson): vo
         }
         if ($record['commitEntered'] === false) {
             $record['commitEntered'] = true;
-            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $key . '.json'), $record, QD_JOURNAL_RECORD_BYTES);
+            qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $key . '.json', $privateRoot), $record, QD_JOURNAL_RECORD_BYTES);
         }
-        [$recentPath, $recentKeys] = qd_journal_recent_keys($directory, $webRoot, $record['pairId']);
+        [$recentPath, $recentKeys] = qd_journal_recent_keys($directory, $webRoot, $record['pairId'], $privateRoot);
         $recentKeys = array_values(array_filter($recentKeys, static fn(string $recentKey): bool => $recentKey !== $key));
         while (count($recentKeys) >= QD_JOURNAL_DETAIL_LIMIT) {
             $evictedKey = array_shift($recentKeys);
-            $evicted = qd_journal_load_record($directory, $webRoot, $evictedKey);
+            $evicted = qd_journal_load_record($directory, $webRoot, $evictedKey, $privateRoot);
             if ($evicted !== null && ($evicted['state'] ?? null) === 'completed' && is_string($evicted['dataJson'] ?? null)) {
                 $evicted['dataJson'] = null;
-                qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $evictedKey . '.json'), $evicted, QD_JOURNAL_RECORD_BYTES);
+                qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $evictedKey . '.json', $privateRoot), $evicted, QD_JOURNAL_RECORD_BYTES);
             }
         }
         $recentKeys[] = $key;
@@ -488,9 +545,9 @@ function qd_journal_complete(array $settings, string $key, string $dataJson): vo
 
         $record['state'] = 'completed';
         $record['dataJson'] = $dataJson;
-        qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $key . '.json'), $record, QD_JOURNAL_RECORD_BYTES);
+        qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $key . '.json', $privateRoot), $record, QD_JOURNAL_RECORD_BYTES);
 
-        $pointerPath = qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json');
+        $pointerPath = qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot);
         qd_journal_delete_file($pointerPath);
         return true;
     });

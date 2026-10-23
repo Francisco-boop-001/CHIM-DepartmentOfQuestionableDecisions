@@ -6,8 +6,16 @@
   const MAX_ROWS = 100;
   const MAX_CATALOG_ACTORS = 10000;
   const MAX_UNRESOLVED_LETTERS = 3;
+  const CONNECTION_STATES = new Set(['pending', 'approved', 'expired']);
+  const CONNECTION_PENDING_COPY = 'Approve this game on your CHIM page, then check connection.';
+  const CONNECTION_PENDING_NO_PAGE_COPY = 'The connection is pending, but the CHIM approval page did not open. Try Connect to CHIM again or check connection.';
+  const CONNECTION_PENDING_STATUS_COPY = 'A CHIM approval is pending. Finish approval in CHIM, then check connection again.';
+  const CONNECTION_EXPIRED_COPY = 'The CHIM approval request expired. Start a new connection to try again.';
+  const CONNECTION_FAILURE_COPY = 'The CHIM connection could not be confirmed. Try Connect to CHIM again, or check connection if a request may still be pending.';
+  const CONNECTION_STARTUP_COPY = 'Starting a CHIM connection request.';
+  const CONNECTION_CHECKING_COPY = 'Checking the CHIM connection.';
   const OPS = new Set([
-    'bootstrap', 'view.close', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
+    'bootstrap', 'view.close', 'connection.begin', 'connection.status', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
     'correspondence.mailbox.read', 'correspondence.detail.read', 'correspondence.compose', 'correspondence.reconcile',
   ]);
@@ -36,19 +44,29 @@
     UNAVAILABLE: 'This feature is unavailable right now. Refresh its status later.',
     RATE_LIMITED: 'Too many requests. Wait briefly before refreshing.',
     TOO_LARGE: 'The response exceeded the safe display limit and was discarded.',
+    CONNECTION_SETUP_REQUIRED: 'CHIM’s server address could not be determined. Check that CHIM is connected, then restart Skyrim.',
+    CONNECTION_SECURE_STORAGE_FAILED: 'Windows could not save this game’s connection. Connection was not started.',
   };
+  const BOOTSTRAP_TIMEOUT_COPY = 'The bootstrap request timed out. No automatic retry was made.';
+  const BOOTSTRAP_FAILURE_NEXT_STEP = 'Check the Department server plugin and connection, then reopen this view.';
   const BOUNDARY_ERROR = {
     unauthorized: 'AUTH_REQUIRED', forbidden: 'FORBIDDEN', stale_context: 'CONTEXT_STALE',
     stale_revision: 'STALE_REVISION', actor_unavailable: 'ACTOR_UNAVAILABLE', invalid_input: 'INVALID_INPUT',
     busy: 'BUSY', unavailable: 'UNAVAILABLE', rate_limited: 'RATE_LIMITED', too_large: 'TOO_LARGE',
+    connection_setup_required: 'CONNECTION_SETUP_REQUIRED', connection_secure_storage_failed: 'CONNECTION_SECURE_STORAGE_FAILED',
   };
+
+  function createConnectionState() {
+    return { busy: false, pending: false, ambiguous: false, approvalOpened: false, expired: false, failureCode: null, message: null };
+  }
 
   const $ = (id) => document.getElementById(id);
   const text = (id, value) => { const node = $(id); if (node) node.textContent = value == null ? '' : String(value); };
   const state = {
-    initialized: false, closed: true, closing: false, bootstrapping: false,
+    initialized: false, closed: true, closing: false, bootstrapping: false, bootstrapFailure: null,
     viewToken: null, nativeGeneration: null, serverContext: null, lastAuthenticatedScopeToken: null, seenViewTokens: [], idCounter: 0,
     authenticated: false, authRequired: true,
+    connection: createConnectionState(),
     capabilities: { pcv: false, mp: false, sas: false, correspondence: false },
     access: { pcv: false, inspector: false, compose: false, authorDetail: false },
     perspectives: { mp: [], sas: [] }, perspectiveLimited: { mp: false, sas: false },
@@ -160,7 +178,7 @@
   }
   function payloadFieldsValid(operation, payload) {
     const fields = {
-      bootstrap: [], 'view.close': [], 'pcv.roster.read': [], 'pcv.status.read': [],
+      bootstrap: [], 'view.close': [], 'connection.begin': [], 'connection.status': [], 'pcv.roster.read': [], 'pcv.status.read': [],
       'pcv.arm': ['operationId', 'expectedActiveConfigId', 'expectedPendingConfigId', 'configuration'],
       'pcv.end': ['operationId', 'expectedActiveConfigId', 'expectedPendingConfigId'],
       'pcv.send': ['operationId', 'expectedActiveConfigId', 'expectedPendingConfigId', 'actorKey', 'text'],
@@ -207,8 +225,17 @@
     if (operation === 'correspondence.detail.read' && (!boundedString(payload.recipientActorKey, 128) || !payload.recipientActorKey || !boundedString(payload.letterId, 128) || !payload.letterId)) return false;
     return boundedTree(payload);
   }
+  function validConnectionReply(operation, data) {
+    if (!isPlainObject(data) || !CONNECTION_STATES.has(data.state)) return false;
+    const expectedKeys = operation === 'connection.begin' ? ['state', 'approvalOpened'] : ['state'];
+    if (Object.keys(data).length !== expectedKeys.length || Object.keys(data).some((key) => !expectedKeys.includes(key))) return false;
+    if (operation === 'connection.begin'
+      && (typeof data.approvalOpened !== 'boolean' || (data.state !== 'pending' && data.approvalOpened !== false))) return false;
+    return true;
+  }
   function roleAllows(operation) {
     if (operation === 'bootstrap' || operation === 'view.close') return true;
+    if (operation === 'connection.begin' || operation === 'connection.status') return !state.authenticated;
     const capability = CAPABILITY[operation];
     const permission = PERMISSION[operation];
     if (operation === 'correspondence.catalog.read') return state.authenticated && Boolean(capability && state.capabilities[capability]) && (state.access.compose || state.access.inspector);
@@ -220,7 +247,8 @@
     if (operation !== 'bootstrap' && !roleAllows(operation)) return Promise.reject(failLocal(state.authenticated ? 'FORBIDDEN' : 'AUTH_REQUIRED'));
     if (!payloadFieldsValid(operation, payload)) return Promise.reject(failLocal('INVALID_INPUT', 'The request fields did not pass local validation.'));
     const context = makeContext();
-    if (operation !== 'bootstrap' && operation !== 'view.close' && (!validServerContext(context.serverContext) || context.serverContext === null)) return Promise.reject(failLocal('CONTEXT_STALE'));
+    if (!['bootstrap', 'view.close', 'connection.begin', 'connection.status'].includes(operation)
+      && (!validServerContext(context.serverContext) || context.serverContext === null)) return Promise.reject(failLocal('CONTEXT_STALE'));
     const envelope = { version: 1, requestId: newUuid(), operation, context, payload };
     if (!validUuid(envelope.requestId) || !validUuid(context.viewToken) || !validGeneration(context.nativeGeneration) || !validServerContext(context.serverContext) || !boundedTree(envelope)) {
       return Promise.reject(failLocal('INVALID_INPUT', 'The request exceeded a safe transport limit.'));
@@ -231,7 +259,9 @@
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
         state.pending.delete(envelope.requestId);
-        const error = failLocal('UNAVAILABLE', 'The request timed out. No automatic retry was made.');
+        const error = failLocal('UNAVAILABLE', operation === 'bootstrap'
+          ? BOOTSTRAP_TIMEOUT_COPY : 'The request timed out. No automatic retry was made.');
+        if (operation === 'bootstrap') error.bootstrapTimeout = true;
         error.dispatched = true;
         reject(error);
       }, 20000);
@@ -342,6 +372,7 @@
       state.perspectiveLimited = bootstrap.perspectiveLimited;
       if (bootstrap.authenticated) state.lastAuthenticatedScopeToken = bootstrap.scopeToken;
       state.bootstrapping = false;
+      state.bootstrapFailure = null;
       if (!bootstrap.authenticated) clearAuthorization('AUTH_REQUIRED');
       if (state.authenticated && state.pcv.draftText) {
         $('pcv-text').value = state.pcv.draftText;
@@ -471,6 +502,94 @@
     renderPcvStatus(); updatePcvMode(); updateLetterCount();
   }
 
+  function startBootstrap() {
+    const viewToken = state.viewToken;
+    const nativeGeneration = state.nativeGeneration;
+    state.serverContext = null;
+    state.bootstrapping = true;
+    state.bootstrapFailure = null;
+    renderBootstrap();
+    request('bootstrap', {}).catch((error) => {
+      if (isStale(error) || !isCurrentView(viewToken, nativeGeneration)) return;
+      state.bootstrapping = false;
+      state.bootstrapFailure = error.code === 'AUTH_REQUIRED' ? null : {
+        message: error.bootstrapTimeout ? BOOTSTRAP_TIMEOUT_COPY : localError(error),
+      };
+      renderBootstrap();
+    });
+  }
+
+  function connectionFailure(error) {
+    if (error && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code)) return localError(error);
+    return CONNECTION_FAILURE_COPY;
+  }
+
+  function connectionOperation(operation) {
+    if (state.connection.busy || !state.initialized || state.closed || state.closing || state.authenticated) return;
+    const viewToken = state.viewToken;
+    const nativeGeneration = state.nativeGeneration;
+    state.connection.busy = true;
+    if (operation === 'connection.begin') {
+      state.connection.pending = false;
+      state.connection.ambiguous = true;
+      state.connection.approvalOpened = false;
+      state.connection.message = CONNECTION_STARTUP_COPY;
+    } else {
+      state.connection.message = CONNECTION_CHECKING_COPY;
+    }
+    state.connection.expired = false;
+    state.connection.failureCode = null;
+    renderBootstrap();
+    request(operation, {}).then((data) => {
+      if (!isCurrentView(viewToken, nativeGeneration)) return;
+      state.connection.busy = false;
+      if (!validConnectionReply(operation, data)) {
+        state.connection.pending = false;
+        state.connection.ambiguous = true;
+        state.connection.approvalOpened = false;
+        state.connection.expired = false;
+        state.connection.failureCode = 'UNCONFIRMED';
+        state.connection.message = CONNECTION_FAILURE_COPY;
+        renderBootstrap();
+        return;
+      }
+      if (data.state === 'approved') {
+        state.connection = createConnectionState();
+        startBootstrap();
+        return;
+      }
+      if (data.state === 'expired') {
+        state.connection.pending = false;
+        state.connection.ambiguous = false;
+        state.connection.approvalOpened = false;
+        state.connection.expired = true;
+        state.connection.failureCode = null;
+        state.connection.message = CONNECTION_EXPIRED_COPY;
+      } else {
+        if (operation === 'connection.begin') state.connection.approvalOpened = data.approvalOpened;
+        state.connection.pending = true;
+        state.connection.ambiguous = false;
+        state.connection.expired = false;
+        state.connection.failureCode = null;
+        state.connection.message = state.connection.approvalOpened
+          ? CONNECTION_PENDING_COPY
+          : operation === 'connection.begin' ? CONNECTION_PENDING_NO_PAGE_COPY : CONNECTION_PENDING_STATUS_COPY;
+      }
+      renderBootstrap();
+    }).catch((error) => {
+      if (isStale(error) || !isCurrentView(viewToken, nativeGeneration)) return;
+      state.connection.busy = false;
+      state.connection.pending = false;
+      state.connection.approvalOpened = false;
+      state.connection.ambiguous = !(error && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code));
+      state.connection.expired = false;
+      state.connection.failureCode = error && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code)
+        ? error.code : 'UNCONFIRMED';
+      state.connection.message = connectionFailure(error);
+      renderBootstrap();
+    });
+  }
+
   window.departmentInitialize = (raw) => {
     if (typeof raw !== 'string' || bytes(raw) > 4096) return false;
     let init;
@@ -493,6 +612,8 @@
     state.closed = false;
     state.closing = false;
     state.bootstrapping = true;
+    state.bootstrapFailure = null;
+    state.connection = createConnectionState();
     state.viewToken = init.viewToken;
     state.nativeGeneration = init.nativeGeneration;
     state.serverContext = null;
@@ -521,16 +642,7 @@
     state.mail.selectedLetter = null;
     clearPrivateViews();
     resetTransientControls();
-    renderBootstrap();
-    const viewToken = init.viewToken;
-    const nativeGeneration = init.nativeGeneration;
-    request('bootstrap', {}).then(() => {}).catch((error) => {
-      if (isStale(error) || !isCurrentView(viewToken, nativeGeneration)) return;
-      state.bootstrapping = false;
-      setStatus('connection-status', localError(error), 'error');
-      setStatus('permission-status', 'Private records remain unavailable until a new native view opens.', 'error');
-      renderBootstrap();
-    });
+    startBootstrap();
     return true;
   };
   window.departmentReceive = receive;
@@ -545,6 +657,17 @@
     return true;
   };
 
+  function renderConnectionControls(connected) {
+    const available = connected && !state.bootstrapping && !state.authenticated;
+    $('connection-actions').hidden = !available;
+    $('connect-chim').disabled = !available || state.connection.busy;
+    $('check-connection').hidden = !(state.connection.pending || state.connection.ambiguous);
+    $('check-connection').disabled = !available || state.connection.busy;
+    const guidance = state.connection.pending && !state.connection.approvalOpened ? state.connection.message : '';
+    text('connection-guidance', guidance);
+    $('connection-guidance').hidden = !guidance;
+  }
+
   function renderBootstrap() {
     const connected = state.initialized && !state.closed;
     $('close-view').disabled = !connected;
@@ -554,13 +677,35 @@
     } else if (state.bootstrapping) {
       setStatus('connection-status', 'Checking authorized session', 'waiting');
       setStatus('permission-status', 'No private data is loaded until bootstrap confirms the current scope.');
+    } else if (state.bootstrapFailure) {
+      setStatus('connection-status', state.bootstrapFailure.message, 'error');
+      setStatus('permission-status', BOOTSTRAP_FAILURE_NEXT_STEP, 'error');
+    } else if (!state.authenticated && state.connection.pending) {
+      setStatus('connection-status', 'Waiting for connection approval', 'waiting');
+      setStatus('permission-status', CONNECTION_PENDING_COPY, 'waiting');
+    } else if (!state.authenticated && state.connection.failureCode === 'CONNECTION_SETUP_REQUIRED') {
+      setStatus('connection-status', 'Connection could not be started', 'error');
+      setStatus('permission-status', state.connection.message, 'error');
+    } else if (!state.authenticated && state.connection.failureCode === 'CONNECTION_SECURE_STORAGE_FAILED') {
+      setStatus('connection-status', 'Connection could not be started', 'error');
+      setStatus('permission-status', state.connection.message, 'error');
+    } else if (!state.authenticated && state.connection.expired) {
+      setStatus('connection-status', 'Connection request expired', 'error');
+      setStatus('permission-status', state.connection.message, 'error');
+    } else if (!state.authenticated && state.connection.failureCode) {
+      setStatus('connection-status', 'Connection could not be confirmed', 'error');
+      setStatus('permission-status', state.connection.message, 'error');
+    } else if (!state.authenticated && state.connection.busy) {
+      setStatus('connection-status', state.connection.message === CONNECTION_CHECKING_COPY ? 'Checking CHIM connection' : 'Connecting to CHIM', 'waiting');
+      setStatus('permission-status', state.connection.message, 'waiting');
     } else if (!state.authenticated) {
-      setStatus('connection-status', 'Authentication required', 'auth');
-      setStatus('permission-status', 'Pair an operator-issued session to inspect or change private records.');
+      setStatus('connection-status', 'Not connected to CHIM', 'waiting');
+      setStatus('permission-status', 'Connect this game to use the installed plugins.');
     } else {
       setStatus('connection-status', 'Authorized session connected', 'ready');
       setStatus('permission-status', state.access.inspector ? 'Out-of-character Inspector access is authorized.' : 'Inspector access is unavailable for this session.');
     }
+    renderConnectionControls(connected);
     text('scope-footer', state.authenticated ? 'Authorized session connected; private data stays out of dialogue.' : 'No authorized session.');
     renderPcvAccess();
     renderMpChoices();
@@ -853,7 +998,9 @@
     const distinct = values.filter(Boolean).length === new Set(values.filter(Boolean)).size;
     const canPick = mode === 'free' || (mode === 'solo' ? Boolean($('actor-a').value) : Boolean($('actor-a').value && $('actor-b').value));
     $('pcv-arm').disabled = !authorized || !rosterReady || !statusReady || !distinct || !canPick || state.pcv.mutationPending || state.pcv.mutationUnknown;
-    if (!authorized) {
+    if (!state.authenticated) {
+      setStatus('pcv-state', 'Connect to CHIM to choose a cast and arm a conversation.', 'error');
+    } else if (!authorized) {
       setStatus('pcv-state', 'An authenticated PCV permission is required for this control.', 'error');
     } else if (!rosterReady) {
       const rosterState = state.pcv.roster && state.pcv.roster.state;
@@ -2124,6 +2271,8 @@
     const mailTabs = [$('mail-compose-tab'), $('mailbox-tab')];
     mailTabs.forEach((tab, index) => tab.addEventListener('keydown', (event) => handleTabKeydown(event, mailTabs, index, (next) => setMailView(next === 0 ? 'compose' : 'mailbox', true))));
     $('close-view').addEventListener('click', closeView);
+    $('connect-chim').addEventListener('click', () => connectionOperation('connection.begin'));
+    $('check-connection').addEventListener('click', () => connectionOperation('connection.status'));
     $('pcv-refresh').addEventListener('click', () => invoke(readPcv, 'pcv-state'));
     $('pcv-refresh-send').addEventListener('click', () => invoke(
       state.pcv.sendUnknownId ? () => requestPcvSendStatus(state.pcv.sendUnknownId) : readPcv,

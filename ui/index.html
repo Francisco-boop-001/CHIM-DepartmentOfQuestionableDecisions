@@ -23,6 +23,13 @@
       <span id="connection-status" class="state-mark" data-state="waiting">Waiting for game connection</span>
       <span id="permission-status" class="subtle">Private records remain unavailable until an authorized session is paired.</span>
     </div>
+    <div id="connection-actions" class="connection-actions" hidden>
+      <span id="connection-guidance" class="subtle connection-guidance" role="status" aria-live="polite"></span>
+      <div class="button-row connection-buttons">
+        <button id="connect-chim" class="button" type="button">Connect to CHIM</button>
+        <button id="check-connection" class="button secondary" type="button" hidden>Check connection</button>
+      </div>
+    </div>
 
     <nav class="tabs" role="tablist" aria-label="Department tabs">
       <button id="tab-pcv" class="tab" role="tab" type="button" aria-controls="panel-pcv" aria-selected="true" tabindex="0">Private Conversation</button>

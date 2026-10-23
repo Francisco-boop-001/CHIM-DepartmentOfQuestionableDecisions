@@ -33,10 +33,19 @@ namespace dql::companion
 			if (path.empty()) return true;
 			if (path.front() != '/' || path.find("//") != std::string_view::npos ||
 				path.find_first_of("\\%?#") != std::string_view::npos) return false;
-			return std::all_of(path.begin(), path.end(), [](unsigned char ch) {
+			if (!std::all_of(path.begin(), path.end(), [](unsigned char ch) {
 				return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
 					(ch >= '0' && ch <= '9') || ch == '/' || ch == '-' || ch == '_' || ch == '.' || ch == '~';
-			});
+			})) return false;
+		for (std::size_t segmentStart = 1; segmentStart <= path.size();) {
+			const auto slash = path.find('/', segmentStart);
+			const auto segmentEnd = slash == std::string_view::npos ? path.size() : slash;
+			const auto segment = path.substr(segmentStart, segmentEnd - segmentStart);
+			if (segment == "." || segment == "..") return false;
+			if (slash == std::string_view::npos) break;
+			segmentStart = slash + 1;
+		}
+		return true;
 		}
 
 		std::optional<std::uint16_t> ParsePort(std::string_view value)
@@ -46,6 +55,29 @@ namespace dql::companion
 			if (value.empty() || parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() ||
 				port == 0 || port > 65535) return std::nullopt;
 			return static_cast<std::uint16_t>(port);
+		}
+
+		std::optional<std::string> NormalizeIpv4(std::string_view value)
+		{
+			std::string normalized;
+			std::size_t start = 0;
+			for (std::size_t octetIndex = 0; octetIndex < 4; ++octetIndex) {
+				const auto dot = value.find('.', start);
+				const auto end = dot == std::string_view::npos ? value.size() : dot;
+				const auto octetText = value.substr(start, end - start);
+				unsigned octet{};
+				const auto parsed = std::from_chars(octetText.data(), octetText.data() + octetText.size(), octet);
+				if (octetText.empty() || octetText.size() > 3 || parsed.ec != std::errc{} ||
+					parsed.ptr != octetText.data() + octetText.size() || octet > 255 ||
+					(octetIndex < 3 && dot == std::string_view::npos) ||
+					(octetIndex == 3 && dot != std::string_view::npos)) {
+					return std::nullopt;
+				}
+				if (!normalized.empty()) normalized.push_back('.');
+				normalized.append(std::to_string(octet));
+				start = end + 1;
+			}
+			return normalized;
 		}
 
 		void LowerAscii(std::string& value)
@@ -116,8 +148,6 @@ namespace dql::companion
 			const auto comm = path.rfind("/comm.php");
 			if (comm == std::string::npos || comm + 9 != path.size()) return {};
 			std::string root = path.substr(0, comm);
-			const auto lastSlash = root.find_last_of('/');
-			if (root.substr(lastSlash == std::string::npos ? 0 : lastSlash + 1) != "HerikaServer") return {};
 			LowerAscii(host);
 			return Destination{ std::move(host), *port, std::move(root) };
 		}
@@ -176,6 +206,15 @@ namespace dql::companion
 		});
 	}
 
+	bool IsValidPairingToken(std::string_view token) noexcept
+	{
+		return token.size() == 47 && token.starts_with("qd1_") &&
+			std::all_of(token.begin() + 4, token.end(), [](unsigned char ch) {
+				return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+					(ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
+			});
+	}
+
 	bool IsFormId(std::string_view formId) noexcept
 	{
 		return formId.size() == 8 && std::all_of(formId.begin(), formId.end(), [](unsigned char ch) {
@@ -205,10 +244,39 @@ namespace dql::companion
 		std::string_view facadeBase)
 	{
 		if (startupIni.empty() || currentIni != startupIni) return false;
-		const auto stock = ParseExplicitStockIni(startupIni);
-		const auto facade = ParseFacadeBase(facadeBase);
-		return stock && facade && stock->host == facade->host && stock->port == facade->port &&
-			stock->basePath == facade->basePath;
+		const auto stockBase = DeriveStockServerBase(startupIni);
+		return stockBase && IsExactHttpDestination(facadeBase, *stockBase);
+	}
+
+	std::optional<std::string> DeriveStockServerBase(std::string_view agentIni)
+	{
+		const auto destination = ParseExplicitStockIni(agentIni);
+		if (!destination) return std::nullopt;
+		std::string base = "http://" + destination->host + ":" + std::to_string(destination->port) + destination->basePath;
+		if (base.size() > 2048) return std::nullopt;
+		return base;
+	}
+
+	std::optional<std::string> DeriveChimDiscoveryServerBase(std::string_view responseBody)
+	{
+		if (responseBody.empty() || responseBody.size() > 1023) return std::nullopt;
+		const auto body = Trim(responseBody);
+		const auto colon = body.find(':');
+		if (body.empty() || colon == std::string_view::npos || body.find(':', colon + 1) != std::string_view::npos) {
+			return std::nullopt;
+		}
+		const auto host = NormalizeIpv4(body.substr(0, colon));
+		const auto port = ParsePort(body.substr(colon + 1));
+		if (!host || !port) return std::nullopt;
+		return "http://" + *host + ":" + std::to_string(*port) + "/HerikaServer";
+	}
+
+	bool IsExactHttpDestination(std::string_view candidate, std::string_view trustedBase)
+	{
+		const auto actual = ParseFacadeBase(candidate);
+		const auto trusted = ParseFacadeBase(trustedBase);
+		return actual && trusted && actual->host == trusted->host && actual->port == trusted->port &&
+			actual->basePath == trusted->basePath;
 	}
 
 	std::string FormIdHex(std::uint32_t formId)

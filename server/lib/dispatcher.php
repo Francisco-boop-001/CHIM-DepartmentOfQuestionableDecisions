@@ -112,7 +112,7 @@ function qd_context_record_is_current(array $settings, string $pairId, object $r
 
 function qd_assert_current_context(array $settings, array $dependencies, string $authorizationHeader, array $auth, mixed $requiredScope, object $request, string $expectedScopeHash): array
 {
-    $currentAuth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader);
+    $currentAuth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader, $settings['privateRoot'] ?? null, $settings['coreRoot'] ?? null);
     if ($currentAuth === null || $currentAuth['pairId'] !== $auth['pairId']) {
         throw new QDServerFault('unauthorized');
     }
@@ -153,7 +153,7 @@ function qd_with_current_context(array $settings, array $dependencies, string $a
     return qd_server_state_transaction($settings, static function (array &$state) use (
         $settings, $dependencies, $authorizationHeader, $currentAuth, $requiredScope, $request, $expectedScopeHash, $callback
     ): mixed {
-        $leasedAuth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader);
+        $leasedAuth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader, $settings['privateRoot'] ?? null, $settings['coreRoot'] ?? null);
         if ($leasedAuth === null || $leasedAuth['pairId'] !== $currentAuth['pairId']) {
             throw new QDServerFault('unauthorized');
         }
@@ -245,6 +245,8 @@ function qd_with_locked_pair_context(
             });
         },
         QD_MAX_PAIRING_FILE_BYTES,
+        is_string($settings['privateRoot'] ?? null) ? $settings['privateRoot'] : null,
+        is_string($settings['coreRoot'] ?? null) ? $settings['coreRoot'] : null,
     );
 }
 
@@ -342,7 +344,7 @@ function qd_perspective_projection(array $dependencies, string $scopeKey, array 
 
 function qd_bootstrap_response(object $request, ?string $authorizationHeader, array $settings, array $dependencies): array
 {
-    $auth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader);
+    $auth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader, $settings['privateRoot'] ?? null, $settings['coreRoot'] ?? null);
     if ($auth === null) {
         return qd_success_response($request, [
             'authenticated' => false,
@@ -380,7 +382,7 @@ function qd_bootstrap_authenticated_response(object $request, ?string $authoriza
     if ($access['inspector']) {
         $data['perspectives'] = qd_perspective_projection($dependencies, $scopeKey, $readiness);
     }
-    $freshAuth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader);
+    $freshAuth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader, $settings['privateRoot'] ?? null, $settings['coreRoot'] ?? null);
     if ($freshAuth === null || $freshAuth['pairId'] !== $auth['pairId']) {
         throw new QDServerFault('unauthorized');
     }
@@ -712,7 +714,7 @@ function qd_server_dispatch(mixed $request, ?string $authorizationHeader, array 
             return qd_bootstrap_response($request, $authorizationHeader, $settings, $dependencies);
         }
 
-        $auth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader);
+        $auth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], $authorizationHeader, $settings['privateRoot'] ?? null, $settings['coreRoot'] ?? null);
         if ($auth === null) {
             throw new QDServerFault('unauthorized');
         }

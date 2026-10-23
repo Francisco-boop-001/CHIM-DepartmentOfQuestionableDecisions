@@ -19,8 +19,8 @@ const QD_PCV_EXPECTED_OWNER_SOURCE_HASHES = [
 function qd_pcv_source_root(): string
 {
     $configured = getenv('QD_PCV_ROOT');
-    if (!is_string($configured) || $configured === '' || str_contains($configured, "\0")) {
-        throw new RuntimeException('The trusted PCV source path is not configured.');
+    if (!is_string($configured) || $configured === '') {
+        $configured = qd_runtime_extension_root('private_conversation');
     }
     $root = realpath($configured);
     if (!is_string($root) || !is_dir($root) || is_link($configured)) {

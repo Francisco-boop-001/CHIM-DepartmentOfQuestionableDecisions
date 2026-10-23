@@ -66,12 +66,31 @@ function qd_runtime_scope_key_from_home_state(array $homeState, string $schemaNa
 function qd_runtime_engine_root(): string
 {
     $configured = getenv('QD_CHIM_ROOT');
-    if (!is_string($configured) || $configured === '' || str_contains($configured, "\0")) {
-        throw new RuntimeException('The trusted CHIM source root is not configured.');
+    $fromEnvironment = is_string($configured) && $configured !== '';
+    if (!$fromEnvironment) {
+        // Installed at ext/questionable_decisions/adapters/runtime_support.php.
+        $configured = dirname(__DIR__, 3);
+    }
+    if (str_contains($configured, "\0") || (!$fromEnvironment && is_link($configured))) {
+        throw new RuntimeException('The trusted CHIM source root is unavailable.');
     }
     $root = realpath($configured);
     if (!is_string($root) || !is_dir($root) || !is_file($root . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'playthrough_preferences.php')) {
         throw new RuntimeException('The trusted CHIM source root is unavailable.');
+    }
+    return $root;
+}
+
+function qd_runtime_extension_root(string $extension): string
+{
+    if (preg_match('/\A[a-z][a-z0-9_]{0,63}\z/D', $extension) !== 1) {
+        throw new RuntimeException('The requested CHIM extension is unavailable.');
+    }
+    $coreRoot = qd_runtime_engine_root();
+    $candidate = $coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . $extension;
+    $root = realpath($candidate);
+    if (!is_string($root) || !is_dir($root) || is_link($candidate) || !qd_path_is_within($root, $coreRoot)) {
+        throw new RuntimeException('The requested CHIM extension is unavailable.');
     }
     return $root;
 }

@@ -14,6 +14,8 @@ const pagePath = path.resolve(__dirname, '..', 'index.html');
 const fifthTabFixturePath = path.join(__dirname, 'fixtures', 'fifth-tab.html');
 const resultPath = process.env.UI_TEST_RESULTS;
 const screenshotPath = process.env.UI_TEST_SCREENSHOT;
+const connectionPendingScreenshotPath = process.env.UI_CONNECTION_PENDING_SCREENSHOT;
+const connectionSetupErrorScreenshotPath = process.env.UI_CONNECTION_SETUP_ERROR_SCREENSHOT;
 const nativeRefusalScreenshotPath = process.env.UI_NATIVE_REFUSAL_SCREENSHOT;
 const nativeRecoveryScreenshotPath = process.env.UI_NATIVE_RECOVERY_SCREENSHOT;
 const letterRecoveryScreenshotPath = process.env.UI_LETTER_RECOVERY_SCREENSHOT;
@@ -53,13 +55,18 @@ function fifthTabDocument() {
     .replace('</body>', `<script>${js}</script>\n</body>`);
 }
 
-async function openPage(browser, inlineDocument = null) {
+async function openPage(browser, inlineDocument = null, bootstrapTimeoutMs = null) {
   const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
   const externalRequests = [];
   page.on('request', (request) => {
     if (!request.url().startsWith('file://')) externalRequests.push(request.url());
   });
-  await page.addInitScript(() => {
+  await page.addInitScript((testBootstrapTimeoutMs) => {
+    if (Number.isInteger(testBootstrapTimeoutMs) && testBootstrapTimeoutMs >= 0) {
+      const nativeSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = (callback, delay, ...args) => nativeSetTimeout(callback,
+        delay === 20000 ? testBootstrapTimeoutMs : delay, ...args);
+    }
     window.__networkAttempts = [];
     window.__bridgeRequests = [];
     window.__throwAfterRecord = null;
@@ -79,7 +86,7 @@ async function openPage(browser, inlineDocument = null) {
       catch { window.__bridgeRequests.push({ malformed: true }); }
       if (request && request.operation === window.__throwAfterRecord) throw new Error('Synthetic throw after native dispatch began.');
     };
-  });
+  }, bootstrapTimeoutMs);
   if (inlineDocument) await page.setContent(inlineDocument);
   else await page.goto(pathToFileURL(pagePath).href);
   page.__externalRequests = externalRequests;
@@ -121,6 +128,12 @@ async function respond(page, request, data, overrides = {}) {
   await page.evaluate((json) => window.departmentReceive(JSON.stringify(json)), response);
 }
 
+async function saveScreenshot(page, target) {
+  if (!target) return;
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  await page.screenshot({ path: target, fullPage: true });
+}
+
 function catalogPage(actors, { revision = 'a'.repeat(64), nextCursor = null, limited = false } = {}) {
   return { actors, limited, revision, nextCursor };
 }
@@ -137,6 +150,17 @@ function authenticatedData(serverContext = 'scope-test-1', scopeToken = 'A'.repe
       mp: { choices: [{ actorKey: 'actor:mp-owner', label: '<img src=x onerror=window.__xss=1>' }, { actorKey: 'npc:captain', label: 'Captain Snide' }], limited: false },
       sas: { choices: [{ actorKey: 'actor:sas-owner', label: 'Captain Snide' }], limited: false },
     },
+  };
+}
+
+function unauthenticatedData() {
+  return {
+    authenticated: false,
+    authRequired: true,
+    serverContext: null,
+    scopeToken: null,
+    capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
+    access: { pcv: false, inspector: false, compose: false, authorDetail: false },
   };
 }
 
@@ -231,9 +255,235 @@ async function main() {
         capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
         access: { pcv: false, inspector: false, compose: false, authorDetail: false },
       });
-      await page.getByText(/authentication required/i).waitFor();
+      await page.locator('#connection-status').getByText('Not connected to CHIM').waitFor();
+      assert.equal(await page.locator('#permission-status').innerText(), 'Connect this game to use the installed plugins.');
+      assert.equal(await page.locator('#pcv-state').innerText(), 'Connect to CHIM to choose a cast and arm a conversation.');
       for (const tabName of ['Mind Poisoning', 'Sworn & Scorned', 'Sealed Fates', 'Private Conversation']) await page.getByRole('tab', { name: tabName }).click();
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation !== 'bootstrap').length), 0);
+      await page.close();
+    });
+
+    await test('keeps the missing PCV permission message for an authenticated session', async () => {
+      const page = await authenticatedPage(browser, 'no-pcv-access', 'C'.repeat(43), {
+        capabilities: { pcv: true },
+        access: { pcv: false },
+      });
+      await page.getByRole('tab', { name: 'Private Conversation' }).click();
+      assert.equal(await page.locator('#pcv-state').innerText(), 'An authenticated PCV permission is required for this control.');
+      await page.close();
+    });
+
+    await test('keeps a bootstrap unavailable error visible with a safe next step and private controls disabled', async () => {
+      const page = await openPage(browser);
+      const bootstrap = await initialize(page);
+      await respond(page, bootstrap, null, { ok: false, error: { code: 'unavailable', message: 'UNTRUSTED_BACKEND_DETAILS' } });
+      await page.waitForFunction(() => document.getElementById('connection-status').textContent !== 'Checking authorized session', null, { timeout: 1000 });
+      assert.match(await page.locator('#connection-status').innerText(), /feature is unavailable/i);
+      assert.match(await page.locator('#permission-status').innerText(), /check the department server plugin and connection/i);
+      assert.equal(await page.locator('#connection-status').innerText().then((text) => text.includes('UNTRUSTED_BACKEND_DETAILS')), false,
+        'native error prose is never rendered');
+      for (const id of ['pcv-refresh', 'mp-refresh', 'sas-refresh', 'mail-refresh', 'letter-review']) {
+        assert.equal(await page.locator(`#${id}`).isDisabled(), true, `${id} stays disabled until bootstrap authenticates`);
+      }
+      await page.close();
+    });
+
+    await test('keeps bootstrap timeout copy visible instead of replacing it with authentication required', async () => {
+      const page = await openPage(browser, null, 1);
+      await initialize(page);
+      await page.waitForFunction(() => document.getElementById('connection-status').textContent !== 'Checking authorized session', null, { timeout: 1000 });
+      assert.match(await page.locator('#connection-status').innerText(), /bootstrap request timed out/i);
+      assert.match(await page.locator('#permission-status').innerText(), /check the department server plugin and connection/i);
+      assert.equal(await page.locator('#pcv-refresh').isDisabled(), true);
+      await page.close();
+    });
+
+    await test('a stale bootstrap failure cannot replace the reopened view state', async () => {
+      const page = await openPage(browser);
+      const oldRequest = await initialize(page);
+      const newView = newUuid();
+      await page.evaluate(({ viewToken }) => window.departmentInitialize(JSON.stringify({
+        version: 1, viewToken, nativeGeneration: '2', serverContext: null,
+      })), { viewToken: newView });
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length === 2);
+      const accepted = await page.evaluate((request) => window.departmentReceive(JSON.stringify({
+        version: request.version, requestId: request.requestId, operation: request.operation, context: request.context,
+        ok: false, error: { code: 'unavailable', message: 'STALE_BACKEND_DETAILS' },
+      })), oldRequest);
+      assert.equal(accepted, false, 'the old bootstrap response is rejected after the view reopens');
+      assert.equal(await page.locator('#connection-status').innerText(), 'Checking authorized session');
+      const current = await latestRequest(page, 'bootstrap');
+      await respond(page, current, authenticatedData('reopened-scope', 'B'.repeat(43)));
+      await page.locator('#connection-status').getByText('Authorized session connected').waitFor();
+      assert.equal(await page.locator('body').innerText().then((text) => text.includes('STALE_BACKEND_DETAILS')), false);
+      await page.close();
+    });
+
+    await test('connection approval keeps claim data native and approved status bootstraps the same view', async () => {
+      const page = await openPage(browser);
+      const firstBootstrap = await initialize(page);
+      await respond(page, firstBootstrap, unauthenticatedData());
+      assert.equal(await page.locator('#connect-chim').count(), 1, 'unauthenticated bootstrap offers connection setup');
+      assert.equal(await page.locator('#connection-actions input').count(), 0, 'the UI accepts no token or secret input');
+
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 1);
+      const begin = await latestRequest(page, 'connection.begin');
+      assert.deepEqual(begin.payload, {}, 'native owns the claim and the fixed approval destination');
+      assert.equal(JSON.stringify(begin).includes('claimId'), false);
+      await respond(page, begin, { state: 'pending', approvalOpened: true });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Waiting for connection approval');
+      assert.equal(await page.locator('#permission-status').innerText(), 'Approve this game on your CHIM page, then check connection.');
+      await saveScreenshot(page, connectionPendingScreenshotPath);
+      await page.getByRole('button', { name: 'Check connection' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.status').length === 1);
+      const status = await latestRequest(page, 'connection.status');
+      assert.deepEqual(status.payload, {}, 'status lookup also keeps the native claim private');
+      assert.equal(JSON.stringify(status).includes('claimId'), false);
+      await respond(page, status, { state: 'approved' });
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length === 2);
+      const refreshedBootstrap = await latestRequest(page, 'bootstrap');
+      assert.equal(refreshedBootstrap.context.viewToken, firstBootstrap.context.viewToken);
+      assert.equal(refreshedBootstrap.context.nativeGeneration, firstBootstrap.context.nativeGeneration);
+      assert.equal(refreshedBootstrap.context.serverContext, null);
+      await respond(page, refreshedBootstrap, authenticatedData('connection-approved-scope', 'C'.repeat(43)));
+      await page.getByText('Authorized session connected', { exact: true }).waitFor();
+      assert.equal(await page.locator('#connection-actions').isHidden(), true);
+      assert.equal(await page.evaluate(() => window.__networkAttempts.length), 0, 'connection setup stays on the native bridge');
+      await page.close();
+    });
+
+    await test('approval restarts bootstrap in the same view and clears an earlier bootstrap failure', async () => {
+      const page = await openPage(browser);
+      const firstBootstrap = await initialize(page);
+      await respond(page, firstBootstrap, null, { ok: false, error: { code: 'unavailable', message: 'UNTRUSTED_BACKEND_DETAILS' } });
+      await page.waitForFunction(() => document.getElementById('connection-status').textContent !== 'Checking authorized session');
+      assert.match(await page.locator('#connection-status').innerText(), /feature is unavailable/i);
+
+      assert.equal(await page.locator('#connect-chim').count(), 1);
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 1);
+      const begin = await latestRequest(page, 'connection.begin');
+      await respond(page, begin, { state: 'approved', approvalOpened: false });
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length === 2);
+      const refreshedBootstrap = await latestRequest(page, 'bootstrap');
+      assert.equal(refreshedBootstrap.context.viewToken, firstBootstrap.context.viewToken);
+      assert.equal(refreshedBootstrap.context.nativeGeneration, firstBootstrap.context.nativeGeneration);
+      assert.equal(refreshedBootstrap.context.serverContext, null);
+      await respond(page, refreshedBootstrap, authenticatedData('recovered-scope', 'D'.repeat(43)));
+      await page.getByText('Authorized session connected', { exact: true }).waitFor();
+      assert.equal(await page.locator('body').innerText().then((text) => text.includes('UNTRUSTED_BACKEND_DETAILS')), false);
+      assert.equal(await page.locator('#connection-actions').isHidden(), true);
+      await page.close();
+    });
+
+    await test('expired and ambiguous CHIM attempts show safe retry and status guidance', async () => {
+      const page = await openPage(browser);
+      const bootstrap = await initialize(page);
+      await respond(page, bootstrap, unauthenticatedData());
+      assert.equal(await page.locator('#connect-chim').count(), 1);
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 1);
+      const begin = await latestRequest(page, 'connection.begin');
+      await respond(page, begin, { state: 'pending', approvalOpened: false });
+      assert.match(await page.locator('#connection-guidance').innerText(), /approval page did not open/i);
+      assert.equal(await page.getByRole('button', { name: 'Check connection' }).isVisible(), true);
+
+      await page.getByRole('button', { name: 'Check connection' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.status').length === 1);
+      const status = await latestRequest(page, 'connection.status');
+      await respond(page, status, { state: 'expired' });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Connection request expired');
+      assert.match(await page.locator('#permission-status').innerText(), /request expired/i);
+      assert.equal(await page.getByRole('button', { name: 'Check connection' }).isHidden(), true);
+
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 2);
+      const retry = await latestRequest(page, 'connection.begin');
+      await respond(page, retry, null, { ok: false, error: { code: 'unavailable', message: 'PRIVATE_ENDPOINT_OR_TOKEN' } });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Connection could not be confirmed');
+      assert.match(await page.locator('#permission-status').innerText(), /could not be confirmed/i);
+      assert.equal(await page.getByRole('button', { name: 'Check connection' }).isVisible(), true,
+        'an ambiguous begin failure keeps native status recovery available');
+      assert.equal(await page.locator('body').innerText().then((text) => text.includes('PRIVATE_ENDPOINT_OR_TOKEN')), false);
+      await page.getByRole('button', { name: 'Check connection' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.status').length === 2);
+      const retryStatus = await latestRequest(page, 'connection.status');
+      await respond(page, retryStatus, null, { ok: false, error: { code: 'unavailable', message: 'ANOTHER_PRIVATE_ENDPOINT' } });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Connection could not be confirmed');
+      assert.match(await page.locator('#permission-status').innerText(), /could not be confirmed/i);
+      assert.equal(await page.locator('body').innerText().then((text) => text.includes('ANOTHER_PRIVATE_ENDPOINT')), false);
+      await page.close();
+    });
+
+    await test('late connection replies cannot approve or alter a reopened view', async () => {
+      const page = await openPage(browser);
+      const initial = await initialize(page);
+      await respond(page, initial, unauthenticatedData());
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 1);
+      const oldBegin = await latestRequest(page, 'connection.begin');
+      const newView = newUuid();
+      await page.evaluate(({ viewToken }) => window.departmentInitialize(JSON.stringify({
+        version: 1, viewToken, nativeGeneration: '2', serverContext: null,
+      })), { viewToken: newView });
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length === 2);
+      const oldAccepted = await page.evaluate((request) => window.departmentReceive(JSON.stringify({
+        version: request.version, requestId: request.requestId, operation: request.operation, context: request.context,
+        ok: true, data: { state: 'approved', approvalOpened: false },
+      })), oldBegin);
+      assert.equal(oldAccepted, false, 'the stale connection operation is rejected by the bridge boundary');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length), 2,
+        'a stale approval never triggers another bootstrap');
+      const current = await latestRequest(page, 'bootstrap');
+      await respond(page, current, unauthenticatedData());
+      assert.equal(await page.locator('#connection-status').innerText(), 'Not connected to CHIM');
+      assert.equal(await page.locator('#permission-status').innerText(), 'Connect this game to use the installed plugins.');
+      await page.close();
+    });
+
+    await test('maps typed native setup and secure-storage failures to fixed safe guidance', async () => {
+      const page = await openPage(browser);
+      const bootstrap = await initialize(page);
+      await respond(page, bootstrap, unauthenticatedData());
+      assert.equal(await page.locator('#connect-chim').count(), 1);
+
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 1);
+      const setup = await latestRequest(page, 'connection.begin');
+      await respond(page, setup, null, { ok: false, error: { code: 'connection_setup_required', message: 'UNTRUSTED_SETUP_DETAILS' } });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Connection could not be started');
+      assert.equal(await page.locator('#permission-status').innerText(),
+        'CHIM’s server address could not be determined. Check that CHIM is connected, then restart Skyrim.');
+      assert.equal(await page.getByRole('button', { name: 'Check connection' }).isHidden(), true);
+      await saveScreenshot(page, connectionSetupErrorScreenshotPath);
+
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 2);
+      const storage = await latestRequest(page, 'connection.begin');
+      await respond(page, storage, null, { ok: false, error: { code: 'connection_secure_storage_failed', message: 'UNTRUSTED_STORAGE_DETAILS' } });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Connection could not be started');
+      assert.equal(await page.locator('#permission-status').innerText(),
+        'Windows could not save this game’s connection. Connection was not started.');
+      const body = await page.locator('body').innerText();
+      assert.equal(body.includes('UNTRUSTED_SETUP_DETAILS'), false);
+      assert.equal(body.includes('UNTRUSTED_STORAGE_DETAILS'), false);
+      assert.equal(body.includes('Linux'), false, 'connection guidance does not require manual server setup');
+      await page.close();
+    });
+
+    await test('refuses to display claim data if a native connection reply exceeds its public shape', async () => {
+      const page = await openPage(browser);
+      const bootstrap = await initialize(page);
+      await respond(page, bootstrap, unauthenticatedData());
+      await page.getByRole('button', { name: 'Connect to CHIM' }).click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length === 1);
+      const begin = await latestRequest(page, 'connection.begin');
+      await respond(page, begin, { state: 'pending', approvalOpened: true, claimId: 'PRIVATE_CLAIM_ID' });
+      assert.equal(await page.locator('#connection-status').innerText(), 'Connection could not be confirmed');
+      assert.match(await page.locator('#permission-status').innerText(), /could not be confirmed/i);
+      assert.equal(await page.locator('body').innerText().then((text) => text.includes('PRIVATE_CLAIM_ID')), false);
+      assert.equal(await page.getByRole('button', { name: 'Check connection' }).isVisible(), true);
       await page.close();
     });
 
@@ -1391,7 +1641,7 @@ async function main() {
       const page = await openPage(browser);
       const bootstrap = await initialize(page);
       await respond(page, bootstrap, null, { ok: false, error: { code: 'unauthorized', message: 'Safe fixed denial.' } });
-      await page.locator('#connection-status').getByText(/^Authentication required$/i).waitFor();
+      await page.locator('#connection-status').getByText(/^Not connected to CHIM$/i).waitFor();
       await page.getByRole('button', { name: 'Close' }).click();
       const close = await latestRequest(page, 'view.close');
       assert.ok(close);

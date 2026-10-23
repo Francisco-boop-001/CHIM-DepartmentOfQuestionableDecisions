@@ -82,10 +82,44 @@ function qd_valid_echo_metadata(object $request): bool
 
 function qd_api_settings_from_environment(): array
 {
+    $coreRoot = null;
+    try {
+        $coreRoot = qd_runtime_engine_root();
+    } catch (Throwable) {
+        // Legacy explicit pairing/state paths remain usable without a derived install root.
+    }
+    $privateRoot = is_string($coreRoot) ? qd_default_private_root($coreRoot) : null;
+    $pairingOverride = getenv('QD_PAIRING_FILE');
+    $stateOverride = getenv('QD_SERVER_STATE_FILE');
+    $webRootOverride = getenv('QD_WEB_ROOT');
+    $pcvOverride = getenv('QD_PCV_ROOT');
+    $documentRoot = $_SERVER['DOCUMENT_ROOT'] ?? null;
+    $canonicalDocumentRoot = is_string($documentRoot) && $documentRoot !== '' && !str_contains($documentRoot, "\0")
+        ? realpath($documentRoot)
+        : false;
+    if ($canonicalDocumentRoot === false || !is_dir($canonicalDocumentRoot)) {
+        $canonicalDocumentRoot = null;
+    }
+    $pcvCandidate = is_string($pcvOverride) && $pcvOverride !== ''
+        ? $pcvOverride
+        : (is_string($coreRoot) ? $coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation' : '');
+    $pcvRoot = $pcvCandidate !== '' && !str_contains($pcvCandidate, "\0") && !is_link($pcvCandidate)
+        ? realpath($pcvCandidate)
+        : false;
     return [
-        'pairingPath' => getenv('QD_PAIRING_FILE') ?: '',
-        'statePath' => getenv('QD_SERVER_STATE_FILE') ?: '',
-        'webRoot' => getenv('QD_WEB_ROOT') ?: '',
+        'pairingPath' => is_string($pairingOverride) && $pairingOverride !== ''
+            ? $pairingOverride
+            : (is_string($privateRoot) ? $privateRoot . DIRECTORY_SEPARATOR . 'pairing.php' : ''),
+        'statePath' => is_string($stateOverride) && $stateOverride !== ''
+            ? $stateOverride
+            : (is_string($privateRoot) ? $privateRoot . DIRECTORY_SEPARATOR . 'state.php' : ''),
+        'webRoot' => is_string($webRootOverride) && $webRootOverride !== ''
+            ? $webRootOverride
+            : (is_string($canonicalDocumentRoot) ? $canonicalDocumentRoot : (is_string($coreRoot) ? $coreRoot : '')),
+        'privateRoot' => $privateRoot,
+        'coreRoot' => $coreRoot,
+        'chimRoot' => $coreRoot,
+        'pcvRoot' => is_string($pcvRoot) ? $pcvRoot : null,
     ];
 }
 

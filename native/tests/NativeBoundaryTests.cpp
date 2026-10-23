@@ -109,6 +109,28 @@ namespace
 			"RespondPreDispatchError(request, submitted.errorCode == dql::http::ErrorCode::queueFull"));
 		CHECK(ContainsBetween(source, "void OnServerCompletion(", "const auto parsed = dql::contract::ParseServerResponse",
 			"RespondServerWriteState(request, result.outcome == dql::http::Outcome::rejected ? \"rejected\" : \"unknown\")"));
+		CHECK(ContainsBetween(source, "void HandleConnectionOperation(", "void OnConnectionCompletion(",
+			"transport_.HasInFlightWrites()"));
+		const auto connectionHandlerStart = source.find("void HandleConnectionOperation(");
+		const auto connectionHandlerEnd = source.find("void OnConnectionCompletion(", connectionHandlerStart);
+		CHECK(connectionHandlerStart != std::string::npos && connectionHandlerEnd != std::string::npos);
+		const auto connectionHandler = source.substr(connectionHandlerStart, connectionHandlerEnd - connectionHandlerStart);
+		CHECK(connectionHandler.find("companionOperations_") == std::string_view::npos);
+		CHECK(connectionHandler.find("ClearCompanionOperations") == std::string_view::npos);
+		CHECK(connectionHandler.find("BeginPcvSend") == std::string_view::npos);
+		CHECK(connectionHandler.find("DispatchStaticCall") == std::string_view::npos);
+		const auto connectionCompletionStart = source.find("void OnConnectionCompletion(");
+		const auto connectionCompletionEnd = source.find("bool SubmitServerRequest(", connectionCompletionStart);
+		CHECK(connectionCompletionStart != std::string::npos && connectionCompletionEnd != std::string::npos);
+		const auto connectionCompletion = source.substr(connectionCompletionStart,
+			connectionCompletionEnd - connectionCompletionStart);
+		CHECK(connectionCompletion.find("companionOperations_") == std::string_view::npos);
+		CHECK(connectionCompletion.find("BeginPcvSend") == std::string_view::npos);
+		CHECK(connectionCompletion.find("DispatchStaticCall") == std::string_view::npos);
+		CHECK(ContainsBetween(source, "if (request.operation == \"connection.begin\")",
+			"if (!request.serverContext", "HandleConnectionOperation(request, dql::connection::Action::begin)"));
+		CHECK(ContainsBetween(source, "if (request.operation == \"connection.status\")",
+			"if (!request.serverContext", "HandleConnectionOperation(request, dql::connection::Action::status)"));
 
 		CHECK(source.find("FoldActorName(") == std::string::npos);
 		CHECK(source.find("dql::policy::FindManagedActorIndex(labels, name)") != std::string::npos);

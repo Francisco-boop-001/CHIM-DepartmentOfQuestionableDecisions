@@ -40,6 +40,7 @@ namespace dql::contract
 	};
 
 	[[nodiscard]] ParseResult ParseRequest(std::string_view raw);
+	[[nodiscard]] JsonParseResult ParseBoundedJson(std::string_view raw);
 	[[nodiscard]] JsonParseResult ParseServerResponse(std::string_view raw, const Envelope& request);
 	[[nodiscard]] Json MakeResponse(const Envelope& request, const Json& data);
 	[[nodiscard]] Json MakeError(const Envelope& request, std::string_view code, std::string_view message,

@@ -7,6 +7,7 @@
 
 #include "HttpTransport.h"
 #include "NativePolicy.h"
+#include "PcvCompanionPolicy.h"
 
 #include <algorithm>
 #include <array>
@@ -26,6 +27,7 @@ namespace dql::http
 	namespace
 	{
 		constexpr std::wstring_view kFixedPath = L"/ext/questionable_decisions/api.php";
+		constexpr std::wstring_view kConnectionPath = L"/ext/questionable_decisions/connect.php";
 		constexpr std::size_t kMaxPendingRequests = 128;
 		constexpr std::size_t kMaxBaseUrlChars = 2048;
 		constexpr std::size_t kMaxBearerChars = 512;
@@ -247,12 +249,13 @@ namespace dql::http
 		[[nodiscard]] bool IsWriteOperation(std::string_view operation) noexcept
 		{
 			return operation == "pcv.arm" || operation == "pcv.end" || operation == "pcv.companion.stage" ||
-				operation == "pcv.companion.cancel" || operation == "correspondence.compose";
+				operation == "pcv.companion.cancel" || operation == "correspondence.compose" ||
+				operation == "connection.begin";
 		}
 
 		[[nodiscard]] bool IsAllowedOperation(std::string_view operation) noexcept
 		{
-			static constexpr std::array<std::string_view, 15> allowed{
+			static constexpr std::array<std::string_view, 17> allowed{
 				"bootstrap",
 				"pcv.roster.read",
 				"pcv.status.read",
@@ -267,7 +270,9 @@ namespace dql::http
 				"correspondence.mailbox.read",
 				"correspondence.detail.read",
 				"correspondence.compose",
-				"correspondence.reconcile"
+				"correspondence.reconcile",
+				"connection.begin",
+				"connection.status"
 			};
 			return std::find(allowed.begin(), allowed.end(), operation) != allowed.end();
 		}
@@ -459,7 +464,7 @@ namespace dql::http
 			const std::wstring_view host(components.lpszHostName, components.dwHostNameLength);
 			const std::wstring_view path = components.dwUrlPathLength == 0 ? std::wstring_view{} :
 				std::wstring_view(components.lpszUrlPath, components.dwUrlPathLength);
-			if ((!secure && !http) || (http && !IsStrictLoopbackHost(host))) return false;
+			if (!secure && !http) return false;
 			if (!IsSafeBasePath(path)) return false;
 
 			parsed.host.assign(host);
@@ -471,23 +476,71 @@ namespace dql::http
 			return true;
 		}
 
+		[[nodiscard]] bool IsSameDestination(const ParsedBaseUrl& left, const ParsedBaseUrl& right) noexcept
+		{
+			return left.secure == right.secure && left.port == right.port &&
+				left.pathPrefix == right.pathPrefix &&
+				CompareStringOrdinal(left.host.data(), static_cast<int>(left.host.size()),
+					right.host.data(), static_cast<int>(right.host.size()), TRUE) == CSTR_EQUAL;
+		}
+
+		[[nodiscard]] bool ParseAllowedBaseUrl(std::wstring_view base, std::wstring_view trustedHttpBase,
+			ParsedBaseUrl& parsed)
+		{
+			if (!ParseBaseUrl(base, parsed)) return false;
+			if (parsed.secure || IsStrictLoopbackHost(parsed.host)) return true;
+
+			ParsedBaseUrl trusted;
+			return !trustedHttpBase.empty() && ParseBaseUrl(trustedHttpBase, trusted) && !trusted.secure &&
+				IsSameDestination(parsed, trusted);
+		}
+
+		[[nodiscard]] std::optional<std::wstring> CanonicalizeDestination(std::wstring_view base,
+			std::wstring_view trustedHttpBase)
+		{
+			ParsedBaseUrl parsed;
+			if (!ParseAllowedBaseUrl(base, trustedHttpBase, parsed)) return std::nullopt;
+
+			std::wstring host(parsed.host);
+			const auto loweredLength = LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE,
+				host.data(), static_cast<int>(host.size()), nullptr, 0, nullptr, nullptr, 0);
+			if (loweredLength <= 0) return std::nullopt;
+			std::wstring loweredHost(static_cast<std::size_t>(loweredLength), L'\0');
+			if (LCMapStringEx(LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE, host.data(), static_cast<int>(host.size()),
+				loweredHost.data(), loweredLength, nullptr, nullptr, 0) != loweredLength) return std::nullopt;
+
+			std::wstring result = parsed.secure ? L"https|" : L"http|";
+			result.append(loweredHost);
+			result.push_back(L'|');
+			result.append(std::to_wstring(parsed.port));
+			result.push_back(L'|');
+			result.append(parsed.pathPrefix);
+			return result;
+		}
+
 		[[nodiscard]] ErrorCode ValidateRequest(const HttpRequest& request)
 		{
+			const bool isConnectionOperation = request.operation == "connection.begin" ||
+				request.operation == "connection.status";
 			if (!dql::policy::IsUuid(request.requestId) || !dql::policy::IsUuid(request.viewToken) ||
 				!dql::policy::IsGeneration(request.nativeGeneration) ||
 				!IsAllowedOperation(request.operation) || request.isWrite != IsWriteOperation(request.operation) ||
-				request.envelopeJson.empty()) {
+				request.envelopeJson.empty() ||
+				(request.route != Route::departmentApi && request.route != Route::connection) ||
+				(isConnectionOperation != (request.route == Route::connection))) {
 				return ErrorCode::invalidRequest;
 			}
 			if (request.envelopeJson.size() > HttpTransport::kMaxEnvelopeBytes) return ErrorCode::requestTooLarge;
 			if (!IsValidUtf8JsonBytes(request.envelopeJson)) return ErrorCode::invalidRequest;
 			if (request.bearerToken.empty()) {
-				if (request.operation != "bootstrap") return ErrorCode::invalidBearer;
+				if (request.operation != "bootstrap" && !isConnectionOperation) return ErrorCode::invalidBearer;
+			} else if (isConnectionOperation) {
+				return ErrorCode::invalidBearer;
 			} else if (!IsValidBearer(request.bearerToken)) {
 				return ErrorCode::invalidBearer;
 			}
 			ParsedBaseUrl parsed;
-			if (!ParseBaseUrl(request.serverBase, parsed)) return ErrorCode::invalidBaseUrl;
+			if (!ParseAllowedBaseUrl(request.serverBase, request.trustedHttpBase, parsed)) return ErrorCode::invalidBaseUrl;
 			return ErrorCode::none;
 		}
 
@@ -596,6 +649,15 @@ namespace dql::http
 			}
 		}
 
+		[[nodiscard]] bool HasInFlightWrites() noexcept
+		{
+			std::lock_guard lock(mutex_);
+			if (active_ && active_->request.isWrite) return true;
+			return std::any_of(queue_.begin(), queue_.end(), [](const auto& job) {
+				return job->request.isWrite;
+			});
+		}
+
 		void CancelView(std::string_view viewToken, std::string_view nativeGeneration,
 			bool invalidateGeneration) noexcept
 		{
@@ -657,7 +719,9 @@ namespace dql::http
 			if (IsCancelled(job)) return CancelledResult(false, request.isWrite);
 
 			ParsedBaseUrl base;
-			if (!ParseBaseUrl(request.serverBase, base)) return FailureResult(ErrorCode::invalidBaseUrl, false, request.isWrite);
+			if (!ParseAllowedBaseUrl(request.serverBase, request.trustedHttpBase, base)) {
+				return FailureResult(ErrorCode::invalidBaseUrl, false, request.isWrite);
+			}
 
 			InternetHandle session(WinHttpOpen(L"WorldOfDramaLlama/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
 				WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, WINHTTP_FLAG_ASYNC));
@@ -675,7 +739,7 @@ namespace dql::http
 			InternetHandle connection(WinHttpConnect(session.get(), base.host.c_str(), base.port, 0));
 			if (!connection) return FailureResult(WinHttpErrorCode(GetLastError()), false, request.isWrite);
 			std::wstring requestPath = base.pathPrefix;
-			requestPath.append(kFixedPath);
+			requestPath.append(request.route == Route::connection ? kConnectionPath : kFixedPath);
 			InternetHandle httpRequest(WinHttpOpenRequest(connection.get(), L"POST", requestPath.c_str(), nullptr,
 				WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
 				base.secure ? WINHTTP_FLAG_SECURE : 0));
@@ -909,6 +973,83 @@ namespace dql::http
 		std::thread worker_;
 	};
 
+	std::optional<std::wstring> CanonicalDestinationKey(std::wstring_view base,
+		std::wstring_view trustedHttpBase)
+	{
+		return CanonicalizeDestination(base, trustedHttpBase);
+	}
+
+	std::optional<std::wstring> DiscoverChimServerBase()
+	{
+		InternetHandle session(WinHttpOpen(L"WorldOfDramaLlama", WINHTTP_ACCESS_TYPE_NO_PROXY,
+			WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0));
+		if (!session || !WinHttpSetTimeouts(session.get(), 3000, 3000, 3000, 3000)) return std::nullopt;
+		InternetHandle connection(WinHttpConnect(session.get(), L"127.0.0.1", 7135, 0));
+		if (!connection) return std::nullopt;
+		InternetHandle request(WinHttpOpenRequest(connection.get(), L"GET", L"/discover", nullptr,
+			WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, 0));
+		if (!request) return std::nullopt;
+
+		DWORD disabledFeatures = WINHTTP_DISABLE_AUTHENTICATION | WINHTTP_DISABLE_COOKIES | WINHTTP_DISABLE_REDIRECTS;
+		DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+		constexpr wchar_t discoveryHeaders[] = L"Host: localhost:7135\r\nConnection: close\r\n";
+		if (!WinHttpSetOption(request.get(), WINHTTP_OPTION_DISABLE_FEATURE,
+			&disabledFeatures, sizeof(disabledFeatures)) ||
+			!WinHttpSetOption(request.get(), WINHTTP_OPTION_REDIRECT_POLICY,
+			&redirectPolicy, sizeof(redirectPolicy)) ||
+			!WinHttpAddRequestHeaders(request.get(), discoveryHeaders,
+				static_cast<DWORD>(std::size(discoveryHeaders) - 1), WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE) ||
+			!WinHttpSendRequest(request.get(), WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+				WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+			!WinHttpReceiveResponse(request.get(), nullptr)) {
+			return std::nullopt;
+		}
+
+		DWORD statusCode{};
+		DWORD statusBytes = sizeof(statusCode);
+		if (!WinHttpQueryHeaders(request.get(), WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+			WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusBytes, WINHTTP_NO_HEADER_INDEX) || statusCode != 200) {
+			return std::nullopt;
+		}
+
+		std::string body;
+		std::array<char, 256> buffer{};
+		for (;;) {
+			DWORD received{};
+			if (!WinHttpReadData(request.get(), buffer.data(), static_cast<DWORD>(buffer.size()), &received)) {
+				return std::nullopt;
+			}
+			if (received == 0) break;
+			if (body.size() + received > 1023) return std::nullopt;
+			body.append(buffer.data(), received);
+		}
+		const auto base = dql::companion::DeriveChimDiscoveryServerBase(body);
+		if (!base) return std::nullopt;
+		return std::wstring(base->begin(), base->end());
+	}
+
+	std::optional<std::wstring> BuildApprovalUrl(std::wstring_view base, std::string_view claimId,
+		std::wstring_view trustedHttpBase)
+	{
+		if (!dql::policy::IsUuid(claimId)) return std::nullopt;
+		ParsedBaseUrl parsed;
+		if (!ParseAllowedBaseUrl(base, trustedHttpBase, parsed)) return std::nullopt;
+
+		std::wstring host(parsed.host);
+		if (host.find(L':') != std::wstring::npos && !host.starts_with(L"[")) {
+			host.insert(host.begin(), L'[');
+			host.push_back(L']');
+		}
+		std::wstring result = parsed.secure ? L"https://" : L"http://";
+		result.append(host);
+		result.push_back(L':');
+		result.append(std::to_wstring(parsed.port));
+		result.append(parsed.pathPrefix);
+		result.append(L"/ext/questionable_decisions/index.php?claim=");
+		result.append(claimId.begin(), claimId.end());
+		return result;
+	}
+
 	HttpTransport::HttpTransport(std::size_t maxPending) : impl_(std::make_unique<Impl>(maxPending)) {}
 	HttpTransport::~HttpTransport() = default;
 
@@ -916,6 +1057,11 @@ namespace dql::http
 	{
 		if (!impl_) return { false, ErrorCode::shuttingDown };
 		return impl_->Submit(std::move(request), std::move(completion));
+	}
+
+	bool HttpTransport::HasInFlightWrites() noexcept
+	{
+		return impl_ && impl_->HasInFlightWrites();
 	}
 
 	void HttpTransport::CancelView(std::string_view viewToken, std::string_view nativeGeneration,

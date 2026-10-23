@@ -235,7 +235,7 @@ if ($sdkVersions[0] -cne $lock.toolchain.windowsSdkVersion -or $toolsets[0] -cne
 $linkOptionsConfigured = [bool](Select-String -LiteralPath $pluginProjectPath -SimpleMatch '/Brepro' -Quiet)
 if (-not $linkOptionsConfigured) { throw 'The generated plugin project did not contain the deterministic /Brepro linker option.' }
 $testLine = Select-String -LiteralPath $hostLog -Pattern '100%\s+tests passed,\s+0 tests failed out of (\d+)' | Select-Object -Last 1
-if (-not $testLine -or [int]$testLine.Matches[0].Groups[1].Value -ne 4) { throw 'Host CTest result did not confirm all four expected tests passed.' }
+if (-not $testLine -or [int]$testLine.Matches[0].Groups[1].Value -ne 5) { throw 'Host CTest result did not confirm all five expected tests passed.' }
 $testCount = [int]$testLine.Matches[0].Groups[1].Value
 $receipt = [ordered]@{
 	schemaVersion = 1
@@ -266,7 +266,7 @@ $receipt = [ordered]@{
 $receiptPath = Join-Path $evidence 'native-build-receipt.json'
 [IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 10) + "`n", [Text.UTF8Encoding]::new($false))
 $savedReceipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-if ($savedReceipt.plugin.sha256 -cne $receipt.plugin.sha256 -or $savedReceipt.hostTests.count -ne 4) { throw 'Native build receipt did not reopen with expected outputs.' }
+if ($savedReceipt.plugin.sha256 -cne $receipt.plugin.sha256 -or $savedReceipt.hostTests.count -ne 5) { throw 'Native build receipt did not reopen with expected outputs.' }
 Write-Output "Native host tests and DLL build passed. DLL SHA-256: $($receipt.plugin.sha256)"
 Write-Output "Outputs: $output"
 Write-Output "Evidence: $evidence"

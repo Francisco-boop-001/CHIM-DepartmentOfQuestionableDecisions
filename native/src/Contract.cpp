@@ -220,7 +220,8 @@ namespace dql::contract
 			constexpr std::array operations{
 				"bootstrap", "view.close", "pcv.roster.read", "pcv.status.read", "pcv.arm", "pcv.end", "pcv.send", "pcv.send.status",
 				"mp.relationships.read", "sas.issues.read", "correspondence.catalog.read", "correspondence.inventory.read",
-				"correspondence.mailbox.read", "correspondence.detail.read", "correspondence.compose", "correspondence.reconcile"
+				"correspondence.mailbox.read", "correspondence.detail.read", "correspondence.compose", "correspondence.reconcile",
+				"connection.begin", "connection.status"
 			};
 			return std::find(operations.begin(), operations.end(), operation) != operations.end();
 		}
@@ -304,7 +305,7 @@ namespace dql::contract
 			return data.dump(-1, ' ', false).size() <= 48'000;
 		}
 
-		JsonParseResult ParseBoundedJson(std::string_view raw)
+		JsonParseResult ParseBoundedJsonImpl(std::string_view raw)
 		{
 			if (raw.empty() || raw.size() > kMaxEnvelopeBytes) {
 				return { std::nullopt, "payload_too_large" };
@@ -316,6 +317,11 @@ namespace dql::contract
 			}
 			return { sax.Root(), {} };
 		}
+	}
+
+	JsonParseResult ParseBoundedJson(std::string_view raw)
+	{
+		return ParseBoundedJsonImpl(raw);
 	}
 
 	ParseResult ParseRequest(std::string_view raw)
@@ -343,8 +349,11 @@ namespace dql::contract
 		}
 		const bool isBootstrap = operation == "bootstrap";
 		const bool localClose = operation == "view.close";
-		if ((isBootstrap && !context["serverContext"].is_null()) ||
-			(!isBootstrap && !localClose && (!context["serverContext"].is_string() || context["serverContext"].get_ref<const std::string&>().empty()))) {
+		const bool isConnectionOperation = operation == "connection.begin" || operation == "connection.status";
+		if (((isBootstrap || isConnectionOperation) && !context["serverContext"].is_null()) ||
+			(!isBootstrap && !localClose && !isConnectionOperation &&
+				(!context["serverContext"].is_string() || context["serverContext"].get_ref<const std::string&>().empty())) ||
+			(isConnectionOperation && !root["payload"].empty())) {
 			return { std::nullopt, "invalid_request" };
 		}
 		if (operation == "correspondence.catalog.read" && !IsCatalogRequestPayload(root["payload"])) {

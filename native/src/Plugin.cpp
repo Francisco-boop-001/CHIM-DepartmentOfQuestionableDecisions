@@ -1,4 +1,5 @@
 #include "Contract.h"
+#include "ConnectionProtocol.h"
 #include "HttpTransport.h"
 #include "NativePolicy.h"
 #include "PcvCompanionPolicy.h"
@@ -14,7 +15,10 @@
 #include <SKSE/SKSE.h>
 
 #include <Windows.h>
+#include <bcrypt.h>
 #include <objbase.h>
+#include <shellapi.h>
+#include <wincred.h>
 
 #ifdef GetObject
 #undef GetObject
@@ -32,6 +36,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -193,6 +198,192 @@ namespace
 	private:
 		std::string& value_;
 	};
+
+	bool Sha256(const UCHAR* value, ULONG valueLength, std::array<UCHAR, 32>& digest)
+	{
+		BCRYPT_ALG_HANDLE algorithm{};
+		BCRYPT_HASH_HANDLE hash{};
+		ULONG objectLength{};
+		ULONG returned{};
+		std::vector<UCHAR> hashObject;
+		bool success = false;
+		if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0))) return false;
+		if (!BCRYPT_SUCCESS(BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH,
+			reinterpret_cast<PUCHAR>(&objectLength), sizeof(objectLength), &returned, 0)) || objectLength == 0) {
+			BCryptCloseAlgorithmProvider(algorithm, 0);
+			return false;
+		}
+		hashObject.resize(objectLength);
+		if (!BCRYPT_SUCCESS(BCryptCreateHash(algorithm, &hash, hashObject.data(), objectLength, nullptr, 0, 0))) {
+			if (!hashObject.empty()) SecureZeroMemory(hashObject.data(), hashObject.size());
+			BCryptCloseAlgorithmProvider(algorithm, 0);
+			return false;
+		}
+		if (BCRYPT_SUCCESS(BCryptHashData(hash, const_cast<PUCHAR>(value), valueLength, 0)) &&
+			BCRYPT_SUCCESS(BCryptFinishHash(hash, digest.data(), static_cast<ULONG>(digest.size()), 0))) {
+			success = true;
+		}
+		BCryptDestroyHash(hash);
+		BCryptCloseAlgorithmProvider(algorithm, 0);
+		if (!hashObject.empty()) SecureZeroMemory(hashObject.data(), hashObject.size());
+		return success;
+	}
+
+	std::string LowerHex(std::span<const UCHAR> bytes)
+	{
+		constexpr char digits[] = "0123456789abcdef";
+		std::string result;
+		result.reserve(bytes.size() * 2);
+		for (const auto byte : bytes) {
+			result.push_back(digits[byte >> 4]);
+			result.push_back(digits[byte & 0x0F]);
+		}
+		return result;
+	}
+
+	std::optional<std::wstring> PairingCredentialTarget(std::wstring_view canonicalEndpoint)
+	{
+		if (canonicalEndpoint.empty() || canonicalEndpoint.size() > std::numeric_limits<ULONG>::max() / sizeof(wchar_t)) return std::nullopt;
+		std::array<UCHAR, 32> digest{};
+		const auto byteLength = static_cast<ULONG>(canonicalEndpoint.size() * sizeof(wchar_t));
+		if (!Sha256(reinterpret_cast<const UCHAR*>(canonicalEndpoint.data()), byteLength, digest)) return std::nullopt;
+		const auto hex = LowerHex(digest);
+		std::wstring target = L"WorldOfDramaLlama/QuestionableDecisions/";
+		target.append(hex.begin(), hex.end());
+		SecureZeroMemory(digest.data(), digest.size());
+		return target;
+	}
+
+	enum class CredentialReadState
+	{
+		missing,
+		found,
+		invalid,
+		failed
+	};
+
+	struct CredentialReadResult
+	{
+		CredentialReadState state{ CredentialReadState::failed };
+		std::string token;
+	};
+
+	CredentialReadResult ReadPairingCredential(std::wstring_view target)
+	{
+		const std::wstring targetName(target);
+		PCREDENTIALW credential{};
+		if (!CredReadW(targetName.c_str(), CRED_TYPE_GENERIC, 0, &credential)) {
+			return { GetLastError() == ERROR_NOT_FOUND ? CredentialReadState::missing : CredentialReadState::failed, {} };
+		}
+		CredentialReadResult result{ CredentialReadState::invalid, {} };
+		if (credential && credential->CredentialBlob && credential->CredentialBlobSize > 0 &&
+			credential->CredentialBlobSize <= 2560) {
+			result.token.assign(reinterpret_cast<const char*>(credential->CredentialBlob), credential->CredentialBlobSize);
+			result.state = dql::companion::IsValidPairingToken(result.token) ?
+				CredentialReadState::found : CredentialReadState::invalid;
+		}
+		if (credential && credential->CredentialBlob && credential->CredentialBlobSize > 0) {
+			SecureZeroMemory(credential->CredentialBlob, credential->CredentialBlobSize);
+		}
+		if (credential) CredFree(credential);
+		if (result.state != CredentialReadState::found) WipeString(result.token);
+		return result;
+	}
+
+	bool WritePairingCredential(std::wstring_view target, std::string_view token)
+	{
+		if (!dql::companion::IsValidPairingToken(token) || token.size() > MAXDWORD) return false;
+		const std::wstring targetName(target);
+		constexpr wchar_t userName[] = L"WorldOfDramaLlama";
+		CREDENTIALW credential{};
+		credential.Type = CRED_TYPE_GENERIC;
+		credential.TargetName = const_cast<LPWSTR>(targetName.c_str());
+		credential.CredentialBlobSize = static_cast<DWORD>(token.size());
+		credential.CredentialBlob = reinterpret_cast<LPBYTE>(const_cast<char*>(token.data()));
+		credential.Persist = CRED_PERSIST_LOCAL_MACHINE;
+		credential.UserName = const_cast<LPWSTR>(userName);
+		return CredWriteW(&credential, 0) != FALSE;
+	}
+
+	std::optional<std::string> GeneratePairingToken()
+	{
+		constexpr std::string_view alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+		std::array<UCHAR, 32> random{};
+		if (!BCRYPT_SUCCESS(BCryptGenRandom(nullptr, random.data(), static_cast<ULONG>(random.size()),
+			BCRYPT_USE_SYSTEM_PREFERRED_RNG))) return std::nullopt;
+		std::string token = "qd1_";
+		token.reserve(47);
+		std::uint32_t bitsValue{};
+		unsigned bitsAvailable{};
+		for (const auto byte : random) {
+			bitsValue = (bitsValue << 8) | byte;
+			bitsAvailable += 8;
+			while (bitsAvailable >= 6) {
+				bitsAvailable -= 6;
+				token.push_back(alphabet[(bitsValue >> bitsAvailable) & 0x3F]);
+			}
+		}
+		if (bitsAvailable != 0) token.push_back(alphabet[(bitsValue << (6 - bitsAvailable)) & 0x3F]);
+		SecureZeroMemory(random.data(), random.size());
+		if (!dql::companion::IsValidPairingToken(token)) {
+			WipeString(token);
+			return std::nullopt;
+		}
+		return token;
+	}
+
+	std::optional<std::string> PairingTokenHash(std::string_view token)
+	{
+		if (!dql::companion::IsValidPairingToken(token) || token.size() > std::numeric_limits<ULONG>::max()) return std::nullopt;
+		std::array<UCHAR, 32> digest{};
+		if (!Sha256(reinterpret_cast<const UCHAR*>(token.data()), static_cast<ULONG>(token.size()), digest)) return std::nullopt;
+		auto result = LowerHex(digest);
+		SecureZeroMemory(digest.data(), digest.size());
+		return result;
+	}
+
+	bool ResolvePairingToken(std::wstring_view canonicalEndpoint, std::string_view configuredToken,
+		std::string& token)
+	{
+		if (dql::companion::IsValidPairingToken(configuredToken)) {
+			token.assign(configuredToken);
+			return true;
+		}
+		const auto target = PairingCredentialTarget(canonicalEndpoint);
+		if (!target) return false;
+		auto stored = ReadPairingCredential(*target);
+		if (stored.state == CredentialReadState::found) {
+			token = std::move(stored.token);
+			return true;
+		}
+		if (stored.state != CredentialReadState::missing) return false;
+
+		auto generated = GeneratePairingToken();
+		if (!generated) return false;
+		StringWiper wipeGenerated(*generated);
+		const auto separator = target->find_last_of(L'/');
+		if (separator == std::wstring::npos) return false;
+		const auto mutexName = L"Local\\DQL.Connection." + target->substr(separator + 1);
+		HANDLE mutex = CreateMutexW(nullptr, FALSE, mutexName.c_str());
+		if (!mutex) return false;
+		const auto waitResult = WaitForSingleObject(mutex, 5000);
+		if (waitResult != WAIT_OBJECT_0 && waitResult != WAIT_ABANDONED) {
+			CloseHandle(mutex);
+			return false;
+		}
+		stored = ReadPairingCredential(*target);
+		bool success = false;
+		if (stored.state == CredentialReadState::found) {
+			token = std::move(stored.token);
+			success = true;
+		} else if (stored.state == CredentialReadState::missing && WritePairingCredential(*target, *generated)) {
+			token = std::move(*generated);
+			success = true;
+		}
+		ReleaseMutex(mutex);
+		CloseHandle(mutex);
+		return success;
+	}
 
 	class EnvelopeTextWiper final
 	{
@@ -484,6 +675,7 @@ namespace
 			}
 			viewToken_.clear();
 			ClearServerAccess();
+			ClearConnectionClaim();
 		}
 
 		void ClearScopeToken()
@@ -533,6 +725,7 @@ namespace
 			auto config = ReadBridgeConfiguration();
 			const bool pairChanged = config.serverBase != serverBase_ || config.pairToken != pairToken_;
 			if (pairChanged) {
+				ClearConnectionClaim();
 				pairIdentity_ = pairIdentity_ == std::numeric_limits<std::uint64_t>::max() ? 1 : pairIdentity_ + 1;
 				ClearServerAccess();
 			}
@@ -545,17 +738,44 @@ namespace
 		void CaptureStockIniAtStartup()
 		{
 			stockIniCaptured_ = false;
+			stockIniMissingAtStartup_ = false;
+			stockIniPresentAtStartup_ = false;
+			serverBaseFromStockIni_ = false;
+			serverBaseFromDiscovery_ = false;
 			stockIniSnapshot_.clear();
 			stockIniPath_.clear();
 			stockIniCwd_.clear();
 			const auto cwd = GetCurrentDirectorySnapshot();
 			const auto path = cwd ? GetStockIniPath(*cwd) : std::nullopt;
-			const auto ini = path ? OpenStockIniReadOnly(*path) : std::nullopt;
-			if (!cwd || !path || !ini) return;
+			if (!cwd || !path) return;
 			stockIniCwd_ = *cwd;
 			stockIniPath_ = *path;
-			stockIniSnapshot_.assign(ini->contents());
-			stockIniCaptured_ = !stockIniSnapshot_.empty();
+			const auto attributes = GetFileAttributesW(path->c_str());
+			if (attributes == INVALID_FILE_ATTRIBUTES) {
+				const DWORD error = GetLastError();
+				stockIniMissingAtStartup_ = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+			} else {
+				stockIniPresentAtStartup_ = true;
+				const auto ini = OpenStockIniReadOnly(*path);
+				if (!ini) return;
+				stockIniSnapshot_.assign(ini->contents());
+				stockIniCaptured_ = true;
+				if (serverBase_.empty()) {
+					if (const auto derived = dql::companion::DeriveStockServerBase(stockIniSnapshot_)) {
+						serverBase_.assign(derived->begin(), derived->end());
+						serverBaseFromStockIni_ = true;
+					}
+				}
+			}
+			if (stockIniMissingAtStartup_ && serverBase_.empty()) {
+				if (const auto discovered = dql::http::DiscoverChimServerBase()) {
+					serverBase_ = *discovered;
+				} else {
+					serverBase_ = L"http://127.0.0.1:8081/HerikaServer";
+				}
+				serverBaseFromDiscovery_ = true;
+			}
+			LoadStoredPairingToken();
 		}
 
 		bool StockDestinationMatches() const
@@ -572,6 +792,98 @@ namespace
 			const auto length = strnlen_s(facadeBase, sizeof(facadeBase));
 			return length < sizeof(facadeBase) && dql::companion::CanUseStockDestination(
 				stockIniSnapshot_, ini->contents(), std::string_view(facadeBase, length));
+		}
+
+		bool StockIniStillMissing() const
+		{
+			if (!stockIniMissingAtStartup_) return false;
+			const auto cwd = GetCurrentDirectorySnapshot();
+			if (!cwd || *cwd != stockIniCwd_) return false;
+			const auto path = GetStockIniPath(*cwd);
+			if (!path || *path != stockIniPath_) return false;
+			SetLastError(ERROR_SUCCESS);
+			const auto attributes = GetFileAttributesW(path->c_str());
+			if (attributes != INVALID_FILE_ATTRIBUTES) return false;
+			const DWORD error = GetLastError();
+			return error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND;
+		}
+
+		bool NativeDestinationMatches() const
+		{
+			if (serverBaseFromDiscovery_) return StockIniStillMissing();
+			return stockIniPresentAtStartup_ && StockDestinationMatches();
+		}
+
+		bool ConnectionDestination(std::wstring& endpointKey, std::wstring& trustedHttpBase) const
+		{
+			if (serverBase_.empty()) return false;
+			const bool stockDestinationMatches = StockDestinationMatches();
+			const bool discoveryDestinationMatches = serverBaseFromDiscovery_ && StockIniStillMissing();
+			if ((stockIniPresentAtStartup_ && !stockDestinationMatches) ||
+				(serverBaseFromStockIni_ && !stockDestinationMatches) ||
+				(serverBaseFromDiscovery_ && !discoveryDestinationMatches)) return false;
+			trustedHttpBase = (stockDestinationMatches || discoveryDestinationMatches) ? serverBase_ : std::wstring{};
+			const auto canonical = dql::http::CanonicalDestinationKey(serverBase_, trustedHttpBase);
+			if (!canonical) return false;
+			endpointKey = *canonical;
+			return true;
+		}
+
+		bool ConfiguredPairingToken(std::string& token) const
+		{
+			char configured[513]{};
+			if (!CopyFixedAscii(configured, pairToken_)) {
+				SecureZeroMemory(configured, sizeof(configured));
+				return false;
+			}
+			const auto length = strnlen_s(configured, sizeof(configured));
+			if (length >= sizeof(configured) || !dql::companion::IsValidPairingToken(
+				std::string_view(configured, length))) {
+				SecureZeroMemory(configured, sizeof(configured));
+				return false;
+			}
+			token.assign(configured, length);
+			SecureZeroMemory(configured, sizeof(configured));
+			return true;
+		}
+
+		void SetPairingToken(std::string_view token)
+		{
+			if (!pairToken_.empty()) SecureZeroMemory(pairToken_.data(), pairToken_.size() * sizeof(wchar_t));
+			pairToken_.assign(token.begin(), token.end());
+		}
+
+		void LoadStoredPairingToken()
+		{
+			std::string configured;
+			if (ConfiguredPairingToken(configured)) {
+				WipeString(configured);
+				return;
+			}
+			std::wstring endpointKey;
+			std::wstring trustedHttpBase;
+			if (!ConnectionDestination(endpointKey, trustedHttpBase)) return;
+			const auto target = PairingCredentialTarget(endpointKey);
+			if (!target) return;
+			auto stored = ReadPairingCredential(*target);
+			if (stored.state == CredentialReadState::found) SetPairingToken(stored.token);
+			WipeString(stored.token);
+		}
+
+		void ClearConnectionClaim()
+		{
+			claimId_.clear();
+			claimViewToken_.clear();
+			claimGeneration_.clear();
+			claimEndpointKey_.clear();
+		}
+
+		bool IsCurrentConnectionClaim(const dql::contract::Envelope& request, std::string_view claimId,
+			std::wstring_view endpointKey) const
+		{
+			return !claimId_.empty() && claimId_ == claimId && claimViewToken_ == request.viewToken &&
+				claimGeneration_ == request.nativeGeneration && claimEndpointKey_ == endpointKey &&
+				request.viewToken == viewToken_ && request.nativeGeneration == std::to_string(generation_);
 		}
 
 		struct InventorySelection
@@ -632,6 +944,14 @@ namespace
 			dql::contract::Envelope uiRequest;
 			dql::contract::Envelope serverRequest;
 			std::string operationId;
+		};
+
+		struct ConnectionHttpContext
+		{
+			dql::contract::Envelope uiRequest;
+			dql::connection::Action action{};
+			std::string claimId;
+			std::wstring endpointKey;
 		};
 
 		void ClearInventorySnapshot()
@@ -1130,6 +1450,7 @@ namespace
 			}
 			viewToken_.clear();
 			ClearServerAccess();
+			ClearConnectionClaim();
 			ClearInventorySnapshot();
 			ClearManagedRoster();
 			initializeState_.ResetSent();
@@ -1152,6 +1473,7 @@ namespace
 			view_ = 0;
 			viewToken_.clear();
 			ClearServerAccess();
+			ClearConnectionClaim();
 			viewReadyToInitialize_ = false;
 			initializeState_.Reset();
 			creatingView_ = false;
@@ -1188,7 +1510,8 @@ namespace
 		{
 			return IsOwnViewValid() && request.viewToken == viewToken_ &&
 				request.nativeGeneration == std::to_string(generation_) &&
-				(request.operation == "bootstrap" ||
+				(request.operation == "bootstrap" || request.operation == "connection.begin" ||
+					request.operation == "connection.status" ||
 					(request.serverContext && *request.serverContext == serverContext_));
 		}
 
@@ -1283,17 +1606,179 @@ namespace
 			Respond(request, { { "operationId", request.payload["operationId"] }, { "state", state } });
 		}
 
+		void HandleConnectionOperation(const dql::contract::Envelope& request, dql::connection::Action action)
+		{
+			if (!IsCurrentRequest(request)) return;
+			if (serverAuthenticated_) {
+				RespondPreDispatchError(request, "unauthorized", "Connection approval is available only before pairing.");
+				return;
+			}
+			if (connectionRequestInFlight_.exchange(true, std::memory_order_acq_rel)) {
+				RespondPreDispatchError(request, "busy", "A connection request is already in progress.");
+				return;
+			}
+			auto releaseConnectionRequest = [this] { connectionRequestInFlight_.store(false, std::memory_order_release); };
+			if (transport_.HasInFlightWrites()) {
+				releaseConnectionRequest();
+				RespondPreDispatchError(request, "busy", "Wait for the current Department write to finish before connecting.");
+				return;
+			}
+
+			std::wstring endpointKey;
+			std::wstring trustedHttpBase;
+			if (!ConnectionDestination(endpointKey, trustedHttpBase)) {
+				releaseConnectionRequest();
+				RespondPreDispatchError(request, "connection_setup_required",
+					"CHIM's configured server destination is unavailable or invalid.");
+				return;
+			}
+
+			std::string claimId;
+			if (action == dql::connection::Action::status) {
+				if (!IsCurrentConnectionClaim(request, claimId_, endpointKey)) {
+					releaseConnectionRequest();
+					RespondPreDispatchError(request, "unavailable", "There is no pending connection approval in this view.");
+					return;
+				}
+				claimId = claimId_;
+			} else if (IsCurrentConnectionClaim(request, claimId_, endpointKey)) {
+				claimId = claimId_;
+			} else {
+				claimId = NewUuid();
+				if (claimId.empty()) {
+					releaseConnectionRequest();
+					RespondPreDispatchError(request, "unavailable", "The connection request could not be prepared.");
+					return;
+				}
+				claimId_ = claimId;
+				claimViewToken_ = request.viewToken;
+				claimGeneration_ = request.nativeGeneration;
+				claimEndpointKey_ = endpointKey;
+			}
+
+			dql::contract::Json body;
+			if (action == dql::connection::Action::begin) {
+				std::string configuredToken;
+				const bool hasConfiguredToken = ConfiguredPairingToken(configuredToken);
+				StringWiper wipeConfigured(configuredToken);
+				std::string bearer;
+				if (!ResolvePairingToken(endpointKey,
+					hasConfiguredToken ? std::string_view(configuredToken) : std::string_view{}, bearer)) {
+					releaseConnectionRequest();
+					RespondPreDispatchError(request, "connection_secure_storage_failed",
+						"Windows could not securely load or store the connection credential.");
+					return;
+				}
+				StringWiper wipeBearer(bearer);
+				SetPairingToken(bearer);
+				auto tokenHash = PairingTokenHash(bearer);
+				if (!tokenHash) {
+					releaseConnectionRequest();
+					RespondPreDispatchError(request, "connection_secure_storage_failed",
+						"The connection credential could not be prepared securely.");
+					return;
+				}
+				StringWiper wipeHash(*tokenHash);
+				body = dql::connection::MakeBeginRequest(claimId, *tokenHash);
+			} else {
+				body = dql::connection::MakeStatusRequest(claimId);
+			}
+
+			ConnectionHttpContext context{
+				.uiRequest = request, .action = action, .claimId = claimId, .endpointKey = endpointKey
+			};
+			dql::http::HttpRequest httpRequest{
+				.requestId = request.requestId,
+				.viewToken = request.viewToken,
+				.nativeGeneration = request.nativeGeneration,
+				.operation = request.operation,
+				.envelopeJson = body.dump(),
+				.serverBase = serverBase_,
+				.trustedHttpBase = trustedHttpBase,
+				.bearerToken = {},
+				.isWrite = action == dql::connection::Action::begin,
+				.route = dql::http::Route::connection
+			};
+			const auto submitted = transport_.Submit(std::move(httpRequest),
+				[context = std::move(context)](dql::http::HttpResult result) mutable {
+					auto resultCopy = std::make_shared<dql::http::HttpResult>(std::move(result));
+					if (!EnqueueMain([context = std::move(context), resultCopy = std::move(resultCopy)]() mutable {
+						Instance().OnConnectionCompletion(context, std::move(*resultCopy));
+					})) {
+						Instance().connectionRequestInFlight_.store(false, std::memory_order_release);
+					}
+				});
+			if (!submitted.queued) {
+				releaseConnectionRequest();
+				RespondPreDispatchError(request, submitted.errorCode == dql::http::ErrorCode::queueFull ? "busy" : "unavailable",
+					"The connection request could not be queued.");
+			}
+		}
+
+		void OnConnectionCompletion(const ConnectionHttpContext& context, dql::http::HttpResult result)
+		{
+			connectionRequestInFlight_.store(false, std::memory_order_release);
+			StringWiper wipeBody(result.body);
+			const auto& request = context.uiRequest;
+			if (!IsCurrentRequest(request)) return;
+			if (serverAuthenticated_) {
+				RespondError(request, "unauthorized", "Connection approval is no longer available after pairing.");
+				return;
+			}
+			std::wstring currentEndpointKey;
+			std::wstring trustedHttpBase;
+			if (!ConnectionDestination(currentEndpointKey, trustedHttpBase) || currentEndpointKey != context.endpointKey ||
+				!IsCurrentConnectionClaim(request, context.claimId, currentEndpointKey)) {
+				ClearConnectionClaim();
+				RespondError(request, "connection_setup_required", "CHIM's configured server destination changed during connection setup.");
+				return;
+			}
+			if (result.outcome != dql::http::Outcome::completed || result.statusCode < 200 || result.statusCode >= 300) {
+				RespondError(request, "unavailable", "The connection service did not return a complete response.");
+				return;
+			}
+			const auto parsed = dql::contract::ParseBoundedJson(result.body);
+			if (!parsed.value) {
+				RespondError(request, "invalid_response", "The connection service returned an invalid response.");
+				return;
+			}
+			const auto claim = dql::connection::ParseClaimResponse(*parsed.value, context.action, context.claimId);
+			if (!claim) {
+				RespondError(request, "invalid_response", "The connection service returned an invalid approval state.");
+				return;
+			}
+
+			if (claim->state == "approved" || claim->state == "expired") ClearConnectionClaim();
+			if (context.action == dql::connection::Action::begin) {
+				bool approvalOpened = false;
+				if (claim->state == "pending" && claim->approvalPathVerified) {
+					if (auto approvalUrl = dql::http::BuildApprovalUrl(serverBase_, context.claimId, trustedHttpBase)) {
+						approvalOpened = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", approvalUrl->c_str(),
+							nullptr, nullptr, SW_SHOWNORMAL)) > 32;
+					}
+				}
+				Respond(request, { { "state", claim->state }, { "approvalOpened", approvalOpened } });
+			} else {
+				Respond(request, { { "state", claim->state } });
+			}
+		}
+
 		bool SubmitServerRequest(const dql::contract::Envelope& request, dql::contract::Json payload)
 		{
 			if (!IsCurrentRequest(request)) return false;
-			if (serverBase_.empty()) {
+			std::wstring endpointKey;
+			std::wstring trustedHttpBase;
+			if (!ConnectionDestination(endpointKey, trustedHttpBase)) {
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (IsServerWriteOperation(request.operation)) {
-					RespondPreDispatchError(request, "unavailable", "The Department server is not configured.");
+					RespondPreDispatchError(request, "unavailable", stockIniPresentAtStartup_ || serverBaseFromStockIni_ || serverBaseFromDiscovery_ ?
+						"The CHIM startup destination is missing, changed, or invalid." : "The Department server is not configured.");
 				}
-				else RespondError(request, "unavailable", "The Department server is not configured.");
+				else RespondError(request, "unavailable", stockIniPresentAtStartup_ || serverBaseFromStockIni_ || serverBaseFromDiscovery_ ?
+					"The CHIM startup destination is missing, changed, or invalid." : "The Department server is not configured.");
 				return false;
 			}
+			static_cast<void>(endpointKey);
 			const dql::contract::Json envelope{
 				{ "version", 1 }, { "requestId", request.requestId }, { "operation", request.operation },
 				{ "context", {
@@ -1310,6 +1795,7 @@ namespace
 				.operation = request.operation,
 				.envelopeJson = envelope.dump(),
 				.serverBase = serverBase_,
+				.trustedHttpBase = trustedHttpBase,
 				.bearerToken = pairToken_,
 				.isWrite = IsServerWriteOperation(request.operation)
 			};
@@ -1546,7 +2032,11 @@ namespace
 		bool SubmitCompanionHttp(CompanionHttpKind kind, const dql::contract::Envelope& source,
 			std::string_view operationId, dql::contract::Json payload)
 		{
-			if (serverBase_.empty() || pairToken_.empty() || !source.serverContext || source.serverContext->empty()) return false;
+			std::wstring endpointKey;
+			std::wstring trustedHttpBase;
+			if (!ConnectionDestination(endpointKey, trustedHttpBase) || !NativeDestinationMatches() ||
+				pairToken_.empty() || !source.serverContext || source.serverContext->empty()) return false;
+			static_cast<void>(endpointKey);
 			const auto requestId = NewUuid();
 			if (requestId.empty()) return false;
 			const char* operation = kind == CompanionHttpKind::stage ? "pcv.companion.stage" :
@@ -1567,7 +2057,8 @@ namespace
 			dql::http::HttpRequest httpRequest{
 				.requestId = requestId, .viewToken = source.viewToken,
 				.nativeGeneration = source.nativeGeneration, .operation = operation,
-				.envelopeJson = std::move(body), .serverBase = serverBase_, .bearerToken = pairToken_,
+				.envelopeJson = std::move(body), .serverBase = serverBase_,
+				.trustedHttpBase = trustedHttpBase, .bearerToken = pairToken_,
 				.isWrite = kind != CompanionHttpKind::status
 			};
 			auto context = std::make_shared<CompanionHttpContext>(CompanionHttpContext{
@@ -1671,8 +2162,8 @@ namespace
 				RespondPreDispatchError(request, "forbidden", "The current pairing cannot stage PCV input.");
 				return;
 			}
-			if (!StockDestinationMatches()) {
-				RespondPreDispatchError(request, "unavailable", "The stock CHIM destination is missing, changed, or does not match this Department server.");
+			if (!NativeDestinationMatches()) {
+				RespondPreDispatchError(request, "unavailable", "The CHIM startup destination is missing, changed, or does not match this Department server.");
 				return;
 			}
 			if (!managedRosterReady_ || !managedActorKeys_.contains(actorKey) || !managedActorLabels_.contains(actorKey)) {
@@ -1721,8 +2212,8 @@ namespace
 				RespondPreDispatchError(pending.request, "stale_context", "The selected actor could not be matched to the fresh CHIM roster.");
 				return;
 			}
-			if (!StockDestinationMatches()) {
-				RespondPreDispatchError(pending.request, "unavailable", "The stock CHIM destination changed before staging.");
+			if (!NativeDestinationMatches()) {
+				RespondPreDispatchError(pending.request, "unavailable", "The CHIM startup destination changed before staging.");
 				return;
 			}
 			CompanionOperation operation{
@@ -1818,7 +2309,7 @@ namespace
 				RE::Actor* actor = nullptr;
 				const bool current = IsCurrentRequest(context.uiRequest) && context.uiRequest.serverContext &&
 					dql::policy::CanSendCompanionPcv(AccessState(), *context.uiRequest.serverContext) &&
-					StockDestinationMatches() && ResolveCurrentOperationActor(operation->second, actor) &&
+					NativeDestinationMatches() && ResolveCurrentOperationActor(operation->second, actor) &&
 					operation->second.expiresAt > CurrentUnixSeconds();
 				if (!current) {
 					BeginCompanionCancel(context);
@@ -1837,7 +2328,7 @@ namespace
 					[&](std::string_view papyrusClass, std::string_view function, std::string_view message,
 						std::string_view messageType, RE::Actor* targetActor) {
 						auto* vm = RE::SkyrimVM::GetSingleton();
-						if (!vm || !vm->impl || !targetActor || !StockDestinationMatches()) return false;
+						if (!vm || !vm->impl || !targetActor || !NativeDestinationMatches()) return false;
 						operation->second.papyrusInvocationStarted = true;
 						operation->second.phase = "papyrus_submission_unknown";
 						papyrusInvoked = true;
@@ -1928,6 +2419,14 @@ namespace
 			if (request.operation == "bootstrap") {
 				ClearServerAccess();
 				SubmitServerRequest(request, request.payload);
+				return;
+			}
+			if (request.operation == "connection.begin") {
+				HandleConnectionOperation(request, dql::connection::Action::begin);
+				return;
+			}
+			if (request.operation == "connection.status") {
+				HandleConnectionOperation(request, dql::connection::Action::status);
 				return;
 			}
 			if (!request.serverContext || request.serverContext->empty() || *request.serverContext != serverContext_) {
@@ -2049,17 +2548,26 @@ namespace
 		std::uint64_t generation_{ 1 };
 		std::uint64_t pairIdentity_{ 1 };
 		std::atomic<std::int32_t> openKeyCode_{ -1 };
+		std::atomic<bool> connectionRequestInFlight_{ false };
 		std::string viewToken_;
 		std::string serverContext_;
 		std::string scopeToken_;
+		std::string claimId_;
+		std::string claimViewToken_;
+		std::string claimGeneration_;
 		std::wstring serverBase_;
 		std::wstring pairToken_;
+		std::wstring claimEndpointKey_;
 		std::wstring stockIniCwd_;
 		std::wstring stockIniPath_;
 		std::string stockIniSnapshot_;
 		std::unordered_map<std::string, CompanionOperation> companionOperations_;
 		std::uint64_t companionSequenceCounter_{ 0 };
 		bool stockIniCaptured_{ false };
+		bool stockIniMissingAtStartup_{ false };
+		bool stockIniPresentAtStartup_{ false };
+		bool serverBaseFromStockIni_{ false };
+		bool serverBaseFromDiscovery_{ false };
 		bool serverAuthenticated_{ false };
 		bool serverAccessPcv_{ false };
 		bool serverAccessInspector_{ false };
@@ -2138,7 +2646,7 @@ namespace
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.0.0"_v,
+SKSEPluginInfo(.Version = "0.1.0.8"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)

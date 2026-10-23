@@ -1,0 +1,9 @@
+{
+  "name": "questionable_decisions",
+  "version": "0.1.0-prealpha.8",
+  "schema_version": 2,
+  "description": "A small Skyrim-side Department for the affairs CHIM plugins leave behind.",
+  "status": "development_candidate",
+  "config_url": "../ext/questionable_decisions/index.php",
+  "server_compatibility_reference": "0ec590b42c8087860138bb4e9aab470049ff9a2b"
+}
