@@ -4,7 +4,7 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
-The four tabs cover Private Conversation, Mind Poisoning, Sworn & Scorned and Sealed Fates. Controls depend on the installed owner's supported version, the current perspective and permissions. Unsupported source versions refuse access instead of guessing their contracts.
+The five tabs cover Private Conversation, Mind Poisoning, Sworn & Scorned, Sealed Fates and Malpractice Makes Perfect. Controls depend on the installed owner's supported version, the current perspective and permissions. Unsupported source versions refuse access instead of guessing their contracts.
 
 Private Conversation offers nearby eligible actor selection and its own armed text box through stock CHIM's public Papyrus route. The original Private Conversation input method remains available when the Department is disabled. Detectable duplicate-name ambiguity is refused; the stock router's final body selection is not an atomic identity guarantee.
 
@@ -20,15 +20,17 @@ The [prealpha.5 download](https://github.com/Francisco-boop-001/CHIM-DepartmentO
 
 Prealpha.6 was a source/package-only update from prealpha.5 for exact Mind Poisoning 0.1.30. At that release, only the MP adapter changed; PCV 0.1.22, SAS 0.1.11 and Sealed Fates dev.21 remained pinned. That matrix was superseded by prealpha.7 below. Its source-readiness probe did not establish database, HTTP, provider, native or Skyrim proof; the earlier candidate remains immutable.
 
-## Current prealpha.9 candidate
+## Current prealpha.11 TEST candidate
 
-Prealpha.9 keeps the PCV 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, and source-pinned Sealed Fates matrix described in [the pairing record](docs/PAIRING-CHECK.md). It starts native CHIM connection setup automatically when the game UI opens and checks the result in the background. The single MO2 archive contains the game mod and both schema-4 CHIM server packages. CHIM automatically prepares the seven-file PCV compatibility overlay when it finds the complete supported PCV owner release. The package does not contain or replace that owner plugin, and the original PCV input path remains available when the Department companion is disabled.
+Prealpha.11 adds [Malpractice Makes Perfect](https://github.com/Francisco-boop-001/CHIM-MalpracticeMakesPerfect/releases/tag/v0.1.0-dev.2) for draft/review/selective apply/undo of NPC profiles, with separate fictional beliefs and the explicit `brainwash` permission. It keeps the PCV 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, and source-pinned Sealed Fates matrix described in [the pairing record](docs/PAIRING-CHECK.md). It starts native CHIM connection setup automatically when the game UI opens and checks the result in the background. The single MO2 archive contains the game mod and three schema-4 CHIM server packages. CHIM automatically prepares the seven-file PCV compatibility overlay when it finds the complete supported PCV owner release. The package does not contain or replace that owner plugin, and the original PCV input path remains available when the Department companion is disabled.
 
-This is still a PRE-ALPHA candidate. Native, browser, synthetic server, and package checks do not establish installation on a CHIM server or behavior in Skyrim. Previously recorded critique findings and known limits remain in [the verification record](docs/VERIFICATION.md).
+This is still a TEST PRE-ALPHA. The normal TEST2 package installer and authenticated web/Department draft/apply/undo workflows passed, along with browser/native checks. Actual behavior inside Skyrim and real-model AI drafting remain unverified. See [the integration checks](docs/BRAINWASH-IMPLEMENTATION.md) and [earlier limits](docs/VERIFICATION.md).
 
 ## Installation and connection
 
-Install `WorldOfDramaLlama-0.1.0-prealpha.9.zip` through MO2 as an ordinary mod. Enable it with its required Skyrim/SKSE, Address Library, PRISMA UI, SkyUI, CHIM, and owner-plugin requirements. Run CHIM's normal game/plugin synchronization so it detects the bundled server packages, then open the Department UI in Skyrim. Connection setup starts automatically; no browser step, copied token, or manual INI edit is part of normal setup. If CHIM cannot confirm the game connection, use **Retry connection** in the UI. The package has no `AIAgent.dll` and does not patch CHIM core.
+Download [WorldOfDramaLlama-0.1.0-prealpha.11.zip](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.11/WorldOfDramaLlama-0.1.0-prealpha.11.zip) and install it through MO2 as an ordinary mod. Enable it with its required Skyrim/SKSE, Address Library, PRISMA UI, SkyUI, CHIM, and owner-plugin requirements. Run CHIM's normal game/plugin synchronization so it detects the bundled server packages, then open the Department UI in Skyrim. Connection setup starts automatically; no browser step, copied token, or manual INI edit is part of normal setup. If CHIM cannot confirm the game connection, use **Retry connection** in the UI. The package has no `AIAgent.dll` and does not patch CHIM core.
+
+The Department ZIP and the Malpractice Makes Perfect TEST ZIP contain the same matched mod payload. Install one of them, replacing the previous Department mod; do not enable both copies.
 
 The native mod derives the server destination from CHIM's startup configuration and stores the stable connection credential in Windows Credential Manager. The shipped `WorldOfDramaLlama.ini` keeps `BaseUrl` and `PairToken` blank. Install the complete supported PCV 0.1.23 owner plugin separately. CHIM applies the Department's pinned seven-file PCV overlay automatically only when the installed owner files match the supported source; a mismatch leaves the owner files untouched and the other Department tabs available. See the [install-and-use guide](packaging/COMPANION-ONLY-TEST-PACKAGE.md) for the supported test setup.
 
