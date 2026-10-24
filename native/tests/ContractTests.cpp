@@ -35,6 +35,17 @@ namespace
 			{ "nextCursor", nullptr }
 		};
 	}
+
+	Json MakeBrainwashCardData()
+	{
+		return Json{
+			{ "actorKey", "npc:42" }, { "label", "Lydia" }, { "scope", "profile:1|restore:2" },
+			{ "revision", std::string(64, 'a') },
+			{ "fields", {{"core", ""}, {"npc_static_bio", ""}, {"personality", ""}, {"appearance", ""},
+				{"occupation", ""}, {"skills", ""}, {"speechstyle", ""}, {"goals", ""}} },
+			{ "beliefs", "" }, { "draftId", nullptr }, { "lastOperation", nullptr }
+		};
+	}
 }
 
 int main(int argc, char** argv)
@@ -71,6 +82,93 @@ int main(int argc, char** argv)
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.catalog.read", "\"scope-1\"", "{\"cursor\":\"" + std::string(513, 'c') + "\"}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.catalog.read", "\"scope-1\"", "{\"cursor\":false}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.catalog.read", "\"scope-1\"", "{\"search\":\"Lydia\"}")).envelope.has_value());
+
+	const std::string brainwashCatalog = MakeRequest("brainwash.catalog.read", "\"scope-1\"");
+	CHECK(dql::contract::ParseRequest(brainwashCatalog).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.catalog.read", "\"scope-1\"", "{\"query\":\"Lydia\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.catalog.read", "\"scope-1\"", "{\"query\":42}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.catalog.read", "\"scope-1\"", "{\"query\":\"" + std::string(129, 'x') + "\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.catalog.read", "\"scope-1\"", "{\"limit\":1}")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.card.read", "\"scope-1\"", "{\"actorKey\":\"npc:42\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.card.read", "\"scope-1\"", "{\"actorKey\":\"npc:042\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.card.read", "\"scope-1\"", "{\"actorKey\":\"player\"}")).envelope.has_value());
+	const auto draftRequest = MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"Brusque.\"},\"instruction\":\"\"}");
+	CHECK(dql::contract::ParseRequest(draftRequest).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"identity\":\"Lydia\"},\"instruction\":\"\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{},\"instruction\":\"\"}")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"ai\",\"changes\":{},\"instruction\":\"\",\"beliefs\":\"A fictional belief.\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"Brusque.\"},\"instruction\":\"\",\"relationships\":\"protected\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"" + std::string(8193, 'x') + "\"},\"instruction\":\"\"}")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.apply", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"draftId\":\"" + kToken + "\",\"operationId\":\"" + kToken +
+		"\",\"acceptedFields\":[\"personality\"],\"acceptBeliefs\":false}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.apply", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"draftId\":\"" + kToken + "\",\"operationId\":\"" + kToken +
+		"\",\"acceptedFields\":[],\"acceptBeliefs\":false}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.apply", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"draftId\":\"" + kToken + "\",\"operationId\":\"" + kToken +
+		"\",\"acceptedFields\":[\"relationships\"],\"acceptBeliefs\":false}")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.apply", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"draftId\":\"" + kToken + "\",\"operationId\":\"" + kToken +
+		"\",\"acceptedFields\":[],\"acceptBeliefs\":true}")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.undo", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"operationId\":\"" + kToken + "\",\"appliedOperationId\":\"" + kToken + "\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.undo", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"operationId\":\"" + kToken + "\",\"appliedOperationId\":\"" + kToken + "\",\"fullRow\":true}")).envelope.has_value());
+
+	const auto brainwashCatalogRequest = dql::contract::ParseRequest(brainwashCatalog);
+	CHECK(brainwashCatalogRequest.envelope.has_value());
+	const Json brainwashCatalogData = {{"actors", Json::array({Json{{"actorKey", "npc:42"}, {"label", "Lydia"}}})}, {"limited", false}};
+	const auto brainwashCatalogResponse = dql::contract::MakeResponse(*brainwashCatalogRequest.envelope, brainwashCatalogData);
+	CHECK(dql::contract::ParseServerResponse(brainwashCatalogResponse.dump(), *brainwashCatalogRequest.envelope).value.has_value());
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*brainwashCatalogRequest.envelope,
+		Json{{"actors", Json::array({Json{{"actorKey", "npc:042"}, {"label", "Lydia"}}})}, {"limited", false}}).dump(),
+		*brainwashCatalogRequest.envelope).value.has_value());
+	const auto brainwashCardRequest = dql::contract::ParseRequest(MakeRequest("brainwash.card.read", "\"scope-1\"", "{\"actorKey\":\"npc:42\"}"));
+	CHECK(brainwashCardRequest.envelope.has_value());
+	const auto brainwashCardResponse = dql::contract::MakeResponse(*brainwashCardRequest.envelope, MakeBrainwashCardData());
+	CHECK(dql::contract::ParseServerResponse(brainwashCardResponse.dump(), *brainwashCardRequest.envelope).value.has_value());
+	auto longBrainwashCardLabel = brainwashCardResponse;
+	longBrainwashCardLabel["data"]["label"] = std::string(512, 'L');
+	CHECK(dql::contract::ParseServerResponse(longBrainwashCardLabel.dump(), *brainwashCardRequest.envelope).value.has_value());
+	longBrainwashCardLabel["data"]["label"] = std::string(513, 'L');
+	CHECK(!dql::contract::ParseServerResponse(longBrainwashCardLabel.dump(), *brainwashCardRequest.envelope).value.has_value());
+	auto badBrainwashCard = brainwashCardResponse;
+	badBrainwashCard["data"]["fields"]["identity"] = "Lydia";
+	CHECK(!dql::contract::ParseServerResponse(badBrainwashCard.dump(), *brainwashCardRequest.envelope).value.has_value());
+	const auto brainwashDraftRequest = dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"Brusque.\"},\"instruction\":\"\"}"));
+	CHECK(brainwashDraftRequest.envelope.has_value());
+	const Json brainwashDraftData = {
+		{ "actorKey", "npc:42" }, { "scope", "profile:1|restore:2" }, { "revision", std::string(64, 'a') },
+		{ "draftId", kToken }, { "origin", "manual" }, { "before", Json{{"personality", "Quiet."}} },
+		{ "changes", Json{{"personality", "Brusque."}} }
+	};
+	const auto brainwashDraftResponse = dql::contract::MakeResponse(*brainwashDraftRequest.envelope, brainwashDraftData);
+	CHECK(dql::contract::ParseServerResponse(brainwashDraftResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	const Json beliefOnlyDraftData = {
+		{ "actorKey", "npc:42" }, { "scope", "profile:1|restore:2" }, { "revision", std::string(64, 'a') },
+		{ "draftId", kToken }, { "origin", "manual" }, { "before", Json::object() }, { "changes", Json::object() },
+		{ "beliefsBefore", "A past belief." }, { "beliefs", "A revised fictional belief." }
+	};
+	const auto beliefOnlyDraftResponse = dql::contract::MakeResponse(*brainwashDraftRequest.envelope, beliefOnlyDraftData);
+	CHECK(dql::contract::ParseServerResponse(beliefOnlyDraftResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto badBrainwashDraft = brainwashDraftResponse;
+	badBrainwashDraft["data"]["identity"] = "Lydia";
+	CHECK(!dql::contract::ParseServerResponse(badBrainwashDraft.dump(), *brainwashDraftRequest.envelope).value.has_value());
 
 	auto duplicate = MakeRequest();
 	duplicate.insert(1, "\"version\":1,");
@@ -310,7 +408,7 @@ int main(int argc, char** argv)
 	CHECK(!dql::contract::ParseServerResponse(catalogWithCursor.dump(), *catalogRequest.envelope).value.has_value());
 	auto validCatalogKeyBoundaries = catalogResponse;
 	validCatalogKeyBoundaries["data"]["actors"][0]["actorKey"] = "npc:1234567890123456789";
-	validCatalogKeyBoundaries["data"]["actors"][0]["label"] = std::string(256, 'L');
+	validCatalogKeyBoundaries["data"]["actors"][0]["label"] = std::string(512, 'L');
 	CHECK(dql::contract::ParseServerResponse(validCatalogKeyBoundaries.dump(), *catalogRequest.envelope).value.has_value());
 	validCatalogKeyBoundaries["data"]["actors"][0]["actorKey"] = "player";
 	CHECK(dql::contract::ParseServerResponse(validCatalogKeyBoundaries.dump(), *catalogRequest.envelope).value.has_value());
@@ -324,7 +422,7 @@ int main(int argc, char** argv)
 	badCatalogActorKey["data"]["actors"][0]["actorKey"] = "npc:01";
 	CHECK(!dql::contract::ParseServerResponse(badCatalogActorKey.dump(), *catalogRequest.envelope).value.has_value());
 	auto badCatalogLabel = catalogResponse;
-	badCatalogLabel["data"]["actors"][0]["label"] = std::string(257, 'L');
+	badCatalogLabel["data"]["actors"][0]["label"] = std::string(513, 'L');
 	CHECK(!dql::contract::ParseServerResponse(badCatalogLabel.dump(), *catalogRequest.envelope).value.has_value());
 	auto tooManyCatalogActors = dql::contract::MakeResponse(*catalogRequest.envelope, MakeCatalogData(101));
 	CHECK(!dql::contract::ParseServerResponse(tooManyCatalogActors.dump(), *catalogRequest.envelope).value.has_value());

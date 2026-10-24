@@ -74,7 +74,7 @@ function fixture(array $scopes = ['pcv', 'inspector', 'compose']): array
         },
         'readiness' => static function () use ($trace): array {
             $trace->readyCalls++;
-            return ['pcv' => true, 'mp' => true, 'sas' => true, 'correspondence' => true];
+            return ['pcv' => true, 'mp' => true, 'sas' => true, 'correspondence' => true, 'brainwash' => false];
         },
         'perspectives' => static function (string $scopeKey) use ($trace): array {
             $trace->perspectiveCalls++;
@@ -158,8 +158,8 @@ try {
     expect(is_string($bootData->serverContext) && strlen($bootData->serverContext) <= 128, 'fresh opaque context must be returned in data');
     expect(is_string($bootData->scopeToken) && preg_match('/\A[A-Za-z0-9_-]{43}\z/D', $bootData->scopeToken) === 1, 'authenticated bootstrap must return an opaque 32-byte scope token');
     expect(!property_exists($authorizedBoot['context'], 'newServerContext'), 'bootstrap context must not be rewritten in the response envelope');
-    eq(['pcv' => true, 'mp' => true, 'sas' => true, 'correspondence' => true], (array)$bootData->capabilities, 'readiness flags must remain separate from access scopes');
-    eq(['pcv' => true, 'inspector' => true, 'compose' => true, 'authorDetail' => false], (array)$bootData->access, 'access flags must derive from token scopes');
+    eq(['pcv' => false, 'mp' => true, 'sas' => true, 'correspondence' => true, 'brainwash' => false], (array)$bootData->capabilities, 'PCV readiness stays false until its guarded overlay preconditions are present');
+    eq(['pcv' => true, 'inspector' => true, 'compose' => true, 'authorDetail' => false, 'brainwash' => false], (array)$bootData->access, 'access flags must derive from token scopes');
     eq(1, $env['trace']->readyCalls, 'authenticated bootstrap may read readiness');
     eq(1, $env['trace']->perspectiveCalls, 'inspector bootstrap may read bounded perspectives');
 
@@ -347,8 +347,8 @@ try {
         $settings = ['pairingPath' => $unconfiguredRoot . DIRECTORY_SEPARATOR . 'absent.json', 'statePath' => $unconfiguredRoot . DIRECTORY_SEPARATOR . 'state.json', 'webRoot' => $unconfiguredRoot . DIRECTORY_SEPARATOR . 'web'];
         $locked = bodyData(qd_server_dispatch(request('bootstrap', null, uuid(), '1'), null, $settings, $lockedDeps));
         eq(false, $locked->authenticated, 'unconfigured bootstrap must remain locked');
-        eq(['pcv' => false, 'mp' => false, 'sas' => false, 'correspondence' => false], (array)$locked->capabilities, 'unconfigured runtime must report unavailable capabilities');
-        eq(['pcv' => false, 'inspector' => false, 'compose' => false, 'authorDetail' => false], (array)$locked->access, 'unconfigured bootstrap must deny all access');
+        eq(['pcv' => false, 'mp' => false, 'sas' => false, 'correspondence' => false, 'brainwash' => false], (array)$locked->capabilities, 'unconfigured runtime must report unavailable capabilities');
+        eq(['pcv' => false, 'inspector' => false, 'compose' => false, 'authorDetail' => false, 'brainwash' => false], (array)$locked->access, 'unconfigured bootstrap must deny all access');
     eq(null, $locked->scopeToken ?? null, 'unauthenticated bootstrap returns a null scope token');
         eq(['scope' => 0, 'ready' => 0, 'perspectives' => 0, 'operation' => 0], $counts, 'unauthenticated bootstrap must invoke no private callback');
         wireError(qd_server_dispatch(request('mp.relationships.read', uuid(), uuid(), '1', ['perspectiveActorKey' => 'mp:npc-1']), 'Bearer invalid', $settings, $lockedDeps), 'unauthorized');
@@ -468,7 +468,7 @@ try {
             echo "private auth-core diagnostic\n";
             ob_start();
             echo "private buffered whitespace ";
-            return ['pcv' => true, 'mp' => true, 'sas' => true, 'correspondence' => true];
+            return ['pcv' => true, 'mp' => true, 'sas' => true, 'correspondence' => true, 'brainwash' => false];
         };
         $apiRaw = json_encode(request('bootstrap', null, uuid(), '1'), JSON_THROW_ON_ERROR);
         $callerBufferLevel = ob_get_level();

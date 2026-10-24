@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/protocol.php';
 
-const QD_ALLOWED_SCOPES = ['pcv', 'inspector', 'compose', 'author_detail'];
+const QD_ALLOWED_SCOPES = ['pcv', 'inspector', 'compose', 'author_detail', 'brainwash'];
 const QD_MAX_PAIRING_FILE_BYTES = 1048576;
 const QD_MAX_STATE_FILE_BYTES = 4194304;
 const QD_GUARDED_JSON_PREFIX = "<?php http_response_code(404); exit; __halt_compiler();\n";
@@ -424,7 +424,7 @@ function qd_pair_approve_hash(string $pairingPath, string $webRoot, string $toke
     if (preg_match('/\A[0-9a-f]{64}\z/D', $tokenHash) !== 1) {
         throw new QDServerFault('invalid_request');
     }
-    $scopes = ['compose', 'inspector', 'pcv'];
+    $scopes = ['compose', 'inspector', 'pcv', 'brainwash'];
     return qd_locked_json_transaction(
         $pairingPath,
         $webRoot,

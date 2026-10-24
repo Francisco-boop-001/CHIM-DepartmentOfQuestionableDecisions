@@ -337,7 +337,7 @@ function qd_journal_assert_legacy_empty(array $settings): void
     });
 }
 
-function qd_journal_begin(array $settings, string $pairId, string $scopeHash, string $operation, string $operationId, string $payloadHash, string $semanticHash): array
+function qd_journal_begin(array $settings, string $pairId, string $scopeHash, string $operation, string $operationId, string $payloadHash, string $semanticHash, bool $ownerIdempotent = false): array
 {
     qd_journal_assert_legacy_empty($settings);
     if (!qd_is_uuid($pairId) || preg_match('/\A[a-f0-9]{64}\z/D', $scopeHash) !== 1
@@ -347,7 +347,7 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
     }
     $key = hash('sha256', implode("\0", [$pairId, $scopeHash, $operation, $operationId]));
     $semanticKey = qd_journal_semantic_key($pairId, $scopeHash, $operation, $semanticHash);
-    return qd_journal_transaction($settings, static function (string $directory, string $webRoot, ?string $privateRoot) use ($pairId, $scopeHash, $operation, $operationId, $payloadHash, $semanticHash, $key, $semanticKey): array {
+    return qd_journal_transaction($settings, static function (string $directory, string $webRoot, ?string $privateRoot) use ($pairId, $scopeHash, $operation, $operationId, $payloadHash, $semanticHash, $key, $semanticKey, $ownerIdempotent): array {
         $existing = qd_journal_load_record($directory, $webRoot, $key, $privateRoot);
         if ($existing !== null) {
             $existingSemanticKey = qd_journal_semantic_key($existing['pairId'], $existing['scopeHash'], $existing['operation'], $existing['semanticHash']);
@@ -364,6 +364,9 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
             }
             if (($existing['payloadHash'] ?? null) !== $payloadHash || ($existing['semanticHash'] ?? null) !== $semanticHash) {
                 throw new QDServerFault('conflict');
+            }
+            if (($existing['state'] ?? null) === 'completed' && $ownerIdempotent) {
+                return ['action' => 'owner_replay'];
             }
             if (($existing['state'] ?? null) === 'completed' && is_string($existing['dataJson'] ?? null)) {
                 try {

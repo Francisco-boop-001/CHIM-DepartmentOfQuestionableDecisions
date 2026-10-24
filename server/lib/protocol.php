@@ -10,6 +10,7 @@ const QD_MAX_PAGE_ROWS = 100;
 const QD_MAX_TEXT_CHARACTERS = 2000;
 const QD_MAX_TEXT_BYTES = 8000;
 const QD_MAX_JOURNAL_RESULT_BYTES = 16384;
+const QD_BRAINWASH_FIELDS = ['core', 'npc_static_bio', 'personality', 'appearance', 'occupation', 'skills', 'speechstyle', 'goals'];
 
 const QD_OPERATION_REQUIREMENTS = [
     'bootstrap' => ['scope' => null, 'capability' => null],
@@ -27,6 +28,11 @@ const QD_OPERATION_REQUIREMENTS = [
     'correspondence.detail.read' => ['scope' => 'inspector', 'capability' => 'correspondence'],
     'correspondence.compose' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'correspondence.reconcile' => ['scope' => 'compose', 'capability' => 'correspondence'],
+    'brainwash.catalog.read' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
+    'brainwash.card.read' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
+    'brainwash.draft' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
+    'brainwash.apply' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
+    'brainwash.undo' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
 ];
 
 const QD_ERROR_MESSAGES = [
@@ -132,6 +138,41 @@ function qd_valid_string(mixed $value, int $maxBytes = QD_MAX_STRING_BYTES, bool
 function qd_valid_nullable_uuid(mixed $value): bool
 {
     return $value === null || qd_is_uuid($value);
+}
+
+function qd_valid_brainwash_actor_key(mixed $value): bool
+{
+    if (!is_string($value) || preg_match('/\\Anpc:([1-9][0-9]{0,18})\\z/D', $value, $matches) !== 1) {
+        return false;
+    }
+    $max = (string)PHP_INT_MAX;
+    return strlen($matches[1]) < strlen($max)
+        || (strlen($matches[1]) === strlen($max) && strcmp($matches[1], $max) <= 0);
+}
+
+function qd_brainwash_valid_revision(mixed $value): bool
+{
+    return is_string($value) && preg_match('/\\A[a-f0-9]{64}\\z/D', $value) === 1;
+}
+
+function qd_brainwash_valid_changes(mixed $changes, bool $allowEmpty = false): bool
+{
+    if (!is_object($changes)) {
+        return false;
+    }
+    $properties = get_object_vars($changes);
+    if (count($properties) > count(QD_BRAINWASH_FIELDS) || (!$allowEmpty && $properties === [])) {
+        return false;
+    }
+    $bytes = 0;
+    foreach ($properties as $field => $value) {
+        if (!in_array($field, QD_BRAINWASH_FIELDS, true) || !qd_valid_string($value, 8192, true)) {
+            return false;
+        }
+        $bytes += strlen($value);
+        if ($bytes > 20000) return false;
+    }
+    return true;
 }
 
 function qd_validate_page_options(object $payload): bool
@@ -363,6 +404,52 @@ function qd_validate_payload(string $operation, object $payload): string
 
         case 'correspondence.reconcile':
             return qd_exact_properties($payload, ['operationId']) && qd_is_uuid($payload->operationId) ? 'ok' : 'invalid_request';
+
+        case 'brainwash.catalog.read':
+            return qd_exact_properties($payload, [], ['query'])
+                && (!property_exists($payload, 'query') || qd_valid_string($payload->query, 128, true))
+                ? 'ok' : 'invalid_request';
+
+        case 'brainwash.card.read':
+            return qd_exact_properties($payload, ['actorKey']) && qd_valid_brainwash_actor_key($payload->actorKey)
+                ? 'ok' : 'invalid_request';
+
+        case 'brainwash.draft':
+            return qd_exact_properties($payload, ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction'], ['beliefs'])
+                && qd_valid_brainwash_actor_key($payload->actorKey)
+                && qd_brainwash_valid_revision($payload->expectedRevision)
+                && qd_is_uuid($payload->operationId)
+                && in_array($payload->mode, ['manual', 'ai'], true)
+                && qd_brainwash_valid_changes($payload->changes, true)
+                && qd_valid_string($payload->instruction, 2000, true)
+                && (!property_exists($payload, 'beliefs') || qd_valid_string($payload->beliefs, 4000, true))
+                && (get_object_vars($payload->changes) !== [] || property_exists($payload, 'beliefs')) ? 'ok' : 'invalid_request';
+
+        case 'brainwash.apply':
+            if (!qd_exact_properties($payload, ['actorKey', 'draftId', 'operationId', 'acceptedFields', 'acceptBeliefs'])
+                || !qd_valid_brainwash_actor_key($payload->actorKey)
+                || !qd_is_uuid($payload->draftId)
+                || !qd_is_uuid($payload->operationId)
+                || !is_array($payload->acceptedFields)
+                || !array_is_list($payload->acceptedFields)
+                || count($payload->acceptedFields) > count(QD_BRAINWASH_FIELDS)
+                || !is_bool($payload->acceptBeliefs)) {
+                return 'invalid_request';
+            }
+            $seen = [];
+            foreach ($payload->acceptedFields as $field) {
+                if (!is_string($field) || !in_array($field, QD_BRAINWASH_FIELDS, true) || isset($seen[$field])) {
+                    return 'invalid_request';
+                }
+                $seen[$field] = true;
+            }
+            return ($seen !== [] || $payload->acceptBeliefs) ? 'ok' : 'invalid_request';
+
+        case 'brainwash.undo':
+            return qd_exact_properties($payload, ['actorKey', 'operationId', 'appliedOperationId'])
+                && qd_valid_brainwash_actor_key($payload->actorKey)
+                && qd_is_uuid($payload->operationId)
+                && qd_is_uuid($payload->appliedOperationId) ? 'ok' : 'invalid_request';
 
         default:
             return 'unsupported_operation';

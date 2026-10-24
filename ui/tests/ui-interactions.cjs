@@ -56,17 +56,17 @@ async function openPage(browser, native = true) {
 
 async function main() {
   if (!fs.existsSync(pagePath)) {
-    results.push({ name: 'renders the approved title, subtitle, and four tabs', status: 'failed', error: 'UI entrypoint is missing.' });
+    results.push({ name: 'renders the approved title, subtitle, and five tabs', status: 'failed', error: 'UI entrypoint is missing.' });
   } else {
     if (!fs.existsSync(browserPath)) throw new Error(`Existing local browser not found: ${browserPath}`);
     const browser = await chromium.launch({ headless: true, executablePath: browserPath });
-    await test('renders the approved title, subtitle, and four tabs', async () => {
+    await test('renders the approved title, subtitle, and five tabs', async () => {
       const page = await openPage(browser, false);
       assert.equal(await page.title(), 'World of Drama Llama: The Department of Questionable Decisions');
       assert.equal(await page.getByRole('heading', { level: 1 }).textContent(), 'The Department of Questionable Decisions');
       assert.equal(await page.getByText('World of Drama Llama', { exact: true }).count(), 1);
       assert.equal(await page.getByText('Conversations, relationships, grudges, and suspicious mail.', { exact: true }).count(), 1);
-      for (const name of ['Private Conversation', 'Mind Poisoning', 'Sworn & Scorned', 'Sealed Fates']) {
+      for (const name of ['Private Conversation', 'Mind Poisoning', 'Sworn & Scorned', 'Sealed Fates', 'Brainwash']) {
         assert.equal(await page.getByRole('tab', { name }).count(), 1, `Missing tab ${name}`);
       }
       assert.equal(await page.evaluate(() => window.PRISMA.testSentinel), true, 'The UI replaced the framework global.');

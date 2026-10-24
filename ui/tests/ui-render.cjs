@@ -66,8 +66,8 @@ async function main() {
   const bootstrap = await request(page, 'bootstrap');
   await respond(page, bootstrap, {
     authenticated: true, authRequired: false, serverContext: 'render-context-1', scopeToken: 'R'.repeat(43),
-    capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
-    access: { pcv: true, inspector: true, compose: true, authorDetail: true },
+    capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true },
+    access: { pcv: true, inspector: true, compose: true, authorDetail: true, brainwash: true },
     perspectives: {
       mp: { choices: [{ actorKey: 'actor:captain', label: 'Captain Snide' }, { actorKey: 'npc:countess', label: 'Countess Example' }, { actorKey: 'npc:baron', label: 'Baron Example' }], limited: false },
       sas: { choices: [{ actorKey: 'actor:captain', label: 'Captain Snide' }, { actorKey: 'actor:countess', label: 'Countess Example' }], limited: false },
@@ -180,8 +180,8 @@ async function main() {
   const unpairedBootstrap = await request(page, 'bootstrap', 1);
   await respond(page, unpairedBootstrap, {
     authenticated: false, authRequired: true, serverContext: null, scopeToken: null,
-    capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
-    access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+    capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true },
+    access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
   });
   await capture(page, 'ui-render-auth-required.png');
 

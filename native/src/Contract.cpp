@@ -221,6 +221,7 @@ namespace dql::contract
 				"bootstrap", "view.close", "pcv.roster.read", "pcv.status.read", "pcv.arm", "pcv.end", "pcv.send", "pcv.send.status",
 				"mp.relationships.read", "sas.issues.read", "correspondence.catalog.read", "correspondence.inventory.read",
 				"correspondence.mailbox.read", "correspondence.detail.read", "correspondence.compose", "correspondence.reconcile",
+				"brainwash.catalog.read", "brainwash.card.read", "brainwash.draft", "brainwash.apply", "brainwash.undo",
 				"connection.begin", "connection.status"
 			};
 			return std::find(operations.begin(), operations.end(), operation) != operations.end();
@@ -247,6 +248,141 @@ namespace dql::contract
 				return false;
 			}
 			return std::all_of(key.begin() + 5, key.end(), [](char c) { return c >= '0' && c <= '9'; });
+		}
+
+		bool IsBrainwashActorKey(const Json& value)
+		{
+			if (!value.is_string()) return false;
+			const auto& key = value.get_ref<const std::string&>();
+			if (key.size() < 5 || key.size() > 23 || key.compare(0, 4, "npc:") != 0 || key[4] < '1' || key[4] > '9') return false;
+			const auto digits = std::string_view(key).substr(4);
+			if (!std::all_of(digits.begin(), digits.end(), [](char c) { return c >= '0' && c <= '9'; })) return false;
+			constexpr std::string_view maximum = "9223372036854775807";
+			return digits.size() < maximum.size() || (digits.size() == maximum.size() && digits <= maximum);
+		}
+
+		bool IsBrainwashRevision(const Json& value)
+		{
+			if (!value.is_string() || value.get_ref<const std::string&>().size() != 64) return false;
+			const auto& text = value.get_ref<const std::string&>();
+			return std::all_of(text.begin(), text.end(), [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); });
+		}
+
+		bool IsBrainwashText(const Json& value, std::size_t maximum, bool allowEmpty = true)
+		{
+			return value.is_string() && (allowEmpty || !value.get_ref<const std::string&>().empty())
+				&& value.get_ref<const std::string&>().size() <= maximum;
+		}
+
+		bool IsBrainwashFields(const Json& value, bool allowEmpty, std::size_t maximumBytes = 20000)
+		{
+			constexpr std::array fields{ "core", "npc_static_bio", "personality", "appearance", "occupation", "skills", "speechstyle", "goals" };
+			if (!value.is_object() || value.size() > fields.size() || (!allowEmpty && value.empty())) return false;
+			std::size_t bytes = 0;
+			for (const auto& [key, field] : value.items()) {
+				if (std::find(fields.begin(), fields.end(), key) == fields.end() || !IsBrainwashText(field, 8192)) return false;
+				bytes += field.get_ref<const std::string&>().size();
+				if (bytes > maximumBytes) return false;
+			}
+			return true;
+		}
+
+		bool IsBrainwashRequestPayload(std::string_view operation, const Json& payload)
+		{
+			constexpr std::array fields{ "core", "npc_static_bio", "personality", "appearance", "occupation", "skills", "speechstyle", "goals" };
+			if (operation == "brainwash.catalog.read") {
+				if (!payload.is_object()) return false;
+				return payload.empty() || (HasOnlyKeys(payload, { "query" }) && IsBrainwashText(payload["query"], 128));
+			}
+			if (operation == "brainwash.card.read") return HasOnlyKeys(payload, { "actorKey" }) && IsBrainwashActorKey(payload["actorKey"]);
+			if (operation == "brainwash.draft") {
+				constexpr std::array allowed{ "actorKey", "expectedRevision", "operationId", "mode", "changes", "instruction", "beliefs" };
+				if (!payload.is_object() || (payload.size() != 6 && payload.size() != 7)
+					|| !payload.contains("actorKey") || !payload.contains("expectedRevision") || !payload.contains("operationId")
+					|| !payload.contains("mode") || !payload.contains("changes") || !payload.contains("instruction")
+					|| !IsBrainwashActorKey(payload["actorKey"]) || !IsBrainwashRevision(payload["expectedRevision"])
+					|| !IsUuid(payload["operationId"]) || !payload["mode"].is_string()
+					|| (payload["mode"] != "manual" && payload["mode"] != "ai")
+					|| !IsBrainwashFields(payload["changes"], true) || !IsBrainwashText(payload["instruction"], 2000)) return false;
+				for (const auto& [key, _] : payload.items()) {
+					if (std::find(allowed.begin(), allowed.end(), key) == allowed.end()) return false;
+				}
+				if (payload.contains("beliefs") && !IsBrainwashText(payload["beliefs"], 4000)) return false;
+				return !payload["changes"].empty() || payload.contains("beliefs");
+			}
+			if (operation == "brainwash.apply") {
+				if (!HasOnlyKeys(payload, { "actorKey", "draftId", "operationId", "acceptedFields", "acceptBeliefs" })
+					|| !IsBrainwashActorKey(payload["actorKey"]) || !IsUuid(payload["draftId"]) || !IsUuid(payload["operationId"])
+					|| !payload["acceptedFields"].is_array() || payload["acceptedFields"].size() > fields.size()
+					|| !payload["acceptBeliefs"].is_boolean()) return false;
+				std::unordered_set<std::string> seen;
+				for (const auto& field : payload["acceptedFields"]) {
+					if (!field.is_string() || std::find(fields.begin(), fields.end(), field.get_ref<const std::string&>()) == fields.end()
+						|| !seen.emplace(field.get<std::string>()).second) return false;
+				}
+				return !payload["acceptedFields"].empty() || payload["acceptBeliefs"].get<bool>();
+			}
+			if (operation == "brainwash.undo") {
+				return HasOnlyKeys(payload, { "actorKey", "operationId", "appliedOperationId" })
+					&& IsBrainwashActorKey(payload["actorKey"]) && IsUuid(payload["operationId"]) && IsUuid(payload["appliedOperationId"]);
+			}
+			return false;
+		}
+
+		bool IsBrainwashCard(const Json& data)
+		{
+			if (!HasOnlyKeys(data, { "actorKey", "label", "scope", "revision", "fields", "beliefs", "draftId", "lastOperation" })
+				|| !IsBrainwashActorKey(data["actorKey"]) || !IsBrainwashText(data["label"], 512, false)
+				|| !IsBrainwashText(data["scope"], 1024, false) || !IsBrainwashRevision(data["revision"])
+				|| !IsBrainwashFields(data["fields"], true) || data["fields"].size() != 8
+				|| !IsBrainwashText(data["beliefs"], 4000) || !(data["draftId"].is_null() || IsUuid(data["draftId"]))) return false;
+			constexpr std::array fields{ "core", "npc_static_bio", "personality", "appearance", "occupation", "skills", "speechstyle", "goals" };
+			for (const auto* field : fields) if (!data["fields"].contains(field)) return false;
+			if (data["lastOperation"].is_null()) return true;
+			return HasOnlyKeys(data["lastOperation"], { "operationId", "state" })
+				&& IsUuid(data["lastOperation"]["operationId"]) && data["lastOperation"]["state"].is_string()
+				&& (data["lastOperation"]["state"] == "applied" || data["lastOperation"]["state"] == "undone");
+		}
+
+		bool IsBrainwashDraft(const Json& data)
+		{
+			constexpr std::array allowed{ "actorKey", "scope", "revision", "draftId", "origin", "before", "changes", "beliefsBefore", "beliefs" };
+			if (!data.is_object() || data.size() < 7 || data.size() > allowed.size()) return false;
+			for (const auto& [key, _] : data.items()) {
+				if (std::find(allowed.begin(), allowed.end(), key) == allowed.end()) return false;
+			}
+			if (!data.contains("actorKey") || !data.contains("scope") || !data.contains("revision")
+				|| !data.contains("draftId") || !data.contains("origin") || !data.contains("before") || !data.contains("changes")
+				|| !IsBrainwashActorKey(data["actorKey"]) || !IsBrainwashText(data["scope"], 1024, false)
+				|| !IsBrainwashRevision(data["revision"]) || !IsUuid(data["draftId"])
+				|| !data["origin"].is_string() || (data["origin"] != "manual" && data["origin"] != "ai")
+				|| !IsBrainwashFields(data["before"], true) || !IsBrainwashFields(data["changes"], true)) return false;
+			if (data.contains("beliefsBefore") && !IsBrainwashText(data["beliefsBefore"], 4000)) return false;
+			if (data.contains("beliefs") && !IsBrainwashText(data["beliefs"], 4000)) return false;
+			return !data["changes"].empty() || data.contains("beliefs");
+		}
+
+		bool IsBrainwashResponseData(std::string_view operation, const Json& data)
+		{
+			if (operation == "brainwash.catalog.read") {
+				if (!HasOnlyKeys(data, { "actors", "limited" }) || !data["actors"].is_array() || data["actors"].size() > 64
+					|| !data["limited"].is_boolean()) return false;
+				std::unordered_set<std::string> seen;
+				for (const auto& actor : data["actors"]) {
+					if (!HasOnlyKeys(actor, { "actorKey", "label" }) || !IsBrainwashActorKey(actor["actorKey"])
+						|| !IsBrainwashText(actor["label"], 512, false)
+						|| !seen.emplace(actor["actorKey"].get<std::string>()).second) return false;
+				}
+				return true;
+			}
+			if (operation == "brainwash.card.read") return IsBrainwashCard(data);
+			if (operation == "brainwash.draft") return IsBrainwashDraft(data);
+			if (operation == "brainwash.apply" || operation == "brainwash.undo") {
+				const auto expectedState = operation == "brainwash.apply" ? "applied" : "undone";
+				return HasOnlyKeys(data, { "operationId", "state", "card" }) && IsUuid(data["operationId"])
+					&& data["state"].is_string() && data["state"] == expectedState && IsBrainwashCard(data["card"]);
+			}
+			return false;
 		}
 
 		bool IsCatalogRequestPayload(const Json& payload)
@@ -359,6 +495,9 @@ namespace dql::contract
 		if (operation == "correspondence.catalog.read" && !IsCatalogRequestPayload(root["payload"])) {
 			return { std::nullopt, "invalid_request" };
 		}
+		if (operation.starts_with("brainwash.") && !IsBrainwashRequestPayload(operation, root["payload"])) {
+			return { std::nullopt, "invalid_request" };
+		}
 		return {
 			Envelope{
 				root["requestId"].get<std::string>(), operation, context["viewToken"].get<std::string>(),
@@ -394,6 +533,9 @@ namespace dql::contract
 				return { std::nullopt, "invalid_response" };
 			}
 			if (request.operation == "correspondence.catalog.read" && !IsCatalogResponseData(root["data"])) {
+				return { std::nullopt, "invalid_response" };
+			}
+			if (request.operation.starts_with("brainwash.") && !IsBrainwashResponseData(request.operation, root["data"])) {
 				return { std::nullopt, "invalid_response" };
 			}
 		} else {

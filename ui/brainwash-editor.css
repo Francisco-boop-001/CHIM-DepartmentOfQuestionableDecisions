@@ -1,0 +1,39 @@
+:root {
+  color-scheme: light dark;
+  font: 16px/1.45 system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: #14181d; color: #eef2f6; }
+.brainwash-page { max-width: 1100px; margin: 0 auto; padding: 1.25rem; }
+.brainwash-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
+.brainwash-header h1, .brainwash-header p { margin: 0; }
+.brainwash-header p { color: #b5c0cb; }
+.brainwash-editor { display: grid; gap: 1rem; }
+.brainwash-panel { min-width: 0; padding: 1rem; border: 1px solid #3a4652; border-radius: .5rem; background: #1d242c; }
+.brainwash-panel h2 { margin: 0 0 .75rem; font-size: 1.15rem; }
+.brainwash-panel > label { display: block; margin: .6rem 0; }
+.brainwash-panel input[type="search"], .brainwash-panel select, .brainwash-panel textarea, .brainwash-login input[type="password"] {
+  display: block; width: 100%; margin-top: .3rem; padding: .65rem; border: 1px solid #596777; border-radius: .3rem; background: #10151a; color: inherit; font: inherit;
+}
+.brainwash-panel textarea { resize: vertical; }
+.brainwash-fields { display: grid; gap: .75rem; }
+.brainwash-fields fieldset, .brainwash-panel fieldset { min-width: 0; margin: 0; padding: .75rem; border: 1px solid #44515e; border-radius: .35rem; }
+.brainwash-fields legend, .brainwash-panel legend { padding: 0 .3rem; font-weight: 650; text-transform: capitalize; }
+.brainwash-panel fieldset label { display: inline-flex; align-items: center; gap: .45rem; }
+button { min-height: 2.5rem; margin: .35rem .45rem .1rem 0; padding: .5rem .85rem; border: 1px solid #6c91b4; border-radius: .35rem; background: #275276; color: white; font: inherit; cursor: pointer; }
+button:hover:not(:disabled) { background: #32658e; }
+button:disabled, input:disabled, textarea:disabled, select:disabled { opacity: .6; cursor: not-allowed; }
+.brainwash-status { margin: 0; padding: .65rem .8rem; border-left: 3px solid #68a9d8; background: #202e39; }
+.brainwash-warning { padding: .7rem; border: 1px solid #b17d36; background: #3b2b18; }
+.brainwash-review-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: .45rem 0; padding: .55rem; background: #111820; border-radius: .25rem; }
+.brainwash-login { max-width: 32rem; margin: 3rem auto; }
+.brainwash-login label { display: block; margin: .9rem 0; }
+.brainwash-login .brainwash-status { margin: .8rem 0; }
+:focus-visible { outline: 3px solid #f0c66e; outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .brainwash-page { padding: .75rem; }
+  .brainwash-header { align-items: flex-start; }
+  .brainwash-header form { flex: none; }
+}

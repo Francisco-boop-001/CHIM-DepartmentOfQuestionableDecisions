@@ -6,16 +6,17 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/journal.php';
 require_once __DIR__ . '/overlay_setup.php';
 
-const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose'];
+const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
+const QD_OWNER_IDEMPOTENT_MUTATIONS = ['brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
 
 function qd_false_capabilities(): array
 {
-    return ['pcv' => false, 'mp' => false, 'sas' => false, 'correspondence' => false];
+    return ['pcv' => false, 'mp' => false, 'sas' => false, 'correspondence' => false, 'brainwash' => false];
 }
 
 function qd_false_access(): array
 {
-    return ['pcv' => false, 'inspector' => false, 'compose' => false, 'authorDetail' => false];
+    return ['pcv' => false, 'inspector' => false, 'compose' => false, 'authorDetail' => false, 'brainwash' => false];
 }
 
 function qd_has_required_scope(array $scopes, mixed $required): bool
@@ -41,6 +42,7 @@ function qd_access_for_scopes(array $scopes): array
         'inspector' => in_array('inspector', $scopes, true),
         'compose' => in_array('compose', $scopes, true),
         'authorDetail' => in_array('author_detail', $scopes, true) && in_array('inspector', $scopes, true),
+        'brainwash' => in_array('brainwash', $scopes, true),
     ];
 }
 
@@ -55,7 +57,7 @@ function qd_runtime_readiness(array $dependencies, bool $includePcv = true): arr
     } catch (Throwable) {
         throw new QDServerFault('unavailable');
     }
-    if (!is_array($raw) || array_diff(array_keys($raw), ['pcv', 'mp', 'sas', 'correspondence']) !== []) {
+    if (!is_array($raw) || array_diff(array_keys($raw), ['pcv', 'mp', 'sas', 'correspondence', 'brainwash']) !== []) {
         throw new QDServerFault('unavailable');
     }
     $result = qd_false_capabilities();
@@ -612,7 +614,9 @@ function qd_dispatch_authorized_operation(object $request, array $auth, string $
     };
     $journalKey = null;
     $mutationEntered = false;
-    $beginCommit = static function () use (&$journalKey, &$mutationEntered, $settings): void {
+    $ownerReplay = false;
+    $beginCommit = static function () use (&$journalKey, &$mutationEntered, &$ownerReplay, $settings): void {
+        if ($ownerReplay) return;
         if (!is_string($journalKey)) {
             throw new QDServerFault('unavailable');
         }
@@ -659,7 +663,8 @@ function qd_dispatch_authorized_operation(object $request, array $auth, string $
         $semanticPayload = clone $request->payload;
         unset($semanticPayload->operationId);
         $semanticHash = hash('sha256', qd_canonical_json($semanticPayload));
-        $journal = qd_journal_begin($settings, $auth['pairId'], $scopeHash, $operation, qd_operation_id($request), $payloadHash, $semanticHash);
+        $ownerIdempotent = in_array($operation, QD_OWNER_IDEMPOTENT_MUTATIONS, true);
+        $journal = qd_journal_begin($settings, $auth['pairId'], $scopeHash, $operation, qd_operation_id($request), $payloadHash, $semanticHash, $ownerIdempotent);
         if ($journal['action'] === 'replay') {
             $response = qd_response_with_bounded_data($request, $journal['data'], qd_access_for_scopes($currentAuth['scopes'])['authorDetail']);
             $commitGuard();
@@ -668,7 +673,11 @@ function qd_dispatch_authorized_operation(object $request, array $auth, string $
             }
             return $response;
         }
-        $journalKey = $journal['key'];
+        if ($journal['action'] === 'owner_replay' && $ownerIdempotent) {
+            $ownerReplay = true;
+        } else {
+            $journalKey = $journal['key'];
+        }
     }
 
     try {
@@ -676,7 +685,9 @@ function qd_dispatch_authorized_operation(object $request, array $auth, string $
         $commitGuard();
         $response = qd_response_with_bounded_data($request, $data, qd_access_for_scopes($currentAuth['scopes'])['authorDetail']);
         if ($journalKey !== null) {
-            $dataJson = json_encode($response['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+            $dataJson = in_array($operation, QD_OWNER_IDEMPOTENT_MUTATIONS, true)
+                ? json_encode((object)['ownerReceipt' => true], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)
+                : json_encode($response['data'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
             if (!is_string($dataJson) || strlen($dataJson) > QD_MAX_JOURNAL_RESULT_BYTES) {
                 throw new QDServerFault('unavailable');
             }

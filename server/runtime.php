@@ -4,7 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/adapters/runtime_support.php';
 require_once __DIR__ . '/adapters/pcv.php';
 
-foreach (['mp.php', 'sas.php', 'correspondence.php'] as $module) {
+foreach (['mp.php', 'sas.php', 'correspondence.php', 'brainwash.php'] as $module) {
     try {
         @include_once __DIR__ . '/adapters/' . $module;
     } catch (Throwable) {
@@ -38,24 +38,31 @@ function qd_department_runtime_dependencies(): array
         'correspondence.detail.read' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_runtime_module_operations('qd_correspondence_runtime_operations'), 'correspondence.detail.read', $payload, $context),
         'correspondence.compose' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_runtime_module_operations('qd_correspondence_runtime_operations'), 'correspondence.compose', $payload, $context),
         'correspondence.reconcile' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_runtime_module_operations('qd_correspondence_runtime_operations'), 'correspondence.reconcile', $payload, $context),
+        'brainwash.catalog.read' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_brainwash_runtime_operations(), 'brainwash.catalog.read', $payload, $context),
+        'brainwash.card.read' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_brainwash_runtime_operations(), 'brainwash.card.read', $payload, $context),
+        'brainwash.draft' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_brainwash_runtime_operations(), 'brainwash.draft', $payload, $context),
+        'brainwash.apply' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_brainwash_runtime_operations(), 'brainwash.apply', $payload, $context),
+        'brainwash.undo' => static fn(stdClass $payload, array $context): mixed => qd_runtime_call_fixed_module_operation(qd_brainwash_runtime_operations(), 'brainwash.undo', $payload, $context),
     ];
 
     return [
         'withProfileLease' => static fn(callable $callback): mixed => qd_runtime_with_profile_lease($callback),
         'currentScope' => static fn(string $pairId): string => qd_runtime_resolve_scope($pairId),
         'readiness' => static function (bool $includePcv = true): array {
-            $pcv = $mp = $sas = $correspondence = false;
+            $pcv = $mp = $sas = $correspondence = $brainwash = false;
             if ($includePcv) {
                 try { $pcv = qd_pcv_runtime_ready(); } catch (Throwable) { $pcv = false; }
             }
             try { $mp = function_exists('qd_mp_runtime_ready') && qd_mp_runtime_ready() === true; } catch (Throwable) { $mp = false; }
             try { $sas = function_exists('qd_sas_runtime_ready') && qd_sas_runtime_ready() === true; } catch (Throwable) { $sas = false; }
             try { $correspondence = function_exists('qd_correspondence_runtime_ready') && qd_correspondence_runtime_ready() === true; } catch (Throwable) { $correspondence = false; }
+            try { $brainwash = function_exists('qd_brainwash_runtime_ready') && qd_brainwash_runtime_ready() === true; } catch (Throwable) { $brainwash = false; }
             return [
                 'pcv' => $pcv === true,
                 'mp' => $mp,
                 'sas' => $sas,
                 'correspondence' => $correspondence,
+                'brainwash' => $brainwash,
             ];
         },
         'perspectives' => static function (string $scopeKey): array {

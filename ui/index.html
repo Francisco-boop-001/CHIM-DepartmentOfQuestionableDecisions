@@ -6,6 +6,8 @@
   <meta name="color-scheme" content="dark">
   <title>World of Drama Llama: The Department of Questionable Decisions</title>
   <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="./brainwash-editor.css">
+  <script src="./brainwash-editor.js" defer></script>
   <script src="./app.js" defer></script>
 </head>
 <body>
@@ -34,6 +36,7 @@
       <button id="tab-mp" class="tab" role="tab" type="button" aria-controls="panel-mp" aria-selected="false" tabindex="-1">Mind Poisoning</button>
       <button id="tab-sas" class="tab" role="tab" type="button" aria-controls="panel-sas" aria-selected="false" tabindex="-1">Sworn &amp; Scorned</button>
       <button id="tab-mail" class="tab" role="tab" type="button" aria-controls="panel-mail" aria-selected="false" tabindex="-1">Sealed Fates</button>
+      <button id="tab-brainwash" class="tab" role="tab" type="button" aria-controls="panel-brainwash" aria-selected="false" tabindex="-1">Brainwash</button>
     </nav>
 
     <section id="panel-pcv" class="tab-panel" role="tabpanel" aria-labelledby="tab-pcv" tabindex="0">
@@ -137,6 +140,11 @@
       </section>
       <section id="mailbox-view" class="mail-view" hidden><p class="notice">Recipient mailboxes list receipt-confirmed deliveries only. Reading a letter here creates no NPC exposure or player-read receipt.</p><div class="mail-grid mailbox-only"><section class="mailbox-panel wide-mailbox"><h3>Received letters</h3><div class="field"><label for="mailbox-recipient-secondary">Recipient mailbox</label><select id="mailbox-recipient-secondary" disabled><option value="">No authorized recipients</option></select></div><div class="button-row"><button id="mailbox-refresh-secondary" class="button secondary" type="button" disabled>Refresh mailbox</button><button id="mailbox-more-secondary" class="button quiet" type="button" disabled>Load older</button></div><div id="mailbox-list-secondary" class="mailbox-list"><p class="empty-row">Select a recipient and refresh.</p></div><article id="letter-detail-secondary" class="letter-detail" hidden><h4 id="detail-heading-secondary">Letter detail</h4><p id="detail-signature-secondary" class="subtle"></p><p id="detail-author-secondary" class="subtle" hidden></p><p id="detail-body-secondary" class="letter-body"></p><ul id="detail-attachments-secondary" class="detail-attachments"></ul><p class="subtle">Opening this record does not mean an NPC read or learned it.</p></article></section></div></section>
       <p id="mail-limited" class="notice"></p>
+    </section>
+
+    <section id="panel-brainwash" class="tab-panel" role="tabpanel" aria-labelledby="tab-brainwash" tabindex="0" hidden>
+      <header class="view-heading"><div><p class="eyebrow">BRAINWASH · OUT OF CHARACTER</p><h2>Review an NPC profile change</h2><p>Draft and review selected profile fields before applying them. Beliefs remain separate from the NPC biography.</p></div></header>
+      <div id="brainwash-editor" class="brainwash-editor-host"></div>
     </section>
 
     <footer class="footer"><span>Private records are out of character. Reading never triggers dialogue, evaluation, or a transfer.</span><span id="scope-footer">No authorized scope.</span></footer>

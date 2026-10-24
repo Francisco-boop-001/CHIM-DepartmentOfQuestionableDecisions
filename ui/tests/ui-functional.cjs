@@ -156,8 +156,8 @@ function authenticatedData(serverContext = 'scope-test-1', scopeToken = 'A'.repe
     authRequired: false,
     serverContext,
     scopeToken,
-    capabilities: { pcv: true, mp: true, sas: true, correspondence: true, ...(overrides.capabilities || {}) },
-    access: { pcv: true, inspector: true, compose: true, authorDetail: false, ...(overrides.access || {}) },
+    capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true, ...(overrides.capabilities || {}) },
+    access: { pcv: true, inspector: true, compose: true, authorDetail: false, brainwash: true, ...(overrides.access || {}) },
     perspectives: overrides.perspectives || {
       mp: { choices: [{ actorKey: 'actor:mp-owner', label: '<img src=x onerror=window.__xss=1>' }, { actorKey: 'npc:captain', label: 'Captain Snide' }], limited: false },
       sas: { choices: [{ actorKey: 'actor:sas-owner', label: 'Captain Snide' }], limited: false },
@@ -171,8 +171,8 @@ function unauthenticatedData() {
     authRequired: true,
     serverContext: null,
     scopeToken: null,
-    capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
-    access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+    capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true },
+    access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
   };
 }
 
@@ -264,8 +264,8 @@ async function main() {
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length), 1);
       await respond(page, bootstrap, {
         authenticated: false, authRequired: true, serverContext: null, scopeToken: null,
-        capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
-        access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+        capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true },
+        access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
       });
       await page.locator('#connection-status').getByText('Connecting to CHIM').waitFor();
       assert.equal(await page.locator('#permission-status').innerText(), 'Setting up the connection with CHIM.');
@@ -519,7 +519,7 @@ async function main() {
       await page.evaluate(({ viewToken }) => window.departmentInitialize(JSON.stringify({ version: 1, viewToken, nativeGeneration: '2', serverContext: null })), { viewToken: newView });
       await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length === 2);
       const bootstrapRequests = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap'));
-      await respond(page, oldRequest, { authenticated: true, authRequired: false, serverContext: 'stale-scope', scopeToken: 'A'.repeat(43), capabilities: { pcv: true, mp: true, sas: true, correspondence: true }, access: { pcv: true, inspector: true, compose: true, authorDetail: false }, perspectives: { mp: { choices: [], limited: false }, sas: { choices: [], limited: false } } });
+      await respond(page, oldRequest, { authenticated: true, authRequired: false, serverContext: 'stale-scope', scopeToken: 'A'.repeat(43), capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true }, access: { pcv: true, inspector: true, compose: true, authorDetail: false, brainwash: true }, perspectives: { mp: { choices: [], limited: false }, sas: { choices: [], limited: false } } });
       assert.equal(bootstrapRequests[1].context.viewToken, newView);
       assert.equal(bootstrapRequests[1].context.nativeGeneration, '2');
       assert.equal(bootstrapRequests[1].context.serverContext, null);
@@ -902,8 +902,8 @@ async function main() {
       const unauthenticated = await initialize(page, newUuid(), '3');
       await respond(page, unauthenticated, {
         authenticated: false, authRequired: true, serverContext: null, scopeToken: null,
-        capabilities: { pcv: true, mp: true, sas: true, correspondence: true },
-        access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+        capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true },
+        access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
       });
       assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'an unauthenticated bootstrap erases the cached private body');
       assert.equal(await page.locator('#letter-review-summary').innerText(), '', 'an unauthenticated bootstrap erases review-summary text');
@@ -1276,7 +1276,7 @@ async function main() {
     await test('rejects response correlation mismatches and oversized JSON', async () => {
       const page = await openPage(browser);
       const bootstrap = await initialize(page);
-      await respond(page, bootstrap, { authenticated: true, authRequired: false, serverContext: 'scope', scopeToken: 'A'.repeat(43), capabilities: { pcv: true, mp: true, sas: true, correspondence: true }, access: { pcv: true, inspector: true, compose: true, authorDetail: false }, perspectives: { mp: { choices: [], limited: false }, sas: { choices: [], limited: false } } }, { requestId: newUuid() });
+      await respond(page, bootstrap, { authenticated: true, authRequired: false, serverContext: 'scope', scopeToken: 'A'.repeat(43), capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true }, access: { pcv: true, inspector: true, compose: true, authorDetail: false, brainwash: true }, perspectives: { mp: { choices: [], limited: false }, sas: { choices: [], limited: false } } }, { requestId: newUuid() });
       const receive = await page.evaluate(() => typeof window.departmentReceive);
       assert.equal(receive, 'function');
       const before = await page.getByRole('tab', { name: 'Mind Poisoning' }).getAttribute('aria-disabled');
@@ -1514,15 +1514,15 @@ async function main() {
       await page.close();
     });
 
-    await test('fifth registered tab wraps, fits, and participates in keyboard navigation', async () => {
+    await test('fifth Brainwash tab and a sixth extension tab wrap, fit, and participate in keyboard navigation', async () => {
       const page = await openPage(browser, fifthTabDocument());
       await page.setViewportSize({ width: 1280, height: 720 });
       const wide = await page.locator('.tabs [role="tab"]').evaluateAll((nodes) => nodes.map((node) => {
         const rect = node.getBoundingClientRect();
         return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
       }));
-      assert.equal(wide.length, 5, 'fixture registers five main tabs before initialization');
-      assert.equal(new Set(wide.map((rect) => rect.top)).size, 1, 'all five tabs fit on one row at 1280px');
+      assert.equal(wide.length, 6, 'Brainwash is the fifth built-in tab before the fixture extension tab');
+      assert.equal(new Set(wide.map((rect) => rect.top)).size, 1, 'all six tabs fit on one row at 1280px');
       assert.ok(wide.every((rect) => rect.left >= 0 && rect.right <= 1280 && rect.bottom <= 720), `wide tabs remain in bounds: ${JSON.stringify(wide)}`);
 
       await page.setViewportSize({ width: 900, height: 720 });
@@ -1530,10 +1530,13 @@ async function main() {
         const rect = node.getBoundingClientRect();
         return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
       }));
-      assert.ok(new Set(compact.map((rect) => rect.top)).size >= 2, `five tabs wrap at a narrower width: ${JSON.stringify(compact)}`);
+      assert.ok(new Set(compact.map((rect) => rect.top)).size >= 2, `six tabs wrap at a narrower width: ${JSON.stringify(compact)}`);
       assert.ok(compact.every((rect) => rect.left >= 0 && rect.right <= 900 && rect.bottom <= 720), `wrapped tabs remain in bounds: ${JSON.stringify(compact)}`);
 
       await page.getByRole('tab', { name: 'Sealed Fates' }).focus();
+      await page.keyboard.press('ArrowRight');
+      const brainwashTab = page.getByRole('tab', { name: 'Brainwash' });
+      assert.equal(await brainwashTab.getAttribute('aria-selected'), 'true', 'Brainwash follows the four existing built-in tabs');
       await page.keyboard.press('ArrowRight');
       const fixtureTab = page.getByRole('tab', { name: 'Field Notes' });
       assert.equal(await fixtureTab.getAttribute('aria-selected'), 'true');
@@ -1542,9 +1545,9 @@ async function main() {
       assert.equal(await page.getByRole('tab', { name: 'Private Conversation' }).getAttribute('aria-selected'), 'true', 'arrow navigation wraps around the registered tabs');
       await page.getByRole('tab', { name: 'Private Conversation' }).focus();
       await page.keyboard.press('End');
-      assert.equal(await fixtureTab.getAttribute('aria-selected'), 'true', 'End reaches the fifth registered tab');
+      assert.equal(await fixtureTab.getAttribute('aria-selected'), 'true', 'End reaches the sixth registered tab');
       await page.keyboard.press('ArrowLeft');
-      assert.equal(await page.getByRole('tab', { name: 'Sealed Fates' }).getAttribute('aria-selected'), 'true');
+      assert.equal(await brainwashTab.getAttribute('aria-selected'), 'true', 'Brainwash is immediately before the fixture extension tab');
       await page.close();
     });
 
@@ -1647,8 +1650,8 @@ async function main() {
       const page = await openPage(browser);
       const bootstrap = await initialize(page);
       await respond(page, bootstrap, { authenticated: false, authRequired: true, serverContext: null, scopeToken: null,
-        capabilities: { pcv: false, mp: false, sas: false, correspondence: false },
-        access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+        capabilities: { pcv: false, mp: false, sas: false, correspondence: false, brainwash: false },
+        access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
       });
       await page.getByRole('button', { name: 'Hide scene settings' }).focus();
       await page.evaluate(({ viewToken }) => window.departmentNavigate(JSON.stringify({ version: 1, viewToken, nativeGeneration: '1', command: 'activate' })), { viewToken: bootstrap.context.viewToken });

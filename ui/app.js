@@ -19,13 +19,17 @@
     'bootstrap', 'view.close', 'connection.begin', 'connection.status', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
     'correspondence.mailbox.read', 'correspondence.detail.read', 'correspondence.compose', 'correspondence.reconcile',
+    'brainwash.catalog.read', 'brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo',
   ]);
+  const BRAINWASH_FIELDS = ['core', 'npc_static_bio', 'personality', 'appearance', 'occupation', 'skills', 'speechstyle', 'goals'];
   const CAPABILITY = {
     'pcv.roster.read': 'pcv', 'pcv.status.read': 'pcv', 'pcv.arm': 'pcv', 'pcv.end': 'pcv', 'pcv.send': 'pcv', 'pcv.send.status': 'pcv',
     'mp.relationships.read': 'mp', 'sas.issues.read': 'sas',
     'correspondence.catalog.read': 'correspondence', 'correspondence.inventory.read': 'correspondence',
     'correspondence.mailbox.read': 'correspondence', 'correspondence.detail.read': 'correspondence',
     'correspondence.compose': 'correspondence', 'correspondence.reconcile': 'correspondence',
+    'brainwash.catalog.read': 'brainwash', 'brainwash.card.read': 'brainwash', 'brainwash.draft': 'brainwash',
+    'brainwash.apply': 'brainwash', 'brainwash.undo': 'brainwash',
   };
   const PERMISSION = {
     'pcv.roster.read': 'pcv', 'pcv.status.read': 'pcv', 'pcv.arm': 'pcv', 'pcv.end': 'pcv', 'pcv.send': 'pcv', 'pcv.send.status': 'pcv',
@@ -33,6 +37,8 @@
     'correspondence.inventory.read': 'compose',
     'correspondence.mailbox.read': 'inspector', 'correspondence.detail.read': 'inspector',
     'correspondence.compose': 'compose', 'correspondence.reconcile': 'compose',
+    'brainwash.catalog.read': 'brainwash', 'brainwash.card.read': 'brainwash', 'brainwash.draft': 'brainwash',
+    'brainwash.apply': 'brainwash', 'brainwash.undo': 'brainwash',
   };
   const ERROR_COPY = {
     AUTH_REQUIRED: 'This CHIM connection is not authorized.',
@@ -72,8 +78,8 @@
     viewToken: null, nativeGeneration: null, serverContext: null, lastAuthenticatedScopeToken: null, seenViewTokens: [], idCounter: 0,
     authenticated: false, authRequired: true,
     connection: createConnectionState(),
-    capabilities: { pcv: false, mp: false, sas: false, correspondence: false },
-    access: { pcv: false, inspector: false, compose: false, authorDetail: false },
+    capabilities: { pcv: false, mp: false, sas: false, correspondence: false, brainwash: false },
+    access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
     perspectives: { mp: [], sas: [] }, perspectiveLimited: { mp: false, sas: false },
     mp: { records: [], nextCursor: null, limited: false }, sas: { issues: [], nextCursor: null, limited: false },
     pending: new Map(), inFlight: new Set(),
@@ -81,6 +87,8 @@
     mail: { actors: [], catalogLimited: false, catalogRevision: null, catalogNextCursor: null, catalogError: null, inventory: null, inventoryLoaded: false, items: [], letters: [], selectedLetter: null, mailboxNextCursor: null,
       operations: [], currentOperationId: null, operationDraft: null, recoveryNotice: '', composeLocked: false, mailboxLimited: false, reviewed: false },
   };
+  let brainwashEditor = null;
+  let brainwashEditorAvailable = false;
 
   function bytes(value) { return new TextEncoder().encode(value).length; }
   function isPlainObject(value) { return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype; }
@@ -95,6 +103,31 @@
     return entries.length <= 64 && entries.every(([key, item]) => bytes(key) <= MAX_STRING_BYTES && boundedTree(item, depth + 1));
   }
   function validUuid(value) { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
+  function validBrainwashActorKey(value) {
+    if (typeof value !== 'string' || !/^npc:[1-9][0-9]{0,18}$/.test(value)) return false;
+    const digits = value.slice(4);
+    return digits.length < 19 || digits <= '9223372036854775807';
+  }
+  function validBrainwashRevision(value) { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
+  function validBrainwashFields(value, allowEmpty, maximum = 20000) {
+    if (!isPlainObject(value)) return false;
+    const entries = Object.entries(value);
+    if (entries.length > BRAINWASH_FIELDS.length || (!allowEmpty && entries.length === 0)) return false;
+    let total = 0;
+    for (const [field, content] of entries) {
+      if (!BRAINWASH_FIELDS.includes(field) || !boundedString(content, 8192)) return false;
+      total += bytes(content);
+      if (total > maximum) return false;
+    }
+    return true;
+  }
+  function exactKeys(value, required, optional = []) {
+    if (!isPlainObject(value)) return false;
+    const keys = Object.keys(value);
+    const allowed = [...required, ...optional];
+    return required.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+      && keys.every((key) => allowed.includes(key));
+  }
   function letterIntentFingerprint(payload) {
     if (!isPlainObject(payload) || !boundedString(payload.writerActorKey, 128) || !boundedString(payload.recipientActorKey, 128) || !boundedString(payload.body, 8192)) return '';
     const body = payload.body.replace(/\r\n?/g, '\n').trim().replace(/\s+/g, ' ');
@@ -193,6 +226,10 @@
       'correspondence.mailbox.read': ['recipientActorKey', 'limit', 'cursor'], 'correspondence.detail.read': ['recipientActorKey', 'letterId'],
       'correspondence.compose': ['operationId', 'writerActorKey', 'recipientActorKey', 'signatureActorKey', 'body', 'inventoryRevision', 'attachments', 'goldAmount'],
       'correspondence.reconcile': ['operationId'],
+      'brainwash.catalog.read': ['query'], 'brainwash.card.read': ['actorKey'],
+      'brainwash.draft': ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction', 'beliefs'],
+      'brainwash.apply': ['actorKey', 'draftId', 'operationId', 'acceptedFields', 'acceptBeliefs'],
+      'brainwash.undo': ['actorKey', 'operationId', 'appliedOperationId'],
     }[operation];
     if (!Array.isArray(fields)) return false;
     if (!isPlainObject(payload)) return false;
@@ -219,6 +256,26 @@
       if (new Set(payload.attachments.map((item) => item.itemKey)).size !== payload.attachments.length) return false;
     }
     if (operation === 'correspondence.reconcile' && !validUuid(payload.operationId)) return false;
+    if (operation === 'brainwash.catalog.read' && (!exactKeys(payload, [], ['query'])
+      || (payload.query !== undefined && !boundedString(payload.query, 128)))) return false;
+    if (operation === 'brainwash.card.read' && (!exactKeys(payload, ['actorKey']) || !validBrainwashActorKey(payload.actorKey))) return false;
+    if (operation === 'brainwash.draft') {
+      if (!exactKeys(payload, ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction'], ['beliefs'])
+        || !validBrainwashActorKey(payload.actorKey) || !validBrainwashRevision(payload.expectedRevision) || !validUuid(payload.operationId)
+        || !['manual', 'ai'].includes(payload.mode) || !validBrainwashFields(payload.changes, true)
+        || !boundedString(payload.instruction, 2000) || (payload.beliefs !== undefined && !boundedString(payload.beliefs, 4000))
+        || (Object.keys(payload.changes).length === 0 && payload.beliefs === undefined)) return false;
+    }
+    if (operation === 'brainwash.apply') {
+      if (!exactKeys(payload, ['actorKey', 'draftId', 'operationId', 'acceptedFields', 'acceptBeliefs'])
+        || !validBrainwashActorKey(payload.actorKey) || !validUuid(payload.draftId) || !validUuid(payload.operationId)
+        || !Array.isArray(payload.acceptedFields) || payload.acceptedFields.length > BRAINWASH_FIELDS.length
+        || payload.acceptedFields.some((field) => !BRAINWASH_FIELDS.includes(field))
+        || new Set(payload.acceptedFields).size !== payload.acceptedFields.length || typeof payload.acceptBeliefs !== 'boolean'
+        || (payload.acceptedFields.length === 0 && payload.acceptBeliefs !== true)) return false;
+    }
+    if (operation === 'brainwash.undo' && (!exactKeys(payload, ['actorKey', 'operationId', 'appliedOperationId'])
+      || !validBrainwashActorKey(payload.actorKey) || !validUuid(payload.operationId) || !validUuid(payload.appliedOperationId))) return false;
     if (['mp.relationships.read', 'sas.issues.read', 'correspondence.mailbox.read'].includes(operation)) {
       if (!Number.isInteger(payload.limit) || payload.limit < 1 || payload.limit > 100) return false;
       if (payload.cursor !== undefined && !boundedString(payload.cursor, 512)) return false;
@@ -229,6 +286,40 @@
     }
     if (operation === 'correspondence.detail.read' && (!boundedString(payload.recipientActorKey, 128) || !payload.recipientActorKey || !boundedString(payload.letterId, 128) || !payload.letterId)) return false;
     return boundedTree(payload);
+  }
+  function validBrainwashCard(value) {
+    if (!exactKeys(value, ['actorKey', 'label', 'scope', 'revision', 'fields', 'beliefs', 'draftId', 'lastOperation'])
+      || !validBrainwashActorKey(value.actorKey) || !boundedString(value.label, 512) || !value.label
+      || !boundedString(value.scope, 1024) || !value.scope || !validBrainwashRevision(value.revision)
+      || !exactKeys(value.fields, BRAINWASH_FIELDS) || !validBrainwashFields(value.fields, true)
+      || !boundedString(value.beliefs, 4000) || !(value.draftId === null || validUuid(value.draftId))) return false;
+    if (value.lastOperation === null) return true;
+    return exactKeys(value.lastOperation, ['operationId', 'state']) && validUuid(value.lastOperation.operationId)
+      && ['applied', 'undone'].includes(value.lastOperation.state);
+  }
+  function validBrainwashDraft(value) {
+    if (!exactKeys(value, ['actorKey', 'scope', 'revision', 'draftId', 'origin', 'before', 'changes'], ['beliefsBefore', 'beliefs'])
+      || !validBrainwashActorKey(value.actorKey) || !boundedString(value.scope, 1024) || !value.scope
+      || !validBrainwashRevision(value.revision) || !validUuid(value.draftId) || !['manual', 'ai'].includes(value.origin)
+      || !validBrainwashFields(value.before, true) || !validBrainwashFields(value.changes, true)
+      || (value.beliefsBefore !== undefined && !boundedString(value.beliefsBefore, 4000))
+      || (value.beliefs !== undefined && !boundedString(value.beliefs, 4000))) return false;
+    return Object.keys(value.changes).length > 0 || value.beliefs !== undefined;
+  }
+  function validBrainwashResponse(operation, value) {
+    if (operation === 'brainwash.catalog.read') {
+      if (!exactKeys(value, ['actors', 'limited']) || !Array.isArray(value.actors) || value.actors.length > 64 || typeof value.limited !== 'boolean') return false;
+      const seen = new Set();
+      return value.actors.every((actor) => exactKeys(actor, ['actorKey', 'label']) && validBrainwashActorKey(actor.actorKey)
+        && boundedString(actor.label, 512) && actor.label && !seen.has(actor.actorKey) && seen.add(actor.actorKey));
+    }
+    if (operation === 'brainwash.card.read') return validBrainwashCard(value);
+    if (operation === 'brainwash.draft') return validBrainwashDraft(value);
+    if (operation === 'brainwash.apply' || operation === 'brainwash.undo') {
+      return exactKeys(value, ['operationId', 'state', 'card']) && validUuid(value.operationId)
+        && value.state === (operation === 'brainwash.apply' ? 'applied' : 'undone') && validBrainwashCard(value.card);
+    }
+    return false;
   }
   function validConnectionReply(operation, data) {
     if (!isPlainObject(data) || !CONNECTION_STATES.has(data.state)) return false;
@@ -293,6 +384,36 @@
     }
     state.inFlight.clear();
   }
+  function resetBrainwashEditor() {
+    brainwashEditorAvailable = false;
+    try { if (brainwashEditor) brainwashEditor.reset(); } catch { /* Keep the shared editor closed if reset fails. */ }
+  }
+  function syncBrainwashEditor() {
+    const available = state.initialized && !state.closed && !state.closing && !state.bootstrapping
+      && state.authenticated && state.capabilities.brainwash === true && state.access.brainwash === true;
+    if (brainwashEditorAvailable && !available) resetBrainwashEditor();
+    brainwashEditorAvailable = available;
+    try { if (brainwashEditor) brainwashEditor.setAvailable(available); } catch { resetBrainwashEditor(); }
+  }
+  function mountBrainwashEditor() {
+    const root = $('brainwash-editor');
+    if (!root) return;
+    if (!window.BrainwashEditor || typeof window.BrainwashEditor.mount !== 'function') {
+      root.setAttribute('role', 'status');
+      root.textContent = 'Brainwash editor is unavailable.';
+      return;
+    }
+    try {
+      brainwashEditor = window.BrainwashEditor.mount(root, { request: (operation, payload) => request(operation, payload) });
+      if (!brainwashEditor || typeof brainwashEditor.reset !== 'function' || typeof brainwashEditor.setAvailable !== 'function') {
+        throw new Error('Invalid Brainwash editor module.');
+      }
+    } catch {
+      brainwashEditor = null;
+      root.setAttribute('role', 'status');
+      root.textContent = 'Brainwash editor is unavailable.';
+    }
+  }
   function validateBootstrapData(data, responseContext) {
     const allowed = ['authenticated', 'authRequired', 'serverContext', 'scopeToken', 'capabilities', 'access', 'perspectives'];
     if (!isPlainObject(data) || Object.keys(data).some((key) => !allowed.includes(key)) || typeof data.authenticated !== 'boolean'
@@ -302,8 +423,8 @@
         || typeof data.scopeToken !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(data.scopeToken)) return null;
     } else if (!data.authRequired || data.serverContext !== null || data.scopeToken !== null) return null;
     if (!isPlainObject(data.capabilities) || !isPlainObject(data.access)) return null;
-    const capKeys = ['pcv', 'mp', 'sas', 'correspondence'];
-    const accessKeys = ['pcv', 'inspector', 'compose', 'authorDetail'];
+    const capKeys = ['pcv', 'mp', 'sas', 'correspondence', 'brainwash'];
+    const accessKeys = ['pcv', 'inspector', 'compose', 'authorDetail', 'brainwash'];
     if (Object.keys(data.capabilities).length !== capKeys.length || Object.keys(data.capabilities).some((key) => !capKeys.includes(key))
       || Object.keys(data.access).length !== accessKeys.length || Object.keys(data.access).some((key) => !accessKeys.includes(key))
       || capKeys.some((key) => typeof data.capabilities[key] !== 'boolean') || accessKeys.some((key) => typeof data.access[key] !== 'boolean')) return null;
@@ -314,8 +435,8 @@
     const perspectives = isPlainObject(data.perspectives) ? data.perspectives : {};
     if (data.perspectives && (!isPlainObject(data.perspectives) || Object.keys(data.perspectives).some((key) => !['mp', 'sas'].includes(key)))) return null;
     const result = { authenticated: data.authenticated, authRequired: data.authRequired, serverContext: data.serverContext, scopeToken: data.scopeToken,
-      capabilities: { pcv: data.capabilities.pcv, mp: data.capabilities.mp, sas: data.capabilities.sas, correspondence: data.capabilities.correspondence },
-      access: { pcv: data.access.pcv, inspector: data.access.inspector, compose: data.access.compose, authorDetail: data.access.authorDetail }, perspectives: {}, perspectiveLimited: {} };
+      capabilities: { pcv: data.capabilities.pcv, mp: data.capabilities.mp, sas: data.capabilities.sas, correspondence: data.capabilities.correspondence, brainwash: data.capabilities.brainwash },
+      access: { pcv: data.access.pcv, inspector: data.access.inspector, compose: data.access.compose, authorDetail: data.access.authorDetail, brainwash: data.access.brainwash }, perspectives: {}, perspectiveLimited: {} };
     for (const key of ['mp', 'sas']) {
       const item = perspectives[key];
       if (result.access.inspector) {
@@ -418,6 +539,7 @@
     if (!exactContext(context, pending.context) || !exactContext(context, makeContext())) return false;
     if (response.ok) {
       if (!Object.prototype.hasOwnProperty.call(response, 'data') || Object.prototype.hasOwnProperty.call(response, 'error')) return false;
+      if (response.operation.startsWith('brainwash.') && !validBrainwashResponse(response.operation, response.data)) return false;
     } else if (!validBoundaryError(response.error)) return false;
     state.pending.delete(response.requestId);
     window.clearTimeout(pending.timer);
@@ -465,8 +587,9 @@
     $('letter-review-summary').hidden = true;
     updatePcvCount();
     updateLetterCount();
-    state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false };
-    state.access = { pcv: false, inspector: false, compose: false, authorDetail: false };
+    resetBrainwashEditor();
+    state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false, brainwash: false };
+    state.access = { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false };
     state.perspectives = { mp: [], sas: [] };
     state.perspectiveLimited = { mp: false, sas: false };
     state.inFlight.clear();
@@ -484,6 +607,7 @@
   }
 
   function clearScopeBoundOperations() {
+    resetBrainwashEditor();
     state.pcv.mutationPending = false;
     state.pcv.mutationUnknown = false;
     state.pcv.mutationOperationId = null;
@@ -691,6 +815,7 @@
     if (!isPlainObject(init) || init.version !== 1 || !validUuid(init.viewToken) || !validGeneration(init.nativeGeneration) || init.serverContext !== null) return false;
     if (state.seenViewTokens.includes(init.viewToken)) return false;
     if (state.initialized && !state.closed && init.viewToken === state.viewToken && init.nativeGeneration === state.nativeGeneration) return false;
+    resetBrainwashEditor();
     const pendingSend = [...state.pending.values()].find((item) => item.envelope.operation === 'pcv.send');
     if (pendingSend) {
       state.pcv.sendUnknownId = pendingSend.envelope.payload.operationId;
@@ -714,8 +839,8 @@
     state.idCounter = 0;
     state.authenticated = false;
     state.authRequired = true;
-    state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false };
-    state.access = { pcv: false, inspector: false, compose: false, authorDetail: false };
+    state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false, brainwash: false };
+    state.access = { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false };
     state.perspectives = { mp: [], sas: [] };
     state.perspectiveLimited = { mp: false, sas: false };
     state.pcv = {
@@ -804,6 +929,7 @@
     renderMpChoices();
     renderSasChoices();
     renderMailAccess();
+    syncBrainwashEditor();
   }
 
   function requireCapability(operation) {
@@ -2328,8 +2454,9 @@
     state.serverContext = null;
     state.authenticated = false;
     state.authRequired = true;
-    state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false };
-    state.access = { pcv: false, inspector: false, compose: false, authorDetail: false };
+    resetBrainwashEditor();
+    state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false, brainwash: false };
+    state.access = { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false };
     state.perspectives = { mp: [], sas: [] };
     state.perspectiveLimited = { mp: false, sas: false };
     clearPrivateViews();
@@ -2421,6 +2548,7 @@
     $('letter-new').addEventListener('click', startNewLetter);
   }
 
+  mountBrainwashEditor();
   wireEvents();
   renderBootstrap();
   renderPcvStatus();
