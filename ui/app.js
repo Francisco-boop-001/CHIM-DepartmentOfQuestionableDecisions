@@ -400,18 +400,18 @@
     if (!root) return;
     if (!window.BrainwashEditor || typeof window.BrainwashEditor.mount !== 'function') {
       root.setAttribute('role', 'status');
-      root.textContent = 'Brainwash editor is unavailable.';
+      root.textContent = 'Malpractice Makes Perfect editor is unavailable.';
       return;
     }
     try {
       brainwashEditor = window.BrainwashEditor.mount(root, { request: (operation, payload) => request(operation, payload) });
       if (!brainwashEditor || typeof brainwashEditor.reset !== 'function' || typeof brainwashEditor.setAvailable !== 'function') {
-        throw new Error('Invalid Brainwash editor module.');
+        throw new Error('Invalid Malpractice Makes Perfect editor module.');
       }
     } catch {
       brainwashEditor = null;
       root.setAttribute('role', 'status');
-      root.textContent = 'Brainwash editor is unavailable.';
+      root.textContent = 'Malpractice Makes Perfect editor is unavailable.';
     }
   }
   function validateBootstrapData(data, responseContext) {

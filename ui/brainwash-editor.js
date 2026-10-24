@@ -105,7 +105,7 @@
         return result;
       } catch (error) {
         if (current(token, actorKey)) {
-          state.status = error && typeof error.message === 'string' ? error.message : 'Brainwash is unavailable right now.';
+          state.status = error && typeof error.message === 'string' ? error.message : 'Malpractice Makes Perfect is unavailable right now.';
         }
         throw error;
       } finally {
@@ -305,7 +305,7 @@
         state.beliefs = result.card.beliefs;
         state.draft = null;
         state.uncertain = null;
-        state.status = 'The last Brainwash change was undone narrowly.';
+        state.status = 'The last Malpractice Makes Perfect change was undone narrowly.';
         render();
       } catch (_) {
         if (current(token, actorKey)) {
@@ -472,8 +472,8 @@
         const undoPanel = element(doc, 'section');
         undoPanel.className = 'brainwash-panel';
         undoPanel.appendChild(element(doc, 'h2', 'Undo'));
-        undoPanel.appendChild(element(doc, 'p', 'Undo restores only fields and beliefs from the last Brainwash apply, and refuses overlaps.'));
-        button(undoPanel, 'Undo last Brainwash change', undo, !state.available || state.busy || Boolean(state.uncertain));
+        undoPanel.appendChild(element(doc, 'p', 'Undo restores only fields and beliefs from the last Malpractice Makes Perfect apply, and refuses overlaps.'));
+        button(undoPanel, 'Undo last Malpractice Makes Perfect change', undo, !state.available || state.busy || Boolean(state.uncertain));
         page.appendChild(undoPanel);
       }
 
@@ -504,7 +504,7 @@
       state.actorKey = '';
       state.query = '';
       clearActorData();
-      state.status = state.available ? 'Loading NPCs…' : 'Brainwash is unavailable.';
+      state.status = state.available ? 'Loading NPCs…' : 'Malpractice Makes Perfect is unavailable.';
       render();
       if (state.available) loadCatalog('', true);
     }

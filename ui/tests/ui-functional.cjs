@@ -1514,14 +1514,14 @@ async function main() {
       await page.close();
     });
 
-    await test('fifth Brainwash tab and a sixth extension tab wrap, fit, and participate in keyboard navigation', async () => {
+    await test('fifth Malpractice Makes Perfect tab and a sixth extension tab wrap, fit, and participate in keyboard navigation', async () => {
       const page = await openPage(browser, fifthTabDocument());
       await page.setViewportSize({ width: 1280, height: 720 });
       const wide = await page.locator('.tabs [role="tab"]').evaluateAll((nodes) => nodes.map((node) => {
         const rect = node.getBoundingClientRect();
         return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom };
       }));
-      assert.equal(wide.length, 6, 'Brainwash is the fifth built-in tab before the fixture extension tab');
+      assert.equal(wide.length, 6, 'Malpractice Makes Perfect is the fifth built-in tab before the fixture extension tab');
       assert.equal(new Set(wide.map((rect) => rect.top)).size, 1, 'all six tabs fit on one row at 1280px');
       assert.ok(wide.every((rect) => rect.left >= 0 && rect.right <= 1280 && rect.bottom <= 720), `wide tabs remain in bounds: ${JSON.stringify(wide)}`);
 
@@ -1535,8 +1535,8 @@ async function main() {
 
       await page.getByRole('tab', { name: 'Sealed Fates' }).focus();
       await page.keyboard.press('ArrowRight');
-      const brainwashTab = page.getByRole('tab', { name: 'Brainwash' });
-      assert.equal(await brainwashTab.getAttribute('aria-selected'), 'true', 'Brainwash follows the four existing built-in tabs');
+      const brainwashTab = page.getByRole('tab', { name: 'Malpractice Makes Perfect' });
+      assert.equal(await brainwashTab.getAttribute('aria-selected'), 'true', 'Malpractice Makes Perfect follows the four existing built-in tabs');
       await page.keyboard.press('ArrowRight');
       const fixtureTab = page.getByRole('tab', { name: 'Field Notes' });
       assert.equal(await fixtureTab.getAttribute('aria-selected'), 'true');
@@ -1547,7 +1547,7 @@ async function main() {
       await page.keyboard.press('End');
       assert.equal(await fixtureTab.getAttribute('aria-selected'), 'true', 'End reaches the sixth registered tab');
       await page.keyboard.press('ArrowLeft');
-      assert.equal(await brainwashTab.getAttribute('aria-selected'), 'true', 'Brainwash is immediately before the fixture extension tab');
+      assert.equal(await brainwashTab.getAttribute('aria-selected'), 'true', 'Malpractice Makes Perfect is immediately before the fixture extension tab');
       await page.close();
     });
 

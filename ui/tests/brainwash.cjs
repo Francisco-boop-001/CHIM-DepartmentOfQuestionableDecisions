@@ -31,7 +31,7 @@ function testDocument() {
       const spy = window.__brainwashEditorSpy;
       spy.mounts += 1; spy.request = options.request;
       const status = document.createElement('p'); status.setAttribute('role', 'status'); status.textContent = 'Editor mounted';
-      const refresh = document.createElement('button'); refresh.type = 'button'; refresh.textContent = 'Refresh Brainwash actors'; refresh.disabled = true;
+      const refresh = document.createElement('button'); refresh.type = 'button'; refresh.textContent = 'Refresh Malpractice Makes Perfect actors'; refresh.disabled = true;
       refresh.addEventListener('click', () => options.request('brainwash.catalog.read', { query: 'Lydia' }).catch(() => {}));
       root.replaceChildren(status, refresh);
       return {
@@ -91,9 +91,10 @@ async function main() {
     await page.evaluate((viewToken) => window.departmentInitialize(JSON.stringify({ version: 1, viewToken, nativeGeneration: '1', serverContext: null })), newUuid());
     const firstBootstrap = await waitForRequest(page, 'bootstrap');
     await respond(page, firstBootstrap, bootstrapData(false));
-    assert.equal(await page.getByRole('tab', { name: 'Brainwash' }).count(), 1, 'Brainwash is the fifth accessible plugin tab');
-    await page.getByRole('tab', { name: 'Brainwash' }).click();
-    assert.equal(await page.getByRole('tabpanel', { name: /Brainwash/i }).isVisible(), true);
+    assert.equal(await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).count(), 1, 'Malpractice Makes Perfect is the fifth accessible plugin tab');
+    await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+    assert.equal(await page.getByRole('tabpanel', { name: /Malpractice Makes Perfect/i }).isVisible(), true);
+    assert.equal(await page.locator('#panel-brainwash').getByText('Unlicensed character development', { exact: true }).isVisible(), true);
     assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.mounts), 1, 'shared editor mount API is called once');
     assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.available), false, 'unpaired bootstrap keeps editor unavailable');
 
@@ -102,9 +103,9 @@ async function main() {
     await page.evaluate((viewToken) => window.departmentInitialize(JSON.stringify({ version: 1, viewToken, nativeGeneration: '2', serverContext: null })), nextView);
     const secondBootstrap = await waitForRequest(page, 'bootstrap', priorBootstrapCount);
     await respond(page, secondBootstrap, bootstrapData(true));
-    assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.available), true, 'fresh Brainwash capability and scope enable the shared editor');
-    await page.getByRole('tab', { name: 'Brainwash' }).click();
-    await page.getByRole('button', { name: 'Refresh Brainwash actors' }).click();
+    assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.available), true, 'fresh Malpractice Makes Perfect capability and scope enable the shared editor');
+    await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+    await page.getByRole('button', { name: 'Refresh Malpractice Makes Perfect actors' }).click();
     const catalogRequest = await waitForRequest(page, 'brainwash.catalog.read');
     assert.deepEqual(catalogRequest.payload, { query: 'Lydia' }, 'editor uses the existing native request transport with its catalog query');
 
@@ -161,17 +162,17 @@ async function main() {
     const deniedRead = deniedAttempt.requests[0];
     await respond(page, deniedRead, null, { code: 'forbidden', message: 'Authorization does not permit this operation.' });
     await page.waitForFunction(() => window.__brainwashEditorSpy.available === false && window.__brainwashEditorSpy.resets > 0);
-    assert.equal(await page.getByRole('button', { name: 'Refresh Brainwash actors' }).isDisabled(), true, 'authorization loss locks editor mutations and reads');
+    assert.equal(await page.getByRole('button', { name: 'Refresh Malpractice Makes Perfect actors' }).isDisabled(), true, 'authorization loss locks editor mutations and reads');
 
     const resetsAfterAuthLoss = await page.evaluate(() => window.__brainwashEditorSpy.resets);
     const priorCount = await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'bootstrap').length);
     await page.evaluate((viewToken) => window.departmentInitialize(JSON.stringify({ version: 1, viewToken, nativeGeneration: '3', serverContext: null })), newUuid());
     const thirdBootstrap = await waitForRequest(page, 'bootstrap', priorCount);
     const resetsAfterNativeReset = await page.evaluate(() => window.__brainwashEditorSpy.resets);
-    assert.ok(resetsAfterNativeReset > resetsAfterAuthLoss, 'native view invalidation clears stale Brainwash state');
+    assert.ok(resetsAfterNativeReset > resetsAfterAuthLoss, 'native view invalidation clears stale Malpractice Makes Perfect state');
     await respond(page, thirdBootstrap, bootstrapData(true, 'B'.repeat(43)));
     await page.waitForFunction(() => window.__brainwashEditorSpy.available === true);
-    assert.ok(await page.evaluate(() => window.__brainwashEditorSpy.resets) > resetsAfterNativeReset, 'a changed authenticated scope clears stale Brainwash state');
+    assert.ok(await page.evaluate(() => window.__brainwashEditorSpy.resets) > resetsAfterNativeReset, 'a changed authenticated scope clears stale Malpractice Makes Perfect state');
     const unknownMutation = await page.evaluate(async () => {
       let sends = 0;
       window.departmentRequest = () => { sends += 1; throw new Error('simulated bridge uncertainty'); };
@@ -186,10 +187,10 @@ async function main() {
       }
     });
     assert.deepEqual(unknownMutation, { code: 'UNAVAILABLE', dispatched: true, sends: 1 },
-      'uncertain Brainwash mutation is marked dispatched and is never automatically resent');
+      'uncertain Malpractice Makes Perfect mutation is marked dispatched and is never automatically resent');
     assert.deepEqual(externalRequests, [], 'the editor and Department shell make no browser network requests');
     await page.close();
-    process.stdout.write('Brainwash Department browser contract passed.\n');
+    process.stdout.write('Malpractice Makes Perfect Department browser contract passed.\n');
   } finally {
     await browser.close();
   }

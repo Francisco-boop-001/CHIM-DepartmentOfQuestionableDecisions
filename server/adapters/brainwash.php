@@ -1,16 +1,16 @@
 <?php
 declare(strict_types=1);
 
-const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.1';
+const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.2';
 const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
-    '0.1.0-dev.1' => [
+    '0.1.0-dev.2' => [
         'api.php' => ['lf' => 'ddf77a91a0f051cccba9918547b3c0ce01163cf8c341ceb68f416e1e2af89255', 'windowsCrlf' => '55314153df354cbf8bad91413725bbeb6d3fe205cea62cc7c9e3066c07fbd593'],
-        'bin/provision-passphrase.php' => ['lf' => '9095fa16724d8e683f1d7e0fe08d86038a846ee150c7fc189f9f5fa408cfdb65', 'windowsCrlf' => '3da1ad9154c21118b384ce3c3333a721c340011d3d0ff899e694750e3986aaf1'],
+        'bin/provision-passphrase.php' => ['lf' => 'bd324af3b312c3a45cd9a8b9ded0a30b8e74e4a0bf10a1a10d528ab5faf2c1d0', 'windowsCrlf' => '04bf882da384ccb2d6d6917e05faad2b8ba4e62e33fd2d68e3a3864ee68d773a'],
         'context_pre.php' => ['lf' => '67f73134e4818ca513b1269ee1b2365f7696f737793ff6d48ee57b4cebd9120a', 'windowsCrlf' => '2604c771b6c57c0020495f68ed15606a3469b9dedc853f8ebaf163f6d5e75d5f'],
-        'index.php' => ['lf' => 'af662673accf7b7fca3605ade64a7f255fd364d2d36c95fb5cc7bddcd7a418d2', 'windowsCrlf' => '234a1638293dfaef346732dcf950beaafe69f1adf1322e4d685c0446d54431d5'],
+        'index.php' => ['lf' => '5b36c06b045b7a8ff66b9f6d4fc02640b05e90518d7d79dcb1985721338712c0', 'windowsCrlf' => '7ed0d470b62282f79c7e84bfc1c473687e1751e9bd90401d2682c2a95e2c2ae8'],
         'lib/service.php' => ['lf' => 'ebc53bb181873b27f295d68491205a9a9487fbe217a528f19286063da529a2af', 'windowsCrlf' => '96b19fe0fdf934faa7c085e319eb1bab097c5f40cdfed6f1da3c92dfe6391bae'],
-        'lib/web.php' => ['lf' => 'affed893f731ede3c4db6a53fa061038af85af2074932fd5f9d4d1e8673590fb', 'windowsCrlf' => '8ba71c341b6a4b8c3752c4198fe12a22fce95c35cb65d9aee4c0bc379c8c932e'],
-        'manifest.json' => ['lf' => '8972538a41ab484a6a912c8f740da0a984ecc5b1786b1335c8f14d4e6bcb2264', 'windowsCrlf' => 'cd346e5a12bf3e2442fff27e7e37d563212dc20f64ee35f74a776b347fb9a7ee'],
+        'lib/web.php' => ['lf' => '65b4db11e76bf24e8dda7cbce7c8dddf66b545da8476de3e2f310f81faae6c3b', 'windowsCrlf' => '8b515fd44cea6a008a8d58e796082f34a345a34347ad54c742b7a9176c6fff73'],
+        'manifest.json' => ['lf' => '3de87ee72910bedfceb7e16383c4d344f3c30286ab09ca7eac959f306b989939', 'windowsCrlf' => 'c5f8cf16d4f24d3f2bc85e0b3ce702f4e5cb2db6ac000f7419136d336ab3e104'],
         'runtime.php' => ['lf' => '6c2fd388b527f52a7899f878c68fbda2c9b5515cd5361849960fad33b44d2c62', 'windowsCrlf' => '88551da2b5a65b46ebc7cbf67eb22231ccf7952d5beda1de5caacc802c230644'],
     ],
 ];
