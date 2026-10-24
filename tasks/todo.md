@@ -253,3 +253,10 @@ Six protected cached core/client source files remain identical, as do the origin
 ### Review
 
 The focused Department contract passes 77 checks, including every frozen owner-file drift refusal, and the foundation suite passes 162 assertions with PCV readiness correctly refused until its existing overlay precondition is met. The directory-fsync guard passes. Browser functional/interaction checks pass 50/50 and 1/1; render captured 11 states. Coordinator receipts record native 5/5 and the installed TEST2/owner workflow and preservation checks. The installed harness fixture has already been consumed and cleaned. Restore-generation behavior was verified with isolated owner/dispatcher tests without mutating shared core generation. No Skyrim acceptance is claimed. Exact evidence and limits are in `docs/BRAINWASH-IMPLEMENTATION.md`.
+
+## Malpractice Makes Perfect direct access — 2026-10-24
+- [x] Pin dev.3 with no separate web login; advance local TEST identity to prealpha.12.
+- [x] Synchronize the shared editor CSS after deleting login-only styles.
+- [x] Verify exact-owner readiness/drift refusal and existing PRISMA UI checks.
+- [x] Build and install paired TEST2 packages, preserving the live server and existing published releases.
+Review: complete; exact owner contract 76, PRISMA browser 50/50 and focused tab contract pass; package/readback verified, live server untouched.

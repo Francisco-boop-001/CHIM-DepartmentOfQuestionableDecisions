@@ -13,7 +13,7 @@ body { margin: 0; background: #14181d; color: #eef2f6; }
 .brainwash-panel { min-width: 0; padding: 1rem; border: 1px solid #3a4652; border-radius: .5rem; background: #1d242c; }
 .brainwash-panel h2 { margin: 0 0 .75rem; font-size: 1.15rem; }
 .brainwash-panel > label { display: block; margin: .6rem 0; }
-.brainwash-panel input[type="search"], .brainwash-panel select, .brainwash-panel textarea, .brainwash-login input[type="password"] {
+.brainwash-panel input[type="search"], .brainwash-panel select, .brainwash-panel textarea {
   display: block; width: 100%; margin-top: .3rem; padding: .65rem; border: 1px solid #596777; border-radius: .3rem; background: #10151a; color: inherit; font: inherit;
 }
 .brainwash-panel textarea { resize: vertical; }
@@ -27,13 +27,9 @@ button:disabled, input:disabled, textarea:disabled, select:disabled { opacity: .
 .brainwash-status { margin: 0; padding: .65rem .8rem; border-left: 3px solid #68a9d8; background: #202e39; }
 .brainwash-warning { padding: .7rem; border: 1px solid #b17d36; background: #3b2b18; }
 .brainwash-review-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: .45rem 0; padding: .55rem; background: #111820; border-radius: .25rem; }
-.brainwash-login { max-width: 32rem; margin: 3rem auto; }
-.brainwash-login label { display: block; margin: .9rem 0; }
-.brainwash-login .brainwash-status { margin: .8rem 0; }
 :focus-visible { outline: 3px solid #f0c66e; outline-offset: 2px; }
 
 @media (max-width: 640px) {
   .brainwash-page { padding: .75rem; }
   .brainwash-header { align-items: flex-start; }
-  .brainwash-header form { flex: none; }
 }
