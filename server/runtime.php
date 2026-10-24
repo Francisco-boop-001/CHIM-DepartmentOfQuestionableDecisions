@@ -43,9 +43,11 @@ function qd_department_runtime_dependencies(): array
     return [
         'withProfileLease' => static fn(callable $callback): mixed => qd_runtime_with_profile_lease($callback),
         'currentScope' => static fn(string $pairId): string => qd_runtime_resolve_scope($pairId),
-        'readiness' => static function (): array {
+        'readiness' => static function (bool $includePcv = true): array {
             $pcv = $mp = $sas = $correspondence = false;
-            try { $pcv = qd_pcv_runtime_ready(); } catch (Throwable) { $pcv = false; }
+            if ($includePcv) {
+                try { $pcv = qd_pcv_runtime_ready(); } catch (Throwable) { $pcv = false; }
+            }
             try { $mp = function_exists('qd_mp_runtime_ready') && qd_mp_runtime_ready() === true; } catch (Throwable) { $mp = false; }
             try { $sas = function_exists('qd_sas_runtime_ready') && qd_sas_runtime_ready() === true; } catch (Throwable) { $sas = false; }
             try { $correspondence = function_exists('qd_correspondence_runtime_ready') && qd_correspondence_runtime_ready() === true; } catch (Throwable) { $correspondence = false; }

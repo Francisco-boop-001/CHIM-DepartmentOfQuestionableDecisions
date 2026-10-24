@@ -203,3 +203,34 @@ Published v0.1.0-prealpha.8 at 2026-10-23T11:52:09Z, release ID 421782612, froze
 All three anonymous public downloads matched their local bytes and GitHub upload digests. Ordinary sha256sum passed both public ZIPs, and the new tag peels to the frozen source; seven earlier releases' 71 asset identities/digests and 14 older remote tag refs remain unchanged. Native 5/5, server onboarding 97, UI 49/49, overlay five cases and packaging 8/8 are the focused evidence; preserved initial failures and the localized incremental DLL correction remain in artifacts/department-install-and-use-prealpha8-20261023. The existing untracked dist/evidence directories are preserved; only the two new Python cache files from this work were removed.
 
 No live request, live/server installation, CHIM core/AIAgent.dll change, installed game/MO2 change, provider/database start or in-Skyrim execution was performed. The already-running TEST distro was used only for temporary CLI fixtures and checksum checks. MCM registration/view rendering in the earlier installed candidate was reported by the user; the new candidate's Skyrim behavior, actual in-game Credential Manager persistence, focus, NPC/audio/physical transfer and save/load acceptance remain pending. Absent-INI discovery remains a source-equivalent startup snapshot, not a getter for CHIM's cached native endpoint. Unknown/replay history and the original PCV fallback remain preserved. This completion-record commit does not move the release tag or alter its assets.
+
+## Browser approval rejection investigation — 2026-10-24
+
+Scope: diagnose the user-reported approval rejection and compare SHARMAT's existing integration; local source and isolated loopback browser only. No live endpoint access, installed changes, implementation or publication in this investigation.
+
+- [x] Trace the exact rejection predicate and response headers.
+- [x] Reproduce the browser request using the production PHP header/render/origin helpers.
+- [x] Compare the local SHARMAT game/server setup with the separate Department pairing layer.
+- [x] Establish and implement an automatic CHIM setup route; preserve the separate Skyrim acceptance limit.
+
+Review: the actual browser POST under the production no-referrer policy carries Origin: null and is rejected even though Sec-Fetch-Site is same-origin. A single-variable same-origin referrer-policy control carries the correct Origin and passes the same production validator. Evidence: artifacts/department-approval-rejection-20261024/browser-origin-results.json. Earlier approval tests injected HTTP_ORIGIN manually and therefore did not exercise browser header generation. The screenshot reaches the same rejection page; no live request headers were inspected, so additional session/CSRF faults in the user's environment are not ruled out. Browser approval is a Department design choice, not a Skyrim/PRISMA requirement. Local SHARMAT source uses AIAgentFunctions.logMessage/logMessageForActor and CHIM server configuration directly; its native DLL/current installed runtime were not inspected. A form-only fix does not resolve the user's objection to manual pairing. Automatic setup feasibility and its authorization boundary remain to be established without weakening replay/restore protections or editing CHIM core.
+
+## Automatic CHIM setup — 2026-10-24
+
+Goal: install the Department and open its in-game interface without browser approval, manual token/INI provisioning, or a separate setup button. Use GPT-6-LUNA/max implementation agents; root reviews, verifies and publishes a new immutable TEST candidate. Preserve CHIM core/AIAgent.dll, live, owner fallback and operation/replay/restore history.
+
+- [x] Verify the exact stock game-to-server request and plugin-hook route, its early exits, logging and available reply semantics.
+- [x] Freeze the smallest automatic setup protocol and trust boundary; coordinate native/server/UI callers before coding.
+- [x] Luna/max: implement automatic native/server/UI setup, optional PCV preparation and focused regressions; remove browser approval from the normal flow.
+- [ ] Root: independently verify actual producer-to-hook setup, retry/restart/revocation behavior, private state and package replacement; review the UI visually.
+- [ ] Build only the changed companion DLL, package/audit, commit/push/publish and verify public downloads. Preserve old releases.
+
+Scope: reuse this isolated development checkout and cached pinned tools. Synthetic loopback/TEST temporary fixtures only; no live calls or installed modifications. A successful package or synthetic CHIM request does not prove actual Skyrim input/audio or final delivery. Keep prealpha.8 and its assets immutable.
+
+### Source freeze review
+
+Root independently reviewed native producer/VM dispatch and endpoint/single-flight guards, the owned server hook and claim transitions, authenticated overlay ordering, UI polling/recovery and package allowlists. Review found and assigned fixes for missing recovery after later auth/context loss, stale manual PCV setup documentation, GET/timestamp validation and terminal claim handling; the corrected focused checks pass. GPT-6-LUNA/max workers own all product code. Server regressions were written after initial implementation, not presented as test-first evidence.
+
+The one final companion build passed all five native host targets against actual PHP-produced response fixtures, then compiled Plugin.cpp and linked the 737280-byte DLL on the pinned cached toolchain. DLL SHA-256: c8c77d9534d9a4df0acd18e3451718235b57bdea727b2c86770a31af49590b36. All 34 native inputs match the pre-build freeze; SKSE exports, imports, source-path scan and unchanged refusal fixture passed. Shell32 is no longer linked. Root passed connect 102, stock ingress 31, the optional-overlay refusal check, UI 50/50 and shared/new packaging 8+3. Connecting, stopped failure with Retry, and connected/recovery screenshots were visually inspected. Earlier stale .8 wire-fixture rejection is preserved as a correct strict-schema refusal, not counted as a source defect or passing .9 result.
+
+Package installation/replacement and producer-to-installed-hook proof remain pending at this source checkpoint. TEST is currently registered as DwemerAI4Skyrim3-test2 (E:\WSL\DwemerAI4Skyrim3-test2); root started that initially stopped distro solely for later /tmp CLI fixtures. No live request, installed game/MO2 change or CHIM core/AIAgent.dll change was made. Fresh Skyrim execution, Credential Manager/game persistence, focus, NPC/audio and physical transfer acceptance remain untested.

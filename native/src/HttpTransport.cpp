@@ -1028,28 +1028,6 @@ namespace dql::http
 		return std::wstring(base->begin(), base->end());
 	}
 
-	std::optional<std::wstring> BuildApprovalUrl(std::wstring_view base, std::string_view claimId,
-		std::wstring_view trustedHttpBase)
-	{
-		if (!dql::policy::IsUuid(claimId)) return std::nullopt;
-		ParsedBaseUrl parsed;
-		if (!ParseAllowedBaseUrl(base, trustedHttpBase, parsed)) return std::nullopt;
-
-		std::wstring host(parsed.host);
-		if (host.find(L':') != std::wstring::npos && !host.starts_with(L"[")) {
-			host.insert(host.begin(), L'[');
-			host.push_back(L']');
-		}
-		std::wstring result = parsed.secure ? L"https://" : L"http://";
-		result.append(host);
-		result.push_back(L':');
-		result.append(std::to_wstring(parsed.port));
-		result.append(parsed.pathPrefix);
-		result.append(L"/ext/questionable_decisions/index.php?claim=");
-		result.append(claimId.begin(), claimId.end());
-		return result;
-	}
-
 	HttpTransport::HttpTransport(std::size_t maxPending) : impl_(std::make_unique<Impl>(maxPending)) {}
 	HttpTransport::~HttpTransport() = default;
 

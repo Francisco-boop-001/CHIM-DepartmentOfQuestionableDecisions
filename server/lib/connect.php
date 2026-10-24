@@ -154,8 +154,20 @@ function qd_connect_begin(array $settings, string $claimId, string $tokenHash, i
             if (!hash_equals($claim['tokenHash'], $tokenHash)) {
                 throw new QDServerFault('conflict');
             }
+            if (in_array($claim['state'], ['expired', 'revoked'], true)) {
+                return ['state' => qd_connect_public_state($claim['state'])];
+            }
+            if ($claim['state'] === 'pending' && $claim['expiresAt'] <= $now) {
+                $claim['state'] = 'expired';
+                return ['state' => 'expired'];
+            }
             $pair = qd_connect_pair_hash_state($settings, $tokenHash);
             if ($pair['state'] === 'approved') {
+                if ($claim['state'] === 'approved' && $claim['pairId'] !== $pair['pairId']) {
+                    $claim['state'] = 'expired';
+                    $claim['pairId'] = null;
+                    return ['state' => 'expired'];
+                }
                 $claim['state'] = 'approved';
                 $claim['pairId'] = $pair['pairId'];
             } elseif ($pair['state'] === 'revoked') {
@@ -215,8 +227,20 @@ function qd_connect_status(array $settings, string $claimId, int $now): string
             if (strtolower($claim['claimId']) !== strtolower($claimId)) {
                 continue;
             }
+            if (in_array($claim['state'], ['expired', 'revoked'], true)) {
+                return qd_connect_public_state($claim['state']);
+            }
+            if ($claim['state'] === 'pending' && $claim['expiresAt'] <= $now) {
+                $claim['state'] = 'expired';
+                return 'expired';
+            }
             $pair = qd_connect_pair_hash_state($settings, $claim['tokenHash']);
             if ($pair['state'] === 'approved') {
+                if ($claim['state'] === 'approved' && $claim['pairId'] !== $pair['pairId']) {
+                    $claim['state'] = 'expired';
+                    $claim['pairId'] = null;
+                    return 'expired';
+                }
                 $claim['state'] = 'approved';
                 $claim['pairId'] = $pair['pairId'];
                 return 'approved';
@@ -240,16 +264,36 @@ function qd_connect_status(array $settings, string $claimId, int $now): string
     });
 }
 
-/** Called only after a browser session, CSRF token, same-origin and explicit form POST are verified. */
-function qd_connect_approve(array $settings, string $claimId, int $now): string
+/** Approve only a pending claim echoed by CHIM's native physics_raw ingress. */
+function qd_connect_approve_native_packet(array $settings, string $claimId, string $tokenHash, int $now): string
 {
-    return qd_connect_claim_transaction($settings, static function (array &$store) use ($settings, $claimId, $now): string {
+    if (!qd_is_uuid($claimId) || preg_match('/\A[0-9a-f]{64}\z/D', $tokenHash) !== 1) {
+        return 'expired';
+    }
+    return qd_connect_claim_transaction($settings, static function (array &$store) use ($settings, $claimId, $tokenHash, $now): string {
         foreach ($store['claims'] as &$claim) {
-            if (strtolower($claim['claimId']) !== strtolower($claimId)) {
+            if ($claim['claimId'] !== strtolower($claimId) || !hash_equals($claim['tokenHash'], $tokenHash)) {
                 continue;
             }
+            if (in_array($claim['state'], ['expired', 'revoked'], true)) {
+                return 'expired';
+            }
             $pair = qd_connect_pair_hash_state($settings, $claim['tokenHash']);
+            if ($claim['state'] === 'pending' && $claim['expiresAt'] <= $now) {
+                $claim['state'] = 'expired';
+                $claim['pairId'] = null;
+                return 'expired';
+            }
             if ($pair['state'] === 'approved') {
+                if ($claim['state'] === 'approved') {
+                    if ($claim['pairId'] !== $pair['pairId']) {
+                        return 'expired';
+                    }
+                    return 'approved';
+                }
+                if ($claim['state'] !== 'pending') {
+                    return 'expired';
+                }
                 $claim['state'] = 'approved';
                 $claim['pairId'] = $pair['pairId'];
                 return 'approved';
@@ -259,13 +303,9 @@ function qd_connect_approve(array $settings, string $claimId, int $now): string
                 $claim['pairId'] = null;
                 return 'expired';
             }
-            if ($claim['state'] === 'approved') {
+            if ($claim['state'] !== 'pending') {
                 $claim['state'] = 'expired';
                 $claim['pairId'] = null;
-                return 'expired';
-            }
-            if ($claim['state'] !== 'pending' || $claim['expiresAt'] <= $now) {
-                $claim['state'] = 'expired';
                 return 'expired';
             }
             $approved = qd_pair_approve_hash(
@@ -287,6 +327,50 @@ function qd_connect_approve(array $settings, string $claimId, int $now): string
         }
         return 'expired';
     });
+}
+
+/**
+ * Consume the reserved stock event without changing its physics_raw type.
+ * A null result means the event does not use this plugin's reserved prefix.
+ */
+function qd_connect_handle_stock_event(array $settings, mixed $gameRequest, array $serverValues, ?int $now = null): ?string
+{
+    if (!is_array($gameRequest) || ($gameRequest[0] ?? null) !== 'physics_raw'
+        || !is_string($gameRequest[3] ?? null) || !str_starts_with($gameRequest[3], 'dql_connect_v1:')) {
+        return null;
+    }
+
+    $now ??= time();
+    if (!array_is_list($gameRequest) || count($gameRequest) !== 4
+        || !is_string($gameRequest[1] ?? null) || preg_match('/\A[0-9]{1,20}\z/D', $gameRequest[1]) !== 1
+        || !is_string($gameRequest[2] ?? null) || preg_match('/\A[0-9]{1,20}\z/D', $gameRequest[2]) !== 1
+        || preg_match('/\Adql_connect_v1:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):([0-9a-f]{64})\z/D', $gameRequest[3], $matches) !== 1
+        || !qd_is_uuid($matches[1])) {
+        return 'expired';
+    }
+
+    if (($serverValues['REQUEST_METHOD'] ?? null) !== 'GET') {
+        return 'expired';
+    }
+    foreach ($serverValues as $name => $_value) {
+        if (!is_string($name)) {
+            continue;
+        }
+        $normalizedName = strtoupper($name);
+        if ($normalizedName === 'HTTP_ORIGIN' || str_starts_with($normalizedName, 'HTTP_SEC_FETCH_')) {
+            return 'expired';
+        }
+    }
+    $generation = $serverValues['HTTP_X_CHIM_GENERATION'] ?? null;
+    if (!is_string($generation) || preg_match('/\A[0-9]{1,20}\z/D', $generation) !== 1) {
+        return 'expired';
+    }
+
+    try {
+        return qd_connect_approve_native_packet($settings, $matches[1], $matches[2], $now);
+    } catch (Throwable) {
+        return 'unavailable';
+    }
 }
 
 function qd_connect_json_response(int $status, array $payload, array $extraHeaders = []): array
@@ -341,9 +425,6 @@ function qd_connect_handle(string $method, ?string $contentType, string $body, a
                 'state' => $result['state'],
                 'claimId' => $claimId,
             ];
-            if ($result['state'] === 'pending') {
-                $payload['approvalPath'] = '/ext/questionable_decisions/index.php?claim=' . rawurlencode($claimId);
-            }
             return qd_connect_json_response(200, $payload);
         }
         if ($request->action === 'status' && qd_exact_properties($request, ['action', 'claimId'])) {

@@ -368,7 +368,7 @@ using dql::http::Route;
 		Check(exact.has_value(), "exact native-derived HTTP destination is accepted without broad private-IP trust");
 	}
 
-	void TestCanonicalCredentialDestinationAndApprovalUrl()
+	void TestCanonicalCredentialDestination()
 	{
 		const auto canonical = dql::http::CanonicalDestinationKey(L"HTTP://127.0.0.1:08080/HerikaServer/");
 		const auto same = dql::http::CanonicalDestinationKey(L"http://127.0.0.1:8080/HerikaServer");
@@ -380,12 +380,6 @@ using dql::http::Route;
 		const auto secureSame = dql::http::CanonicalDestinationKey(L"https://chim.example.test/custom");
 		Check(secure && secureSame && *secure == *secureSame,
 			"credential destination key canonicalizes secure scheme, host, default port, and trailing slash");
-		const auto approval = dql::http::BuildApprovalUrl(L"https://chim.example.test:443/custom/",
-			"33333333-3333-4333-8333-333333333333");
-		Check(approval && *approval == L"https://chim.example.test:443/custom/ext/questionable_decisions/index.php?claim=33333333-3333-4333-8333-333333333333",
-			"approval URL is built from the configured endpoint and fixed native path");
-		Check(!dql::http::BuildApprovalUrl(L"https://chim.example.test", "bad-claim"),
-			"approval URL builder refuses an invalid claim identifier");
 	}
 
 	void TestFixedConnectionRouteAndWriteTracking()
@@ -674,7 +668,7 @@ int main()
 	TestFixedPostAndRedirectPolicy();
 	TestRejectsUnsafeRequestInputsBeforeNetwork();
 	TestNonLiteralHttpRequiresExactNativeDestination();
-	TestCanonicalCredentialDestinationAndApprovalUrl();
+	TestCanonicalCredentialDestination();
 	TestFixedConnectionRouteAndWriteTracking();
 	TestConnectionStatusIsNotAWrite();
 	TestInstallationPathPrefixIsPreserved();

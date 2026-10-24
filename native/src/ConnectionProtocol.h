@@ -8,6 +8,8 @@
 
 namespace dql::connection
 {
+	inline constexpr std::string_view kProducerType = "physics_raw";
+
 	enum class Action
 	{
 		begin,
@@ -17,11 +19,19 @@ namespace dql::connection
 	struct ClaimResponse
 	{
 		std::string state;
-		bool approvalPathVerified{};
+	};
+
+	struct ClaimEvent
+	{
+		std::string claimId;
+		std::string tokenHash;
+		std::string type;
+		std::string message;
 	};
 
 	[[nodiscard]] dql::contract::Json MakeBeginRequest(std::string_view claimId, std::string_view tokenHash);
 	[[nodiscard]] dql::contract::Json MakeStatusRequest(std::string_view claimId);
+	[[nodiscard]] std::optional<ClaimEvent> MakeClaimEvent(std::string_view claimId, std::string_view tokenHash);
 	[[nodiscard]] std::optional<ClaimResponse> ParseClaimResponse(const dql::contract::Json& response,
-		Action action, std::string_view expectedClaimId);
+		std::string_view expectedClaimId);
 }

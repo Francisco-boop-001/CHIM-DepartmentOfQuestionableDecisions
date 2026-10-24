@@ -17,7 +17,6 @@
 #include <Windows.h>
 #include <bcrypt.h>
 #include <objbase.h>
-#include <shellapi.h>
 #include <wincred.h>
 
 #ifdef GetObject
@@ -954,6 +953,17 @@ namespace
 			std::wstring endpointKey;
 		};
 
+		struct ConnectionFlightGuard
+		{
+			explicit ConnectionFlightGuard(std::atomic<bool>& inFlight) : inFlight_(inFlight) {}
+			~ConnectionFlightGuard() { inFlight_.store(false, std::memory_order_release); }
+			ConnectionFlightGuard(const ConnectionFlightGuard&) = delete;
+			ConnectionFlightGuard& operator=(const ConnectionFlightGuard&) = delete;
+
+		private:
+			std::atomic<bool>& inFlight_;
+		};
+
 		void ClearInventorySnapshot()
 		{
 			inventorySelections_.clear();
@@ -1717,7 +1727,7 @@ namespace
 
 		void OnConnectionCompletion(const ConnectionHttpContext& context, dql::http::HttpResult result)
 		{
-			connectionRequestInFlight_.store(false, std::memory_order_release);
+			[[maybe_unused]] const ConnectionFlightGuard flightGuard(connectionRequestInFlight_);
 			StringWiper wipeBody(result.body);
 			const auto& request = context.uiRequest;
 			if (!IsCurrentRequest(request)) return;
@@ -1733,6 +1743,7 @@ namespace
 				RespondError(request, "connection_setup_required", "CHIM's configured server destination changed during connection setup.");
 				return;
 			}
+			static_cast<void>(trustedHttpBase);
 			if (result.outcome != dql::http::Outcome::completed || result.statusCode < 200 || result.statusCode >= 300) {
 				RespondError(request, "unavailable", "The connection service did not return a complete response.");
 				return;
@@ -1742,25 +1753,57 @@ namespace
 				RespondError(request, "invalid_response", "The connection service returned an invalid response.");
 				return;
 			}
-			const auto claim = dql::connection::ParseClaimResponse(*parsed.value, context.action, context.claimId);
+			const auto claim = dql::connection::ParseClaimResponse(*parsed.value, context.claimId);
 			if (!claim) {
 				RespondError(request, "invalid_response", "The connection service returned an invalid approval state.");
 				return;
 			}
 
-			if (claim->state == "approved" || claim->state == "expired") ClearConnectionClaim();
-			if (context.action == dql::connection::Action::begin) {
-				bool approvalOpened = false;
-				if (claim->state == "pending" && claim->approvalPathVerified) {
-					if (auto approvalUrl = dql::http::BuildApprovalUrl(serverBase_, context.claimId, trustedHttpBase)) {
-						approvalOpened = reinterpret_cast<INT_PTR>(ShellExecuteW(nullptr, L"open", approvalUrl->c_str(),
-							nullptr, nullptr, SW_SHOWNORMAL)) > 32;
-					}
+			if (context.action == dql::connection::Action::begin && claim->state == "pending") {
+				std::string pairingToken;
+				if (!ConfiguredPairingToken(pairingToken)) {
+					RespondError(request, "connection_secure_storage_failed", "The connection credential is unavailable in native secure storage.");
+					return;
 				}
-				Respond(request, { { "state", claim->state }, { "approvalOpened", approvalOpened } });
-			} else {
-				Respond(request, { { "state", claim->state } });
+				StringWiper wipePairingToken(pairingToken);
+				auto tokenHash = PairingTokenHash(pairingToken);
+				if (!tokenHash) {
+					RespondError(request, "connection_secure_storage_failed", "The connection credential could not be prepared securely.");
+					return;
+				}
+				StringWiper wipeTokenHash(*tokenHash);
+				auto event = dql::connection::MakeClaimEvent(context.claimId, *tokenHash);
+				if (!event) {
+					RespondError(request, "unavailable", "The connection event could not be prepared.");
+					return;
+				}
+				StringWiper wipeEventTokenHash(event->tokenHash);
+				StringWiper wipeEventMessage(event->message);
+				auto* vm = RE::SkyrimVM::GetSingleton();
+				if (!vm || !vm->impl) {
+					RespondError(request, "unavailable", "CHIM's native event queue is unavailable.");
+					return;
+				}
+				RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> noCallback{};
+				const bool queued = NativeDestinationMatches() && vm->impl->DispatchStaticCall(
+					RE::BSFixedString("AIAgentFunctions"), RE::BSFixedString("logMessage"),
+					RE::MakeFunctionArguments(RE::BSFixedString(event->message),
+						RE::BSFixedString(event->type)), noCallback);
+				if (!queued) {
+					if (!NativeDestinationMatches()) {
+						ClearConnectionClaim();
+						RespondError(request, "connection_setup_required", "CHIM's configured startup destination changed before the connection event was queued.");
+					} else {
+						RespondError(request, "unavailable", "CHIM could not queue the connection event.");
+					}
+					return;
+				}
+				Respond(request, { { "state", "pending" } });
+				return;
 			}
+
+			if (claim->state == "approved" || claim->state == "expired") ClearConnectionClaim();
+			Respond(request, { { "state", claim->state } });
 		}
 
 		bool SubmitServerRequest(const dql::contract::Envelope& request, dql::contract::Json payload)
@@ -2646,7 +2689,7 @@ namespace
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.0.8"_v,
+SKSEPluginInfo(.Version = "0.1.0.9"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)

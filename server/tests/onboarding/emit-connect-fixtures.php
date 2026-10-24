@@ -64,8 +64,17 @@ try {
     $beginPending = qd_fixture_response([
         'action' => 'begin', 'claimId' => $pendingId, 'tokenHash' => $tokenHash,
     ], $settings, $now);
-    if (qd_connect_approve($settings, $pendingId, $now + 1) !== 'approved') {
-        throw new RuntimeException('Could not approve the fixture claim.');
+    $nativeEvent = [
+        'physics_raw',
+        '1740000000',
+        '123456',
+        'dql_connect_v1:' . $pendingId . ':' . $tokenHash,
+    ];
+    if (qd_connect_handle_stock_event($settings, $nativeEvent, [
+        'REQUEST_METHOD' => 'GET',
+        'HTTP_X_CHIM_GENERATION' => '0',
+    ], $now + 1) !== 'approved') {
+        throw new RuntimeException('Could not approve the fixture claim through the stock CHIM event route.');
     }
     $statusApproved = qd_fixture_response([
         'action' => 'status', 'claimId' => $pendingId,

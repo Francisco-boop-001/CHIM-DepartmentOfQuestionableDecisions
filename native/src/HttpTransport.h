@@ -70,8 +70,6 @@ namespace dql::http
 		std::wstring_view trustedHttpBase = {});
 	// Mirrors CHIM's pinned startup discovery request to its local launcher service.
 	[[nodiscard]] std::optional<std::wstring> DiscoverChimServerBase();
-	[[nodiscard]] std::optional<std::wstring> BuildApprovalUrl(std::wstring_view base,
-		std::string_view claimId, std::wstring_view trustedHttpBase = {});
 
 	class HttpTransport final
 	{

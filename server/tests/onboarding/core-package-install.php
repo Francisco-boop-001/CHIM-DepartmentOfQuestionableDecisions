@@ -42,6 +42,64 @@ function qd_package_test_copy_pinned_file(string $source, string $destination, a
     qd_package_test_expect(@copy($source, $destination), 'Could not copy pinned CHIM source into the fake layout: ' . basename($source));
 }
 
+function qd_package_test_overlay_postimage(string $ownerRoot): bool
+{
+    if (!function_exists('qd_pcv_overlay_pins')) {
+        return false;
+    }
+    foreach (qd_pcv_overlay_pins() as $relative => $pins) {
+        $actual = @hash_file('sha256', $ownerRoot . DIRECTORY_SEPARATOR . $relative);
+        if (!is_string($actual) || !hash_equals($pins['post'], strtolower($actual))) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function qd_package_test_copy_overlay_base(string $sourceRoot, string $ownerRoot): void
+{
+    $pins = qd_pcv_overlay_pins();
+    foreach ($pins as $relative => $expected) {
+        $source = $sourceRoot . DIRECTORY_SEPARATOR . $relative;
+        qd_package_test_expect(!is_link($source) && is_file($source), 'Pinned PCV source file is missing or linked: ' . $relative);
+        $actual = @hash_file('sha256', $source);
+        qd_package_test_expect(is_string($actual) && hash_equals($expected['base'], strtolower($actual)), 'Pinned PCV base source hash mismatch: ' . $relative);
+        qd_package_test_expect(@copy($source, $ownerRoot . DIRECTORY_SEPARATOR . $relative), 'Could not copy pinned PCV base file into the fake layout: ' . $relative);
+    }
+}
+
+function qd_package_test_deliver_native_event(string $departmentRoot, string $claimId, string $tokenHash): array
+{
+    $previousServer = $_SERVER;
+    $hadEvent = array_key_exists('gameRequest', $GLOBALS);
+    $previousEvent = $GLOBALS['gameRequest'] ?? null;
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    $_SERVER['HTTP_X_CHIM_GENERATION'] = '1';
+    unset($_SERVER['HTTP_ORIGIN']);
+    foreach (array_keys($_SERVER) as $name) {
+        if (is_string($name) && str_starts_with(strtoupper($name), 'HTTP_SEC_FETCH_')) {
+            unset($_SERVER[$name]);
+        }
+    }
+    $GLOBALS['gameRequest'] = [
+        'physics_raw',
+        '1740000000',
+        '123456',
+        'dql_connect_v1:' . strtolower($claimId) . ':' . $tokenHash,
+    ];
+    try {
+        include $departmentRoot . DIRECTORY_SEPARATOR . 'preprocessing.php';
+        return $GLOBALS['gameRequest'];
+    } finally {
+        $_SERVER = $previousServer;
+        if ($hadEvent) {
+            $GLOBALS['gameRequest'] = $previousEvent;
+        } else {
+            unset($GLOBALS['gameRequest']);
+        }
+    }
+}
+
 function qd_package_test_outer_manifest(string $packagePath): array
 {
     qd_package_test_expect(class_exists(ZipArchive::class), 'PHP ZipArchive is required for the real core package manager.');
@@ -71,12 +129,33 @@ function qd_package_test_installed(string $serverRoot, string $name, string $ver
     return $path;
 }
 
-function qd_package_test_api_dependencies(bool $rejectMutation, ?int &$dispatchCount = null): array
+function qd_package_test_api_dependencies(bool $rejectMutation, string $ownerRoot, ?int &$dispatchCount = null, ?array &$callbackTrace = null): array
 {
+    $assertOverlay = static function () use ($ownerRoot): void {
+        qd_package_test_expect(qd_package_test_overlay_postimage($ownerRoot), 'PCV overlay must be complete before profile/readiness callbacks run.');
+    };
     return [
-        'withProfileLease' => static fn(callable $callback): mixed => $callback(),
-        'currentScope' => static fn(string $pairId): string => 'synthetic-package-install-profile',
-        'readiness' => static fn(): array => ['pcv' => true, 'mp' => false, 'sas' => false, 'correspondence' => false],
+        'withProfileLease' => static function (callable $callback) use ($assertOverlay, &$callbackTrace): mixed {
+            $assertOverlay();
+            if (is_array($callbackTrace)) {
+                $callbackTrace[] = 'profile-lease';
+            }
+            return $callback();
+        },
+        'currentScope' => static function (string $pairId) use ($assertOverlay, &$callbackTrace): string {
+            $assertOverlay();
+            if (is_array($callbackTrace)) {
+                $callbackTrace[] = 'current-scope';
+            }
+            return 'synthetic-package-install-profile';
+        },
+        'readiness' => static function (bool $includePcv = true) use ($assertOverlay, &$callbackTrace): array {
+            $assertOverlay();
+            if (is_array($callbackTrace)) {
+                $callbackTrace[] = 'readiness';
+            }
+            return ['pcv' => $includePcv, 'mp' => false, 'sas' => false, 'correspondence' => false];
+        },
         'perspectives' => static fn(string $scopeKey): array => [
             'mp' => ['choices' => [], 'limited' => true],
             'sas' => ['choices' => [], 'limited' => true],
@@ -179,7 +258,8 @@ function qd_package_test_reopen_mode(string $fixtureRoot): never
         $settings = qd_api_settings_from_environment();
         qd_package_test_expect($settings['coreRoot'] === realpath($serverRoot)
             && $settings['chimRoot'] === realpath($serverRoot), 'Clean-process API root was not derived from the installed extension layout.');
-        $dependencies = qd_package_test_api_dependencies(true);
+        $ownerRoot = $serverRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation';
+        $dependencies = qd_package_test_api_dependencies(true, $ownerRoot);
         $viewToken = $input['viewToken'];
         $generation = $input['generation'];
         $bootstrapBody = qd_package_test_request('bootstrap', null, $viewToken, $generation, []);
@@ -198,8 +278,8 @@ function qd_package_test_reopen_mode(string $fixtureRoot): never
 
 function qd_package_test_main(array $arguments): int
 {
-    if (count($arguments) !== 5 || PHP_SAPI !== 'cli') {
-        fwrite(STDERR, "Usage: php core-package-install.php <pinned-HerikaServer-root> <questionable_decisions.dwpkg> <pcv_companion.dwpkg> <fresh-/tmp-fixture-root>\n");
+    if (count($arguments) !== 6 || PHP_SAPI !== 'cli') {
+        fwrite(STDERR, "Usage: php core-package-install.php <pinned-HerikaServer-root> <questionable_decisions.dwpkg> <pcv_companion.dwpkg> <fresh-/tmp-fixture-root> <pinned-PCV-server-source-root>\n");
         return 2;
     }
 
@@ -207,9 +287,11 @@ function qd_package_test_main(array $arguments): int
     $departmentPackage = realpath($arguments[2]);
     $companionPackage = realpath($arguments[3]);
     $fixtureRoot = $arguments[4];
+    $pcvSourceRoot = realpath($arguments[5]);
     qd_package_test_expect(is_string($pinnedRoot) && is_dir($pinnedRoot), 'Pinned core source directory is unavailable.');
     qd_package_test_expect(is_string($departmentPackage) && is_file($departmentPackage), 'Department DWPkg is unavailable.');
     qd_package_test_expect(is_string($companionPackage) && is_file($companionPackage), 'Companion DWPkg is unavailable.');
+    qd_package_test_expect(is_string($pcvSourceRoot) && is_dir($pcvSourceRoot), 'Pinned PCV owner source directory is unavailable.');
     qd_package_test_expect(!file_exists($fixtureRoot) && !is_link($fixtureRoot), 'Fixture root must be a fresh, unused path.');
     $tempRoot = realpath(sys_get_temp_dir());
     $fixtureParent = realpath(dirname($fixtureRoot));
@@ -224,7 +306,7 @@ function qd_package_test_main(array $arguments): int
     $companionManifest = qd_package_test_outer_manifest($companionPackage);
     foreach ([[$departmentManifest, 'questionable_decisions'], [$companionManifest, 'pcv_companion']] as [$manifest, $expectedName]) {
         qd_package_test_expect(($manifest['name'] ?? null) === $expectedName
-            && ($manifest['version'] ?? null) === '0.1.0-prealpha.8', 'DWPkg outer identity does not match the prealpha.8 package set: ' . $expectedName);
+            && ($manifest['version'] ?? null) === '0.1.0-prealpha.9', 'DWPkg outer identity does not match the prealpha.9 package set: ' . $expectedName);
     }
 
     qd_package_test_directory($fixtureRoot);
@@ -259,8 +341,17 @@ function qd_package_test_main(array $arguments): int
         qd_package_test_expect(($manager->probe($manifest['name'], $manifest['version'])['upload_required'] ?? true) === false, 'Core package status did not record the installed version.');
     }
 
-    $departmentRoot = qd_package_test_installed($serverRoot, 'questionable_decisions', '0.1.0-prealpha.8');
-    $companionRoot = qd_package_test_installed($serverRoot, 'pcv_companion', '0.1.0-prealpha.8');
+    $departmentRoot = qd_package_test_installed($serverRoot, 'questionable_decisions', '0.1.0-prealpha.9');
+    $companionRoot = qd_package_test_installed($serverRoot, 'pcv_companion', '0.1.0-prealpha.9');
+    require_once $departmentRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'overlay_setup.php';
+    $pcvOwnerRoot = $serverRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation';
+    qd_package_test_expect(!file_exists($pcvOwnerRoot) && !is_link($pcvOwnerRoot), 'Fresh core package install must not include or replace the separately owned PCV extension.');
+    qd_package_test_directory($pcvOwnerRoot);
+    qd_package_test_copy_overlay_base($pcvSourceRoot, $pcvOwnerRoot);
+    $overlayStage = $departmentRoot . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay';
+    qd_package_test_expect(is_dir($overlayStage) && !is_link($overlayStage)
+        && is_file($overlayStage . DIRECTORY_SEPARATOR . 'source-manifest.json'),
+        'Installed Department DWPkg must contain the pinned PCV overlay staging source.');
     $companionFiles = [];
     $companionIterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($companionRoot, FilesystemIterator::SKIP_DOTS));
     foreach ($companionIterator as $entry) {
@@ -286,6 +377,7 @@ function qd_package_test_main(array $arguments): int
     $privateRoot = realpath($serverRoot . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'questionable_decisions-private');
     qd_package_test_expect($settings['coreRoot'] === realpath($serverRoot)
         && $settings['chimRoot'] === realpath($serverRoot)
+        && $settings['pcvRoot'] === realpath($pcvOwnerRoot)
         && is_string($privateRoot) && $settings['privateRoot'] === $privateRoot
         && $settings['pairingPath'] === $privateRoot . DIRECTORY_SEPARATOR . 'pairing.php'
         && $settings['statePath'] === $privateRoot . DIRECTORY_SEPARATOR . 'state.php', 'Default private state did not resolve into the stable CHIM data namespace.');
@@ -297,12 +389,27 @@ function qd_package_test_main(array $arguments): int
     $begin = qd_connect_handle('POST', 'application/json', $claimBody, $settings, time());
     $beginBody = json_decode((string)$begin['body'], true, 16, JSON_THROW_ON_ERROR);
     qd_package_test_expect(($begin['status'] ?? null) === 200 && ($beginBody['state'] ?? null) === 'pending', 'Installed connection route did not create a pending claim.');
-    qd_package_test_expect(qd_connect_approve($settings, $claimId, time()) === 'approved', 'Explicit approval did not activate the pending game claim.');
+    qd_package_test_expect(array_keys($beginBody) === ['ok', 'state', 'claimId'], 'Installed begin response must keep the native fixed wire shape.');
+    $directApproval = qd_connect_handle('POST', 'application/json', json_encode([
+        'action' => 'approve',
+        'claimId' => $claimId,
+        'tokenHash' => hash('sha256', $bearer),
+    ], JSON_THROW_ON_ERROR), $settings, time());
+    qd_package_test_expect(($directApproval['status'] ?? null) === 400 && !file_exists($settings['pairingPath']),
+        'The installed JSON route must not approve a claim without stock CHIM ingress.');
+    $stockEvent = qd_package_test_deliver_native_event($departmentRoot, $claimId, hash('sha256', $bearer));
+    qd_package_test_expect(($stockEvent[0] ?? null) === 'physics_raw', 'The installed preprocessing hook must preserve CHIM physics_raw for its stock early exit.');
+    $status = qd_connect_handle('POST', 'application/json', json_encode(['action' => 'status', 'claimId' => $claimId], JSON_THROW_ON_ERROR), $settings, time());
+    $statusBody = json_decode((string)$status['body'], true, 16, JSON_THROW_ON_ERROR);
+    qd_package_test_expect(($status['status'] ?? null) === 200 && ($statusBody['state'] ?? null) === 'approved'
+        && array_keys($statusBody) === ['ok', 'state', 'claimId'],
+        'The installed stock event must activate the claim and status must report the fixed approved response.');
     $auth = qd_authenticate($settings['pairingPath'], $settings['webRoot'], 'Bearer ' . $bearer, $settings['privateRoot'], $settings['coreRoot']);
-    qd_package_test_expect(is_array($auth) && $auth['scopes'] === ['compose', 'inspector', 'pcv'], 'Approved game bearer did not authenticate with default scopes.');
+    qd_package_test_expect(is_array($auth) && $auth['scopes'] === ['compose', 'inspector', 'pcv'], 'Stock-event-approved game bearer did not authenticate with default scopes.');
 
     $dispatchCount = 0;
-    $dependencies = qd_package_test_api_dependencies(false, $dispatchCount);
+    $callbackTrace = [];
+    $dependencies = qd_package_test_api_dependencies(false, $pcvOwnerRoot, $dispatchCount, $callbackTrace);
     $viewToken = qd_package_test_uuid();
     $generation = '1';
     $bootstrapData = qd_package_test_response(
@@ -313,6 +420,27 @@ function qd_package_test_main(array $arguments): int
         && is_string($bootstrapData['serverContext'] ?? null)
         && ($bootstrapData['capabilities']['pcv'] ?? null) === true,
         'Installed API bootstrap did not authenticate the approved game.');
+    qd_package_test_expect(qd_package_test_overlay_postimage($pcvOwnerRoot), 'Authenticated bootstrap must stage exactly the pinned PCV postimage.');
+    qd_package_test_expect(array_slice($callbackTrace, 0, 3) === ['profile-lease', 'current-scope', 'readiness'],
+        'Automatic overlay setup must finish before profile, scope, or readiness callbacks run.');
+    $overlayPins = qd_pcv_overlay_pins();
+    $expectedOverlayBackupNames = array_keys(array_filter(
+        $overlayPins,
+        static fn(array $entry): bool => !hash_equals($entry['base'], $entry['post']),
+    ));
+    $overlayBackups = qd_pcv_overlay_backup_state(
+        $privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php',
+        realpath($serverRoot) ?: $serverRoot,
+        $overlayPins,
+    );
+    qd_package_test_expect(is_array($overlayBackups)
+        && array_keys($overlayBackups) === $expectedOverlayBackupNames
+        && count($overlayBackups) === count($expectedOverlayBackupNames),
+        'Automatic setup must preserve a backup for every and only modified pinned PCV file.');
+    foreach ($overlayBackups as $relative => $originalBytes) {
+        qd_package_test_expect($originalBytes === file_get_contents($pcvSourceRoot . DIRECTORY_SEPARATOR . $relative),
+            'Automatic setup must preserve exact base bytes for the modified PCV file: ' . $relative);
+    }
 
     $payload = [
         'operationId' => qd_package_test_uuid(),
@@ -340,7 +468,7 @@ function qd_package_test_main(array $arguments): int
     qd_package_test_expect(is_resource($lock) && @flock($lock, LOCK_EX), 'Could not hold the managed journal lock across a package update.');
     $lockBefore = fstat($lock);
     $apiHashBefore = hash_file('sha256', $departmentRoot . DIRECTORY_SEPARATOR . 'api.php');
-    $upgrade = $manager->installArchive($departmentPackage, basename($departmentPackage), 'questionable_decisions', '0.1.0-prealpha.8');
+    $upgrade = $manager->installArchive($departmentPackage, basename($departmentPackage), 'questionable_decisions', '0.1.0-prealpha.9');
     qd_package_test_expect(($upgrade['status'] ?? null) === 'completed', 'Pinned core manager failed to replace the Department package.');
     clearstatcache(true, $lockPath);
     $lockAfter = @stat($lockPath);
@@ -350,20 +478,20 @@ function qd_package_test_main(array $arguments): int
     @flock($lock, LOCK_UN);
     fclose($lock);
     qd_package_test_expect($lockStable, 'Package replacement changed the inode held by the managed journal lock.');
-    $departmentRootAfter = qd_package_test_installed($serverRoot, 'questionable_decisions', '0.1.0-prealpha.8');
+    $departmentRootAfter = qd_package_test_installed($serverRoot, 'questionable_decisions', '0.1.0-prealpha.9');
     qd_package_test_expect(hash_file('sha256', $departmentRootAfter . DIRECTORY_SEPARATOR . 'api.php') === $apiHashBefore, 'Repeated package activation did not restore the exact package API bytes.');
     qd_package_test_expect(realpath($serverRoot . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'questionable_decisions-private') === $privateRoot
         && qd_package_test_private_snapshot($privateRoot) === $snapshot,
         'Pairing, claim, server state, or completed replay journal changed across extension replacement.');
 
     $reopen = qd_package_test_reopen($fixtureRoot, 'Bearer ' . $bearer, $viewToken, '2', $payload);
-    qd_package_test_expect(qd_package_test_installed($serverRoot, 'pcv_companion', '0.1.0-prealpha.8') === $companionRoot, 'Companion package activation path changed during Department replacement.');
+    qd_package_test_expect(qd_package_test_installed($serverRoot, 'pcv_companion', '0.1.0-prealpha.9') === $companionRoot, 'Companion package activation path changed during Department replacement.');
     fwrite(STDOUT, json_encode([
         'ok' => true,
         'fixtureRoot' => $fixtureRoot,
         'coreManagerSha256' => strtolower((string)$managerHash),
-        'department' => ['name' => 'questionable_decisions', 'version' => '0.1.0-prealpha.8', 'reinstalled' => true],
-        'companion' => ['name' => 'pcv_companion', 'version' => '0.1.0-prealpha.8', 'installed' => true],
+        'department' => ['name' => 'questionable_decisions', 'version' => '0.1.0-prealpha.9', 'reinstalled' => true],
+        'companion' => ['name' => 'pcv_companion', 'version' => '0.1.0-prealpha.9', 'installed' => true],
         'privateFiles' => count($snapshot),
         'journalLockStable' => $lockStable,
         'freshProcessReplay' => $reopen['replayed'],

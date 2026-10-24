@@ -52,33 +52,17 @@ function connect_expect_unavailable(callable $callback, string $message): void
     connect_expect(false, $message);
 }
 
-function connect_warning_checked(callable $callback)
+function connect_stock_event(string $claimId, string $tokenHash): array
 {
-    set_error_handler(static function (int $severity, string $message, string $file, int $line) {
-        throw new ErrorException($message, 0, $severity, $file, $line);
-    });
-    try {
-        return $callback();
-    } finally {
-        restore_error_handler();
-    }
+    return ['physics_raw', '1740000000', '123', 'dql_connect_v1:' . strtolower($claimId) . ':' . $tokenHash];
 }
 
-function connect_origin_expect(array $serverValues, bool $expected, string $message): void
+function connect_native_headers(array $overrides = []): array
 {
-    $savedServer = $_SERVER;
-    foreach (['HTTP_ORIGIN', 'HTTP_HOST', 'HTTPS', 'HTTP_SEC_FETCH_SITE'] as $key) {
-        unset($_SERVER[$key]);
-    }
-    foreach ($serverValues as $key => $value) {
-        $_SERVER[$key] = $value;
-    }
-    try {
-        $actual = connect_warning_checked(static fn(): bool => qd_onboarding_origin_is_same());
-        connect_expect($actual === $expected, $message);
-    } finally {
-        $_SERVER = $savedServer;
-    }
+    return array_merge([
+        'REQUEST_METHOD' => 'GET',
+        'HTTP_X_CHIM_GENERATION' => '0',
+    ], $overrides);
 }
 
 function connect_fixture(string $label): array
@@ -121,51 +105,6 @@ function connect_remove_tree(string $path): void
     @rmdir($path);
 }
 
-connect_origin_expect([
-    'HTTP_ORIGIN' => 'http://chim.example',
-    'HTTP_HOST' => 'chim.example',
-    'HTTPS' => '',
-    'HTTP_SEC_FETCH_SITE' => 'same-origin',
-], true, 'same HTTP origin should pass without regex warnings');
-connect_origin_expect([
-    'HTTP_ORIGIN' => 'http://chim.example:80',
-    'HTTP_HOST' => 'chim.example',
-    'HTTPS' => '',
-], true, 'equivalent default HTTP ports should pass');
-connect_origin_expect([
-    'HTTP_ORIGIN' => 'https://chim.example',
-    'HTTP_HOST' => 'chim.example:443',
-    'HTTPS' => 'on',
-], true, 'equivalent default HTTPS ports should pass');
-connect_origin_expect([
-    'HTTP_ORIGIN' => 'https://[2001:db8::1]:8443',
-    'HTTP_HOST' => '[2001:db8::1]:8443',
-    'HTTPS' => '1',
-], true, 'matching bracketed IPv6 authority should pass');
-connect_origin_expect([
-    'HTTP_ORIGIN' => 'http://other.example',
-    'HTTP_HOST' => 'chim.example',
-    'HTTPS' => '',
-], false, 'foreign origin should fail');
-connect_origin_expect([
-    'HTTP_ORIGIN' => 'http://chim.example',
-    'HTTP_HOST' => 'chim.example',
-    'HTTPS' => '',
-    'HTTP_SEC_FETCH_SITE' => 'cross-site',
-], false, 'cross-site fetch metadata should fail');
-foreach ([
-    ['HTTP_ORIGIN' => 'http://chim.example/', 'HTTP_HOST' => 'chim.example', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => 'http://user@chim.example', 'HTTP_HOST' => 'chim.example', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => "http://chim.example\r\nX-Fake: yes", 'HTTP_HOST' => 'chim.example', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => 'http://chim.example', 'HTTP_HOST' => 'chim.example/path', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => 'http://chim.example', 'HTTP_HOST' => 'chim.example:', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => 'http://chim.example', 'HTTP_HOST' => 'user@chim.example', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => 'http://chim.example', 'HTTP_HOST' => '999.999.999.999', 'HTTPS' => ''],
-    ['HTTP_ORIGIN' => 'http://[2001:db8::1]', 'HTTP_HOST' => '2001:db8::1', 'HTTPS' => ''],
-] as $malformed) {
-    connect_origin_expect($malformed, false, 'malformed Origin or Host authority should fail');
-}
-
 $fixture = connect_fixture('protocol');
 $settings = $fixture['settings'];
 try {
@@ -176,35 +115,69 @@ try {
     connect_expect($begin['status'] === 200, 'begin should create a pending claim; got ' . $begin['body']);
     $beginJson = connect_json($begin);
     connect_expect(($beginJson['state'] ?? null) === 'pending', 'begin should report pending');
-    connect_expect(($beginJson['approvalPath'] ?? null) === '/ext/questionable_decisions/index.php?claim=' . strtolower($claimId), 'begin should return the fixed local approval route');
+    connect_expect(array_keys($beginJson) === ['ok', 'state', 'claimId'], 'begin should expose only the fixed state and claim ID');
     $retry = connect_post(['action' => 'begin', 'claimId' => $claimId, 'tokenHash' => $hash], $settings, 1001);
     $retryJson = connect_json($retry);
     connect_expect(($retryJson['state'] ?? null) === 'pending', 'same claim and hash should be idempotent');
-    connect_expect(($retryJson['approvalPath'] ?? null) === '/ext/questionable_decisions/index.php?claim=' . strtolower($claimId), 'pending begin retries should retain their approval path');
+    connect_expect(array_keys($retryJson) === ['ok', 'state', 'claimId'], 'begin retries should not expose a browser approval path');
     $mismatch = connect_post(['action' => 'begin', 'claimId' => $claimId, 'tokenHash' => hash('sha256', connect_token())], $settings, 1002);
     connect_expect($mismatch['status'] === 409, 'claim ID reuse with a different hash should be refused');
     $status = connect_post(['action' => 'status', 'claimId' => $claimId], $settings, 1003);
     connect_expect((connect_json($status)['state'] ?? null) === 'pending', 'status should not reveal a token or change a pending claim');
 
-    connect_expect(qd_connect_approve($settings, $claimId, 1004) === 'approved', 'explicit approval should bind the pre-generated hash');
+    $packet = connect_stock_event($claimId, $hash);
+    connect_expect(qd_connect_handle_stock_event($settings, ['infonpc', '1740000000', '123', 'nearby actors'], connect_native_headers(), 1003) === null,
+        'the native logMessage preamble should not match the reserved approval packet');
+    connect_expect(qd_connect_handle_stock_event($settings, connect_stock_event($claimId, hash('sha256', connect_token())), connect_native_headers(), 1004) === 'expired',
+        'a packet with a mismatched token hash must not approve the pending claim');
+    connect_expect(!file_exists($settings['pairingPath']), 'a mismatched packet must not create a pair');
+    foreach ([
+        ['REQUEST_METHOD' => 'POST'],
+        ['HTTP_X_CHIM_GENERATION' => ''],
+        ['HTTP_X_CHIM_GENERATION' => '1e3'],
+        ['HTTP_X_CHIM_GENERATION' => str_repeat('1', 21)],
+        ['HTTP_ORIGIN' => ''],
+        ['HTTP_SEC_FETCH_MODE' => 'cors'],
+        ['HTTP_SEC_FETCH_SITE' => 'same-origin'],
+    ] as $rejectedHeaders) {
+        connect_expect(qd_connect_handle_stock_event($settings, $packet, connect_native_headers($rejectedHeaders), 1004) === 'expired',
+            'browser-shaped or invalid-generation stock packets must be refused');
+    }
+    foreach ([
+        ['physics_raw', '1740000000', '123.000000', 'dql_connect_v1:bad:' . $hash],
+        ['physics_raw', '1740000000', '123', 'dql_connect_v1:' . strtoupper($claimId) . ':' . $hash],
+        ['physics_raw', '1740000000', '123', 'dql_connect_v1:' . strtolower($claimId) . ':' . strtoupper($hash)],
+        ['physics_raw', '1740000000', 'not-a-time', 'dql_connect_v1:' . strtolower($claimId) . ':' . $hash],
+        ['physics_raw', '1740000000', '123', 'dql_connect_v1:' . strtolower($claimId) . ':' . $hash, 'extra'],
+    ] as $malformedPacket) {
+        connect_expect(qd_connect_handle_stock_event($settings, $malformedPacket, connect_native_headers(), 1004) === 'expired',
+            'malformed reserved packets must be consumed without approval');
+    }
+    connect_expect(qd_connect_handle_stock_event($settings, ['request', '1740000000', '123', $packet[3]], connect_native_headers(), 1004) === null,
+        'the reserved packet must only be recognized on physics_raw');
+    $directApproval = connect_post(['action' => 'approve', 'claimId' => $claimId, 'tokenHash' => $hash], $settings, 1004);
+    connect_expect($directApproval['status'] === 400 && !file_exists($settings['pairingPath']), 'the HTTP route must not expose direct approval');
+    connect_expect(qd_connect_handle_stock_event($settings, $packet, connect_native_headers(), 1004) === 'approved',
+        'the exact stock physics_raw packet should approve the matching pending claim');
     $statusAfterApproval = connect_post(['action' => 'status', 'claimId' => $claimId], $settings, 1005);
     $approvedStatusJson = connect_json($statusAfterApproval);
     connect_expect(($approvedStatusJson['state'] ?? null) === 'approved', 'status should reflect explicit approval');
-    connect_expect(!array_key_exists('approvalPath', $approvedStatusJson), 'status responses must omit the approval path');
+    connect_expect(array_keys($approvedStatusJson) === ['ok', 'state', 'claimId'], 'status should expose only the fixed state and claim ID');
     $pairRaw = file_get_contents($settings['pairingPath']);
     connect_expect(is_string($pairRaw) && str_starts_with($pairRaw, QD_GUARDED_JSON_PREFIX), 'managed pair data should carry the PHP guard prefix');
     $pairConfig = json_decode(substr((string)$pairRaw, strlen(QD_GUARDED_JSON_PREFIX)), true, 8, JSON_THROW_ON_ERROR);
-    connect_expect(count($pairConfig['pairs'] ?? []) === 1, 'approval should create exactly one pair');
+    connect_expect(count($pairConfig['pairs'] ?? []) === 1, 'the native packet should create exactly one pair');
     $pair = $pairConfig['pairs'][0];
     connect_expect($pair['tokenHash'] === $hash && $pair['scopes'] === ['compose', 'inspector', 'pcv'], 'approval should store only the native hash and default scopes');
     connect_expect(qd_authenticate($settings['pairingPath'], $settings['webRoot'], 'Bearer ' . $token, $settings['privateRoot'])['pairId'] === $pair['pairId'], 'native bearer should authenticate after approval');
     connect_expect(!str_contains((string)file_get_contents($settings['privateRoot'] . DIRECTORY_SEPARATOR . 'connect-claims.php'), $token), 'claim persistence must not store the bearer literal');
+    connect_expect(qd_connect_handle_stock_event($settings, $packet, connect_native_headers(), 1005) === 'approved', 'replaying the native packet should be idempotently approved');
 
     $secondClaim = connect_uuid();
     $sameTokenBegin = connect_post(['action' => 'begin', 'claimId' => $secondClaim, 'tokenHash' => $hash], $settings, 1006);
     $sameTokenBeginJson = connect_json($sameTokenBegin);
     connect_expect(($sameTokenBeginJson['state'] ?? null) === 'approved', 'an already paired hash should be reused without a second pair');
-    connect_expect(!array_key_exists('approvalPath', $sameTokenBeginJson), 'approved begin responses must omit the approval path');
+    connect_expect(array_keys($sameTokenBeginJson) === ['ok', 'state', 'claimId'], 'approved begin responses should keep the fixed shape');
     $pairsAfterReuse = json_decode(substr((string)file_get_contents($settings['pairingPath']), strlen(QD_GUARDED_JSON_PREFIX)), true, 8, JSON_THROW_ON_ERROR)['pairs'];
     connect_expect(count($pairsAfterReuse) === 1 && $pairsAfterReuse[0]['pairId'] === $pair['pairId'], 'approval retry must retain the exact pair identity');
 
@@ -213,10 +186,26 @@ try {
     $revokedBegin = connect_post(['action' => 'begin', 'claimId' => $revokedClaim, 'tokenHash' => $hash], $settings, 1007);
     $revokedBeginJson = connect_json($revokedBegin);
     connect_expect(($revokedBeginJson['state'] ?? null) === 'expired', 'a revoked hash must not be silently restored');
-    connect_expect(!array_key_exists('approvalPath', $revokedBeginJson), 'expired begin responses must omit the approval path');
-    connect_expect(qd_connect_approve($settings, $revokedClaim, 1008) === 'expired', 'a revoked hash must remain refused on approval');
+    connect_expect(array_keys($revokedBeginJson) === ['ok', 'state', 'claimId'], 'expired begin responses should keep the fixed shape');
+    connect_expect(qd_connect_handle_stock_event($settings, connect_stock_event($revokedClaim, $hash), connect_native_headers(), 1008) === 'expired', 'a revoked hash must remain refused on stock ingress');
     $revokedConfig = json_decode(substr((string)file_get_contents($settings['pairingPath']), strlen(QD_GUARDED_JSON_PREFIX)), true, 8, JSON_THROW_ON_ERROR);
     connect_expect(count($revokedConfig['pairs']) === 1 && $revokedConfig['pairs'][0]['revoked'] === true, 'revocation tombstone must remain intact');
+    $staleRestoredConfig = $revokedConfig;
+    $staleRestoredConfig['pairs'][0]['revoked'] = false;
+    qd_atomic_write($settings['pairingPath'], json_encode($staleRestoredConfig, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), true);
+    $staleRestoredPairing = file_get_contents($settings['pairingPath']);
+    connect_expect(qd_connect_handle_stock_event($settings, connect_stock_event($revokedClaim, $hash), connect_native_headers(), 1009) === 'expired',
+        'a terminal revoked claim must not become approved if an older pairing snapshot is restored');
+    connect_expect(file_get_contents($settings['pairingPath']) === $staleRestoredPairing,
+        'a packet for a terminal revoked claim must not rewrite pairing state');
+    $revokedRetry = connect_json(connect_post(['action' => 'begin', 'claimId' => $revokedClaim, 'tokenHash' => $hash], $settings, 1010));
+    $revokedStatus = connect_json(connect_post(['action' => 'status', 'claimId' => $revokedClaim], $settings, 1011));
+    connect_expect(($revokedRetry['state'] ?? null) === 'expired' && ($revokedStatus['state'] ?? null) === 'expired',
+        'same-claim begin and status retries must preserve terminal revocation after an older pairing snapshot is restored');
+    $claimStore = json_decode(substr((string)file_get_contents($settings['privateRoot'] . DIRECTORY_SEPARATOR . 'connect-claims.php'), strlen(QD_GUARDED_JSON_PREFIX)), true, 16, JSON_THROW_ON_ERROR);
+    $revokedRecord = array_values(array_filter($claimStore['claims'], static fn(array $claim): bool => $claim['claimId'] === strtolower($revokedClaim)))[0] ?? null;
+    connect_expect(is_array($revokedRecord) && $revokedRecord['state'] === 'revoked',
+        'the durable claim tombstone must remain revoked after the stock packet retry');
 
     $badMethod = qd_connect_handle('GET', null, '', $settings, 1009);
     connect_expect($badMethod['status'] === 405 && ($badMethod['headers']['Allow'] ?? null) === 'POST', 'connect route must be POST-only');
@@ -235,8 +224,8 @@ try {
     $expiredStatus = connect_post(['action' => 'status', 'claimId' => $claimId], $expiryFixture['settings'], 2600);
     $expiredStatusJson = connect_json($expiredStatus);
     connect_expect(($expiredStatusJson['state'] ?? null) === 'expired', 'claims must expire at ten minutes');
-    connect_expect(!array_key_exists('approvalPath', $expiredStatusJson), 'expired status responses must omit the approval path');
-    connect_expect(qd_connect_approve($expiryFixture['settings'], $claimId, 2601) === 'expired', 'expired claims must not create a pair');
+    connect_expect(array_keys($expiredStatusJson) === ['ok', 'state', 'claimId'], 'expired status responses should keep the fixed shape');
+    connect_expect(qd_connect_handle_stock_event($expiryFixture['settings'], connect_stock_event($claimId, $expiredHash), connect_native_headers(), 2601) === 'expired', 'expired claims must not create a pair');
     connect_expect(!file_exists($expiryFixture['settings']['pairingPath']), 'expired claims must not issue authorization');
 } finally {
     connect_remove_tree($expiryFixture['root']);
@@ -357,85 +346,30 @@ try {
     connect_remove_tree($pathFixture['root']);
 }
 
-$pageFixture = connect_fixture('page-approval');
-$pageRoot = $pageFixture['root'] . DIRECTORY_SEPARATOR . 'chim';
-$pageWebRoot = $pageFixture['root'] . DIRECTORY_SEPARATOR . 'document-root';
+$pageFixture = connect_fixture('page');
 $oldServer = $_SERVER;
-$oldSessionPath = session_save_path();
-$oldEnv = [];
-foreach (['QD_CHIM_ROOT', 'QD_PAIRING_FILE', 'QD_SERVER_STATE_FILE', 'QD_WEB_ROOT', 'QD_PCV_ROOT'] as $name) {
-    $value = getenv($name);
-    $oldEnv[$name] = is_string($value) ? $value : false;
-}
 try {
-    if (!mkdir($pageRoot . DIRECTORY_SEPARATOR . 'lib', 0700, true)
-        || !mkdir($pageRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation', 0700, true)
-        || !mkdir($pageRoot . DIRECTORY_SEPARATOR . 'data', 0700, true)
-        || !mkdir($pageWebRoot, 0700, true)
-        || !mkdir($pageFixture['root'] . DIRECTORY_SEPARATOR . 'sessions', 0700, true)) {
-        throw new RuntimeException('Could not create the synthetic approval-page layout.');
-    }
-    file_put_contents($pageRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'playthrough_preferences.php', "<?php\n");
-    putenv('QD_CHIM_ROOT=' . $pageRoot);
-    putenv('QD_PAIRING_FILE');
-    putenv('QD_SERVER_STATE_FILE');
-    putenv('QD_WEB_ROOT');
-    putenv('QD_PCV_ROOT');
-    $_SERVER['DOCUMENT_ROOT'] = $pageWebRoot;
-    $pageSettings = qd_api_settings_from_environment();
-    $pageClaimId = connect_uuid();
-    $pageToken = connect_token();
-    $pageHash = hash('sha256', $pageToken);
-    connect_expect(qd_connect_begin($pageSettings, $pageClaimId, $pageHash, time())['state'] === 'pending', 'page test should start from a real pending claim');
-
-    session_save_path($pageFixture['root'] . DIRECTORY_SEPARATOR . 'sessions');
-    $sessionId = 'qdpage' . bin2hex(random_bytes(12));
-    $oldCsrf = bin2hex(random_bytes(32));
-    session_id($sessionId);
-    if (!session_start()) {
-        throw new RuntimeException('Could not create the synthetic browser session.');
-    }
-    $_SESSION['qd_connect_csrf'] = $oldCsrf;
-    session_write_close();
-
-    $_SERVER['REQUEST_METHOD'] = 'POST';
-    $_SERVER['HTTP_ORIGIN'] = 'http://chim.example';
-    $_SERVER['HTTP_HOST'] = 'chim.example';
-    $_SERVER['HTTPS'] = '';
-    $_SERVER['HTTP_SEC_FETCH_SITE'] = 'same-origin';
-    $_POST = ['claim' => $pageClaimId, 'csrf' => $oldCsrf, 'decision' => 'approve'];
+    $pageSettings = $pageFixture['settings'];
+    $pagePair = qd_pair_issue($pageSettings['pairingPath'], $pageSettings['webRoot'], ['compose'], $pageSettings['privateRoot'], $pageSettings['chimRoot']);
+    $pairingBeforePagePost = file_get_contents($pageSettings['pairingPath']);
+    $_SERVER['REQUEST_METHOD'] = 'GET';
     ob_start();
     qd_onboarding_emit();
-    $approvalHtml = (string)ob_get_clean();
-    connect_expect(str_contains($approvalHtml, 'Game connected'), 'successful approval should render the connected page');
-    connect_expect(str_contains($approvalHtml, 'Private Conversation is optional'), 'successful approval should explain optional setup');
-    connect_expect(str_contains($approvalHtml, 'return to Skyrim and choose Check connection'), 'successful approval should show the game next step');
-    connect_expect(str_contains($approvalHtml, 'name="decision" value="enable_pcv"'), 'successful approval should keep the optional setup form visible');
-    connect_expect(preg_match('/name="csrf" value="([a-f0-9]{64})"/', $approvalHtml, $csrfMatch) === 1, 'successful approval setup form should include a CSRF token');
-    $nextCsrf = $csrfMatch[1];
-    connect_expect(!hash_equals($oldCsrf, $nextCsrf), 'successful approval should rotate the CSRF token');
-    session_id($sessionId);
-    if (!session_start()) {
-        throw new RuntimeException('Could not reload the rotated browser session.');
-    }
-    connect_expect(hash_equals($nextCsrf, (string)($_SESSION['qd_connect_csrf'] ?? '')), 'setup form CSRF should match the rotated session token');
-    session_write_close();
-    $approvedPair = qd_authenticate(
-        $pageSettings['pairingPath'],
-        $pageSettings['webRoot'],
-        'Bearer ' . $pageToken,
-        $pageSettings['privateRoot'],
-        $pageSettings['coreRoot'],
-    );
-    connect_expect(is_array($approvedPair) && $approvedPair['scopes'] === ['compose', 'inspector', 'pcv'], 'page approval should authorize the game token with the expected scopes');
+    $page = (string)ob_get_clean();
+    connect_expect(str_contains($page, 'Open the Department in Skyrim; setup runs automatically.'), 'plugin page should direct setup to Skyrim');
+    connect_expect(str_contains($page, 'This page does not approve or create a connection.'), 'plugin page should state that it cannot approve a connection');
+    connect_expect(!str_contains(strtolower($page), '<form'), 'plugin page must not expose a browser approval or setup form');
+    $_SERVER['REQUEST_METHOD'] = 'POST';
+    $_POST = ['decision' => 'approve', 'claim' => connect_uuid()];
+    ob_start();
+    qd_onboarding_emit();
+    $postPage = (string)ob_get_clean();
+    connect_expect($postPage === $page, 'browser POST data must not alter the informational page or approve a connection');
+    connect_expect(file_get_contents($pageSettings['pairingPath']) === $pairingBeforePagePost,
+        'POSTing the informational page must leave the guarded pairing file byte-for-byte unchanged');
+    connect_expect(qd_authenticate($pageSettings['pairingPath'], $pageSettings['webRoot'], 'Bearer ' . $pagePair['token'], $pageSettings['privateRoot'], $pageSettings['chimRoot'])['pairId'] === $pagePair['pairId'],
+        'The informational page POST must preserve the existing pair identity and authorization state');
 } finally {
-    if (session_status() === PHP_SESSION_ACTIVE) {
-        session_write_close();
-    }
-    session_save_path($oldSessionPath);
-    foreach ($oldEnv as $name => $value) {
-        putenv($value === false ? $name : $name . '=' . $value);
-    }
     $_SERVER = $oldServer;
     connect_remove_tree($pageFixture['root']);
 }

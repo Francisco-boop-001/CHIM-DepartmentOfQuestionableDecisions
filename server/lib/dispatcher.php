@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/protocol.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/journal.php';
+require_once __DIR__ . '/overlay_setup.php';
 
 const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose'];
 
@@ -43,14 +44,14 @@ function qd_access_for_scopes(array $scopes): array
     ];
 }
 
-function qd_runtime_readiness(array $dependencies): array
+function qd_runtime_readiness(array $dependencies, bool $includePcv = true): array
 {
     $callback = $dependencies['readiness'] ?? null;
     if (!is_callable($callback)) {
         return qd_false_capabilities();
     }
     try {
-        $raw = $callback();
+        $raw = $callback($includePcv);
     } catch (Throwable) {
         throw new QDServerFault('unavailable');
     }
@@ -65,6 +66,9 @@ function qd_runtime_readiness(array $dependencies): array
             }
             $result[$key] = $raw[$key];
         }
+    }
+    if (!$includePcv) {
+        $result['pcv'] = false;
     }
     return $result;
 }
@@ -356,20 +360,31 @@ function qd_bootstrap_response(object $request, ?string $authorizationHeader, ar
         ]);
     }
 
+    $pcvReadyAllowed = false;
+    if (in_array('pcv', $auth['scopes'], true)) {
+        try {
+            $overlay = qd_pcv_overlay_apply($settings);
+            $pcvReadyAllowed = in_array($overlay['state'] ?? null, ['enabled', 'already_enabled'], true);
+        } catch (Throwable) {
+            $pcvReadyAllowed = false;
+        }
+    }
+
     return qd_with_profile_lease($dependencies, static fn(): array => qd_bootstrap_authenticated_response(
         $request,
         $authorizationHeader,
         $settings,
         $dependencies,
         $auth,
+        $pcvReadyAllowed,
     ));
 }
 
-function qd_bootstrap_authenticated_response(object $request, ?string $authorizationHeader, array $settings, array $dependencies, array $auth): array
+function qd_bootstrap_authenticated_response(object $request, ?string $authorizationHeader, array $settings, array $dependencies, array $auth, bool $pcvReadyAllowed = true): array
 {
     $scopeKey = qd_authoritative_scope($dependencies, $auth['pairId']);
     $scopeHash = hash('sha256', $scopeKey);
-    $readiness = qd_runtime_readiness($dependencies);
+    $readiness = qd_runtime_readiness($dependencies, $pcvReadyAllowed);
     $access = qd_access_for_scopes($auth['scopes']);
     $context = qd_new_server_context();
     $data = [

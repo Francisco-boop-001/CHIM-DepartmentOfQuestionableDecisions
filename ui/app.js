@@ -7,13 +7,14 @@
   const MAX_CATALOG_ACTORS = 10000;
   const MAX_UNRESOLVED_LETTERS = 3;
   const CONNECTION_STATES = new Set(['pending', 'approved', 'expired']);
-  const CONNECTION_PENDING_COPY = 'Approve this game on your CHIM page, then check connection.';
-  const CONNECTION_PENDING_NO_PAGE_COPY = 'The connection is pending, but the CHIM approval page did not open. Try Connect to CHIM again or check connection.';
-  const CONNECTION_PENDING_STATUS_COPY = 'A CHIM approval is pending. Finish approval in CHIM, then check connection again.';
-  const CONNECTION_EXPIRED_COPY = 'The CHIM approval request expired. Start a new connection to try again.';
-  const CONNECTION_FAILURE_COPY = 'The CHIM connection could not be confirmed. Try Connect to CHIM again, or check connection if a request may still be pending.';
-  const CONNECTION_STARTUP_COPY = 'Starting a CHIM connection request.';
-  const CONNECTION_CHECKING_COPY = 'Checking the CHIM connection.';
+  const CONNECTION_SETUP_COPY = 'Setting up the connection with CHIM.';
+  const CONNECTION_FAILURE_COPY = 'CHIM connection could not be confirmed. Retry connection to try again.';
+  const CONNECTION_TIMEOUT_COPY = 'CHIM connection setup timed out. Retry connection to try again.';
+  const CONNECTION_SLOW_COPY = 'Connection is taking longer than expected.';
+  const CONNECTION_EXPIRED_COPY = 'The CHIM connection request expired. Retry connection to try again.';
+  const CONNECTION_UNAUTHENTICATED_COPY = 'CHIM did not confirm the connection. Retry connection to try again.';
+  const CONNECTION_MAX_POLLS = 12;
+  const CONNECTION_POLL_INTERVAL_MS = 1000;
   const OPS = new Set([
     'bootstrap', 'view.close', 'connection.begin', 'connection.status', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
@@ -34,7 +35,7 @@
     'correspondence.compose': 'compose', 'correspondence.reconcile': 'compose',
   };
   const ERROR_COPY = {
-    AUTH_REQUIRED: 'Authentication is required. Pair an authorized operator session to continue.',
+    AUTH_REQUIRED: 'This CHIM connection is not authorized.',
     FORBIDDEN: 'This session does not have permission for this action.',
     CONTEXT_STALE: 'The game context changed. Refresh this view before continuing.',
     STALE_REVISION: 'The saved state changed. Refresh and review it before trying again.',
@@ -48,7 +49,7 @@
     CONNECTION_SECURE_STORAGE_FAILED: 'Windows could not save this game’s connection. Connection was not started.',
   };
   const BOOTSTRAP_TIMEOUT_COPY = 'The bootstrap request timed out. No automatic retry was made.';
-  const BOOTSTRAP_FAILURE_NEXT_STEP = 'Check the Department server plugin and connection, then reopen this view.';
+  const BOOTSTRAP_FAILURE_NEXT_STEP = 'Select Retry connection to try again.';
   const BOUNDARY_ERROR = {
     unauthorized: 'AUTH_REQUIRED', forbidden: 'FORBIDDEN', stale_context: 'CONTEXT_STALE',
     stale_revision: 'STALE_REVISION', actor_unavailable: 'ACTOR_UNAVAILABLE', invalid_input: 'INVALID_INPUT',
@@ -57,7 +58,11 @@
   };
 
   function createConnectionState() {
-    return { busy: false, pending: false, ambiguous: false, approvalOpened: false, expired: false, failureCode: null, message: null };
+    return {
+      busy: false, pending: false, pollTimer: null, pollCount: 0, autoStarted: false,
+      retryAvailable: false, awaitingBootstrap: false, retryBootstrap: false,
+      failureCode: null, message: null,
+    };
   }
 
   const $ = (id) => document.getElementById(id);
@@ -227,11 +232,8 @@
   }
   function validConnectionReply(operation, data) {
     if (!isPlainObject(data) || !CONNECTION_STATES.has(data.state)) return false;
-    const expectedKeys = operation === 'connection.begin' ? ['state', 'approvalOpened'] : ['state'];
-    if (Object.keys(data).length !== expectedKeys.length || Object.keys(data).some((key) => !expectedKeys.includes(key))) return false;
-    if (operation === 'connection.begin'
-      && (typeof data.approvalOpened !== 'boolean' || (data.state !== 'pending' && data.approvalOpened !== false))) return false;
-    return true;
+    return Object.keys(data).length === 1 && Object.keys(data)[0] === 'state'
+      && ['connection.begin', 'connection.status'].includes(operation);
   }
   function roleAllows(operation) {
     if (operation === 'bootstrap' || operation === 'view.close') return true;
@@ -262,6 +264,7 @@
         const error = failLocal('UNAVAILABLE', operation === 'bootstrap'
           ? BOOTSTRAP_TIMEOUT_COPY : 'The request timed out. No automatic retry was made.');
         if (operation === 'bootstrap') error.bootstrapTimeout = true;
+        error.timedOut = true;
         error.dispatched = true;
         reject(error);
       }, 20000);
@@ -279,6 +282,10 @@
     });
   }
   function clearPending(reason = 'The game view changed.') {
+    if (state.connection.pollTimer !== null) {
+      window.clearTimeout(state.connection.pollTimer);
+      state.connection.pollTimer = null;
+    }
     for (const [id, item] of state.pending) {
       window.clearTimeout(item.timer);
       item.reject(failLocal('VIEW_INVALIDATED', reason));
@@ -351,12 +358,22 @@
         const code = BOUNDARY_ERROR[response.error.code] || 'UNAVAILABLE';
         pending.reject(failLocal(code));
         state.bootstrapping = false;
+        state.bootstrapFailure = { message: localError({ code }) };
+        if (state.connection.awaitingBootstrap || state.connection.retryBootstrap) {
+          state.connection.awaitingBootstrap = false;
+          state.connection.retryBootstrap = false;
+          state.connection.retryAvailable = true;
+          state.connection.failureCode = 'UNCONFIRMED';
+          state.connection.message = CONNECTION_FAILURE_COPY;
+        }
         clearAuthorization(code);
-        setStatus('connection-status', localError({ code }), 'error');
+        renderBootstrap();
         return true;
       }
       const bootstrap = validateBootstrapData(response.data, context);
       if (response.ok !== true || !bootstrap || state.bootstrapping !== true || state.serverContext !== null) return false;
+      const wasApprovedBootstrap = state.connection.awaitingBootstrap;
+      const wasRetryBootstrap = state.connection.retryBootstrap;
       state.pending.delete(response.requestId);
       window.clearTimeout(pending.timer);
       if (state.lastAuthenticatedScopeToken && bootstrap.authenticated && state.lastAuthenticatedScopeToken !== bootstrap.scopeToken) {
@@ -382,7 +399,19 @@
         $('letter-body').value = state.mail.operationDraft.body;
         updateLetterCount();
       }
-      renderBootstrap();
+      if (state.authenticated) {
+        state.connection = createConnectionState();
+        renderBootstrap();
+      } else if (wasApprovedBootstrap) {
+        stopConnectionFailure(CONNECTION_UNAUTHENTICATED_COPY, 'UNCONFIRMED');
+      } else if (wasRetryBootstrap) {
+        state.connection.retryBootstrap = false;
+        startConnectionBegin();
+      } else if (!state.connection.autoStarted) {
+        startConnectionBegin();
+      } else {
+        renderBootstrap();
+      }
       if (state.authenticated && state.pcv.sendUnknownId) requestPcvSendStatus(state.pcv.sendUnknownId);
       return true;
     }
@@ -412,6 +441,13 @@
     return true;
   }
   function clearAuthorization(code = 'AUTH_REQUIRED') {
+    const wasAuthenticated = state.authenticated;
+    if (wasAuthenticated && ['AUTH_REQUIRED', 'FORBIDDEN', 'CONTEXT_STALE'].includes(code)) {
+      state.connection.retryAvailable = true;
+      state.connection.retryBootstrap = true;
+      state.connection.failureCode = 'UNCONFIRMED';
+      state.connection.message = 'CHIM connection must be refreshed. Retry connection to continue.';
+    }
     state.authenticated = false;
     state.authRequired = true;
     state.serverContext = null;
@@ -511,16 +547,67 @@
     renderBootstrap();
     request('bootstrap', {}).catch((error) => {
       if (isStale(error) || !isCurrentView(viewToken, nativeGeneration)) return;
+      const connectionBootstrap = state.connection.awaitingBootstrap || state.connection.retryBootstrap;
       state.bootstrapping = false;
-      state.bootstrapFailure = error.code === 'AUTH_REQUIRED' ? null : {
-        message: error.bootstrapTimeout ? BOOTSTRAP_TIMEOUT_COPY : localError(error),
-      };
+      state.bootstrapFailure = { message: error.bootstrapTimeout ? BOOTSTRAP_TIMEOUT_COPY : localError(error) };
+      if (connectionBootstrap) {
+        state.connection.awaitingBootstrap = false;
+        state.connection.retryBootstrap = false;
+        state.connection.retryAvailable = true;
+        state.connection.failureCode = 'UNCONFIRMED';
+        state.connection.message = error.bootstrapTimeout ? CONNECTION_TIMEOUT_COPY : CONNECTION_FAILURE_COPY;
+      }
       renderBootstrap();
     });
   }
 
-  function connectionFailure(error) {
+  function clearConnectionPoll() {
+    if (state.connection.pollTimer !== null) {
+      window.clearTimeout(state.connection.pollTimer);
+      state.connection.pollTimer = null;
+    }
+  }
+
+  function stopConnectionFailure(message, code = 'UNCONFIRMED') {
+    clearConnectionPoll();
+    state.connection.busy = false;
+    state.connection.pending = false;
+    state.connection.awaitingBootstrap = false;
+    state.connection.retryBootstrap = false;
+    state.connection.retryAvailable = true;
+    state.connection.failureCode = code;
+    state.connection.message = message;
+    renderBootstrap();
+  }
+
+  function scheduleConnectionPoll() {
+    clearConnectionPoll();
+    if (!state.connection.pending || state.connection.pollCount >= CONNECTION_MAX_POLLS) {
+      stopConnectionFailure(CONNECTION_SLOW_COPY, 'SLOW');
+      return;
+    }
+    state.connection.pollTimer = window.setTimeout(() => {
+      state.connection.pollTimer = null;
+      if (!state.connection.pending || !state.initialized || state.closed || state.closing || state.authenticated) return;
+      connectionOperation('connection.status');
+    }, CONNECTION_POLL_INTERVAL_MS);
+  }
+
+  function connectionApproved() {
+    clearConnectionPoll();
+    state.connection.busy = false;
+    state.connection.pending = false;
+    state.connection.awaitingBootstrap = true;
+    state.connection.retryAvailable = false;
+    state.connection.failureCode = null;
+    state.connection.message = CONNECTION_SETUP_COPY;
+    state.bootstrapFailure = null;
+    startBootstrap();
+  }
+
+  function connectionErrorMessage(error) {
     if (error && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code)) return localError(error);
+    if (error && error.timedOut) return CONNECTION_TIMEOUT_COPY;
     return CONNECTION_FAILURE_COPY;
   }
 
@@ -529,65 +616,72 @@
     const viewToken = state.viewToken;
     const nativeGeneration = state.nativeGeneration;
     state.connection.busy = true;
-    if (operation === 'connection.begin') {
-      state.connection.pending = false;
-      state.connection.ambiguous = true;
-      state.connection.approvalOpened = false;
-      state.connection.message = CONNECTION_STARTUP_COPY;
-    } else {
-      state.connection.message = CONNECTION_CHECKING_COPY;
-    }
-    state.connection.expired = false;
+    state.connection.pending = operation === 'connection.status';
+    state.connection.message = CONNECTION_SETUP_COPY;
     state.connection.failureCode = null;
     renderBootstrap();
     request(operation, {}).then((data) => {
       if (!isCurrentView(viewToken, nativeGeneration)) return;
       state.connection.busy = false;
       if (!validConnectionReply(operation, data)) {
-        state.connection.pending = false;
-        state.connection.ambiguous = true;
-        state.connection.approvalOpened = false;
-        state.connection.expired = false;
-        state.connection.failureCode = 'UNCONFIRMED';
-        state.connection.message = CONNECTION_FAILURE_COPY;
-        renderBootstrap();
+        stopConnectionFailure(CONNECTION_FAILURE_COPY);
         return;
       }
       if (data.state === 'approved') {
-        state.connection = createConnectionState();
-        startBootstrap();
+        connectionApproved();
         return;
       }
       if (data.state === 'expired') {
-        state.connection.pending = false;
-        state.connection.ambiguous = false;
-        state.connection.approvalOpened = false;
-        state.connection.expired = true;
-        state.connection.failureCode = null;
-        state.connection.message = CONNECTION_EXPIRED_COPY;
-      } else {
-        if (operation === 'connection.begin') state.connection.approvalOpened = data.approvalOpened;
-        state.connection.pending = true;
-        state.connection.ambiguous = false;
-        state.connection.expired = false;
-        state.connection.failureCode = null;
-        state.connection.message = state.connection.approvalOpened
-          ? CONNECTION_PENDING_COPY
-          : operation === 'connection.begin' ? CONNECTION_PENDING_NO_PAGE_COPY : CONNECTION_PENDING_STATUS_COPY;
+        stopConnectionFailure(CONNECTION_EXPIRED_COPY, 'EXPIRED');
+        return;
       }
-      renderBootstrap();
+      state.connection.pending = true;
+      if (operation === 'connection.status') state.connection.pollCount += 1;
+      state.connection.message = CONNECTION_SETUP_COPY;
+      if (state.connection.pollCount >= CONNECTION_MAX_POLLS) {
+        stopConnectionFailure(CONNECTION_SLOW_COPY, 'SLOW');
+      } else {
+        renderBootstrap();
+        scheduleConnectionPoll();
+      }
     }).catch((error) => {
       if (isStale(error) || !isCurrentView(viewToken, nativeGeneration)) return;
-      state.connection.busy = false;
-      state.connection.pending = false;
-      state.connection.approvalOpened = false;
-      state.connection.ambiguous = !(error && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code));
-      state.connection.expired = false;
-      state.connection.failureCode = error && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code)
-        ? error.code : 'UNCONFIRMED';
-      state.connection.message = connectionFailure(error);
-      renderBootstrap();
+      if (operation === 'connection.begin' && error && error.dispatched === true
+        && !['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code)) {
+        state.connection.busy = false;
+        state.connection.pending = true;
+        state.connection.pollCount = 0;
+        state.connection.message = CONNECTION_SETUP_COPY;
+        renderBootstrap();
+        scheduleConnectionPoll();
+        return;
+      }
+      stopConnectionFailure(connectionErrorMessage(error), error && error.code
+        && ['CONNECTION_SETUP_REQUIRED', 'CONNECTION_SECURE_STORAGE_FAILED'].includes(error.code) ? error.code : 'UNCONFIRMED');
     });
+  }
+
+  function startConnectionBegin() {
+    if (!state.initialized || state.closed || state.closing || state.authenticated || state.bootstrapping || state.connection.busy) return;
+    clearConnectionPoll();
+    state.connection.autoStarted = true;
+    state.connection.retryAvailable = false;
+    state.connection.retryBootstrap = false;
+    state.connection.awaitingBootstrap = false;
+    state.connection.pollCount = 0;
+    connectionOperation('connection.begin');
+  }
+
+  function retryConnection() {
+    if (!state.initialized || state.closed || state.closing || state.authenticated || state.bootstrapping || state.connection.busy) return;
+    if (state.bootstrapFailure || state.connection.retryBootstrap) {
+      state.connection.retryBootstrap = true;
+      state.connection.retryAvailable = false;
+      state.bootstrapFailure = null;
+      startBootstrap();
+      return;
+    }
+    startConnectionBegin();
   }
 
   window.departmentInitialize = (raw) => {
@@ -658,55 +752,54 @@
   };
 
   function renderConnectionControls(connected) {
-    const available = connected && !state.bootstrapping && !state.authenticated;
+    const available = connected && !state.bootstrapping && !state.authenticated
+      && (state.connection.retryAvailable || Boolean(state.bootstrapFailure));
     $('connection-actions').hidden = !available;
-    $('connect-chim').disabled = !available || state.connection.busy;
-    $('check-connection').hidden = !(state.connection.pending || state.connection.ambiguous);
-    $('check-connection').disabled = !available || state.connection.busy;
-    const guidance = state.connection.pending && !state.connection.approvalOpened ? state.connection.message : '';
-    text('connection-guidance', guidance);
-    $('connection-guidance').hidden = !guidance;
+    $('retry-connection').disabled = !available || state.connection.busy;
   }
 
   function renderBootstrap() {
     const connected = state.initialized && !state.closed;
     $('close-view').disabled = !connected;
     if (!connected) {
-      setStatus('connection-status', 'Waiting for game connection', 'waiting');
-      setStatus('permission-status', 'Private records remain unavailable until an authorized session is paired.');
+      setStatus('connection-status', 'Waiting for CHIM connection', 'waiting');
+      setStatus('permission-status', 'This game connects automatically when CHIM is available.');
     } else if (state.bootstrapping) {
-      setStatus('connection-status', 'Checking authorized session', 'waiting');
-      setStatus('permission-status', 'No private data is loaded until bootstrap confirms the current scope.');
+      setStatus('connection-status', 'Connecting to CHIM', 'waiting');
+      setStatus('permission-status', 'Private data loads after CHIM confirms the connection.');
     } else if (state.bootstrapFailure) {
       setStatus('connection-status', state.bootstrapFailure.message, 'error');
       setStatus('permission-status', BOOTSTRAP_FAILURE_NEXT_STEP, 'error');
     } else if (!state.authenticated && state.connection.pending) {
-      setStatus('connection-status', 'Waiting for connection approval', 'waiting');
-      setStatus('permission-status', CONNECTION_PENDING_COPY, 'waiting');
+      setStatus('connection-status', 'Connecting to CHIM', 'waiting');
+      setStatus('permission-status', CONNECTION_SETUP_COPY, 'waiting');
     } else if (!state.authenticated && state.connection.failureCode === 'CONNECTION_SETUP_REQUIRED') {
       setStatus('connection-status', 'Connection could not be started', 'error');
       setStatus('permission-status', state.connection.message, 'error');
     } else if (!state.authenticated && state.connection.failureCode === 'CONNECTION_SECURE_STORAGE_FAILED') {
       setStatus('connection-status', 'Connection could not be started', 'error');
       setStatus('permission-status', state.connection.message, 'error');
-    } else if (!state.authenticated && state.connection.expired) {
+    } else if (!state.authenticated && state.connection.failureCode === 'EXPIRED') {
       setStatus('connection-status', 'Connection request expired', 'error');
       setStatus('permission-status', state.connection.message, 'error');
+    } else if (!state.authenticated && state.connection.failureCode === 'SLOW') {
+      setStatus('connection-status', CONNECTION_SLOW_COPY, 'error');
+      setStatus('permission-status', CONNECTION_FAILURE_COPY, 'error');
     } else if (!state.authenticated && state.connection.failureCode) {
       setStatus('connection-status', 'Connection could not be confirmed', 'error');
       setStatus('permission-status', state.connection.message, 'error');
     } else if (!state.authenticated && state.connection.busy) {
-      setStatus('connection-status', state.connection.message === CONNECTION_CHECKING_COPY ? 'Checking CHIM connection' : 'Connecting to CHIM', 'waiting');
-      setStatus('permission-status', state.connection.message, 'waiting');
+      setStatus('connection-status', 'Connecting to CHIM', 'waiting');
+      setStatus('permission-status', CONNECTION_SETUP_COPY, 'waiting');
     } else if (!state.authenticated) {
       setStatus('connection-status', 'Not connected to CHIM', 'waiting');
-      setStatus('permission-status', 'Connect this game to use the installed plugins.');
+      setStatus('permission-status', 'CHIM connection starts automatically.');
     } else {
-      setStatus('connection-status', 'Authorized session connected', 'ready');
+      setStatus('connection-status', 'Connected to CHIM', 'ready');
       setStatus('permission-status', state.access.inspector ? 'Out-of-character Inspector access is authorized.' : 'Inspector access is unavailable for this session.');
     }
     renderConnectionControls(connected);
-    text('scope-footer', state.authenticated ? 'Authorized session connected; private data stays out of dialogue.' : 'No authorized session.');
+    text('scope-footer', state.authenticated ? 'Connected to CHIM; private data stays out of dialogue.' : 'Not connected to CHIM.');
     renderPcvAccess();
     renderMpChoices();
     renderSasChoices();
@@ -999,7 +1092,7 @@
     const canPick = mode === 'free' || (mode === 'solo' ? Boolean($('actor-a').value) : Boolean($('actor-a').value && $('actor-b').value));
     $('pcv-arm').disabled = !authorized || !rosterReady || !statusReady || !distinct || !canPick || state.pcv.mutationPending || state.pcv.mutationUnknown;
     if (!state.authenticated) {
-      setStatus('pcv-state', 'Connect to CHIM to choose a cast and arm a conversation.', 'error');
+      setStatus('pcv-state', 'Private Conversation becomes available after CHIM connects.', 'waiting');
     } else if (!authorized) {
       setStatus('pcv-state', 'An authenticated PCV permission is required for this control.', 'error');
     } else if (!rosterReady) {
@@ -2271,8 +2364,7 @@
     const mailTabs = [$('mail-compose-tab'), $('mailbox-tab')];
     mailTabs.forEach((tab, index) => tab.addEventListener('keydown', (event) => handleTabKeydown(event, mailTabs, index, (next) => setMailView(next === 0 ? 'compose' : 'mailbox', true))));
     $('close-view').addEventListener('click', closeView);
-    $('connect-chim').addEventListener('click', () => connectionOperation('connection.begin'));
-    $('check-connection').addEventListener('click', () => connectionOperation('connection.status'));
+    $('retry-connection').addEventListener('click', retryConnection);
     $('pcv-refresh').addEventListener('click', () => invoke(readPcv, 'pcv-state'));
     $('pcv-refresh-send').addEventListener('click', () => invoke(
       state.pcv.sendUnknownId ? () => requestPcvSendStatus(state.pcv.sendUnknownId) : readPcv,

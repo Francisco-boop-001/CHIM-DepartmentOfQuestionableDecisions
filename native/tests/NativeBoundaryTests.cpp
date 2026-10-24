@@ -119,6 +119,8 @@ namespace
 		CHECK(connectionHandler.find("ClearCompanionOperations") == std::string_view::npos);
 		CHECK(connectionHandler.find("BeginPcvSend") == std::string_view::npos);
 		CHECK(connectionHandler.find("DispatchStaticCall") == std::string_view::npos);
+		CHECK(source.find("BuildApprovalUrl") == std::string_view::npos);
+		CHECK(source.find("ShellExecuteW") == std::string_view::npos);
 		const auto connectionCompletionStart = source.find("void OnConnectionCompletion(");
 		const auto connectionCompletionEnd = source.find("bool SubmitServerRequest(", connectionCompletionStart);
 		CHECK(connectionCompletionStart != std::string::npos && connectionCompletionEnd != std::string::npos);
@@ -126,7 +128,14 @@ namespace
 			connectionCompletionEnd - connectionCompletionStart);
 		CHECK(connectionCompletion.find("companionOperations_") == std::string_view::npos);
 		CHECK(connectionCompletion.find("BeginPcvSend") == std::string_view::npos);
-		CHECK(connectionCompletion.find("DispatchStaticCall") == std::string_view::npos);
+		CHECK(connectionCompletion.find("NativeDestinationMatches() && vm->impl->DispatchStaticCall") != std::string_view::npos);
+		CHECK(connectionCompletion.find("dql::connection::MakeClaimEvent(context.claimId, *tokenHash)") != std::string_view::npos);
+		CHECK(connectionCompletion.find("RE::BSFixedString(\"AIAgentFunctions\")") != std::string_view::npos);
+		CHECK(connectionCompletion.find("RE::BSFixedString(\"logMessage\")") != std::string_view::npos);
+		CHECK(connectionCompletion.find("RE::BSFixedString(event->type)") != std::string_view::npos);
+		CHECK(connectionCompletion.find("{ { \"state\", \"pending\" } }") != std::string_view::npos);
+		CHECK(connectionCompletion.find("approvalOpened") == std::string_view::npos);
+		CHECK(connectionCompletion.find("approvalPath") == std::string_view::npos);
 		CHECK(ContainsBetween(source, "if (request.operation == \"connection.begin\")",
 			"if (!request.serverContext", "HandleConnectionOperation(request, dql::connection::Action::begin)"));
 		CHECK(ContainsBetween(source, "if (request.operation == \"connection.status\")",

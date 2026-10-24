@@ -20,14 +20,12 @@
     </header>
 
     <div class="connection-line">
-      <span id="connection-status" class="state-mark" data-state="waiting">Waiting for game connection</span>
-      <span id="permission-status" class="subtle">Private records remain unavailable until an authorized session is paired.</span>
+      <span id="connection-status" class="state-mark" data-state="waiting">Waiting for CHIM connection</span>
+      <span id="permission-status" class="subtle">This game connects automatically when CHIM is available.</span>
     </div>
     <div id="connection-actions" class="connection-actions" hidden>
-      <span id="connection-guidance" class="subtle connection-guidance" role="status" aria-live="polite"></span>
       <div class="button-row connection-buttons">
-        <button id="connect-chim" class="button" type="button">Connect to CHIM</button>
-        <button id="check-connection" class="button secondary" type="button" hidden>Check connection</button>
+        <button id="retry-connection" class="button secondary" type="button">Retry connection</button>
       </div>
     </div>
 
@@ -43,7 +41,7 @@
         <div><p class="eyebrow">PRIVATE CONVERSATION</p><h2>Set the next conversation</h2><p>Pending settings activate on the first accepted eligible CHIM turn. Arm only stages the scene; Active appears only after PCV status confirms it.</p></div>
         <button id="pcv-refresh" class="button secondary" type="button">Refresh cast and status</button>
       </header>
-      <p id="pcv-state" class="state-line" role="status" aria-live="polite">Waiting for an authorized game connection.</p>
+      <p id="pcv-state" class="state-line" role="status" aria-live="polite">Private Conversation becomes available after CHIM connects.</p>
       <div class="pcv-summary">
         <div><span class="field-label">Current state</span><strong id="pcv-current">Unknown</strong><small id="pcv-current-detail">No owner status has been read.</small></div>
         <div><span class="field-label">Next eligible input</span><strong id="pcv-pending">Unknown</strong><small id="pcv-pending-detail">Queued settings are shown separately from an active scene.</small></div>
