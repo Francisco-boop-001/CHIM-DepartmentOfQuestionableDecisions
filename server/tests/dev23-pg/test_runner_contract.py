@@ -108,6 +108,23 @@ class Dev23RunnerContractTests(unittest.TestCase):
         self.assertIn("failedRunArtifactsPreserved", source)
         self.assertNotIn('rm -rf -- "$SCRATCH"', source)
 
+    def test_scenario_runtime_root_matches_the_artifact_directory_contract(self) -> None:
+        linux = (RUNNER / "run-dev23-owner-facade.sh").read_text(encoding="utf-8")
+        scenarios = (RUNNER / "pg_scenarios.php").read_text(encoding="utf-8")
+        self.assertIn('readonly RUNTIME_ROOT=', linux)
+        self.assertIn('--runtime-root "$RUNTIME_ROOT"', linux)
+        self.assertNotIn('--runtime-root "$SCRIPT_DIR"', linux)
+        self.assertIn("realpath($ctx['runtimeRoot'] . DIRECTORY_SEPARATOR . 'runs' . DIRECTORY_SEPARATOR . $runId)", scenarios)
+
+    def test_preflight_failure_detail_is_bounded_and_path_redacted(self) -> None:
+        scenarios = (RUNNER / "pg_scenarios.php").read_text(encoding="utf-8")
+        self.assertIn("function dev20_safe_failure_detail(Throwable $error): string", scenarios)
+        self.assertIn("preg_match('/\\\\A[a-z][a-z0-9_]{0,63}\\\\z/iD', $message)", scenarios)
+        self.assertIn("return 'detail_unavailable';", scenarios)
+        self.assertIn("dev20_safe_failure_detail(new RuntimeException('artifact_directory_run_mismatch'))", scenarios)
+        self.assertIn("dev20_safe_failure_detail(new RuntimeException('/mnt/private/source/path'))", scenarios)
+        self.assertIn("dev20_fail($kind . '_' . dev20_safe_failure_detail($error));", scenarios)
+
     def test_coverage_and_owner_pins_match_the_frozen_dev23_sources(self) -> None:
         coverage_path = RUNNER / "coverage.json"
         self.assertTrue(coverage_path.is_file(), "coverage manifest is required")

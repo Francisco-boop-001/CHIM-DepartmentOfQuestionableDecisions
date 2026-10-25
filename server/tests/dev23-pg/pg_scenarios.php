@@ -21,6 +21,13 @@ function dev20_fail(string $code): never
     exit(2);
 }
 
+function dev20_safe_failure_detail(Throwable $error): string
+{
+    $message = $error->getMessage();
+    if (preg_match('/\\A[a-z][a-z0-9_]{0,63}\\z/iD', $message) !== 1) return 'detail_unavailable';
+    return strtolower($message);
+}
+
 function dev20_json_write(string $path, array $data): void
 {
     $json = json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT | JSON_THROW_ON_ERROR);
@@ -535,6 +542,10 @@ function dev20_persist_process_output_files(string $directory, array $result): v
 function dev20_process_group_self_test(): array
 {
     if (PHP_OS_FAMILY !== 'Linux') throw new RuntimeException('process_group_self_test_linux_required');
+    dev20_require(dev20_safe_failure_detail(new RuntimeException('artifact_directory_run_mismatch')) === 'artifact_directory_run_mismatch',
+        'safe_preflight_detail_not_retained');
+    dev20_require(dev20_safe_failure_detail(new RuntimeException('/mnt/private/source/path')) === 'detail_unavailable',
+        'unsafe_preflight_detail_was_not_redacted');
     $directory = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'dev20-process-group-' . bin2hex(random_bytes(8));
     if (file_exists($directory) || is_link($directory) || !@mkdir($directory, 0700)) throw new RuntimeException('process_group_self_test_directory_failed');
     $childScript = $directory . DIRECTORY_SEPARATOR . 'child.php';
@@ -1305,7 +1316,10 @@ try {
     $ctx['pins'] = $pinHashes;
     $ctx['appPidEvidence'] = [];
 } catch (Throwable $error) {
-    dev20_fail($error instanceof InvalidArgumentException ? 'input_' . preg_replace('/[^a-z0-9_]+/i', '_', $error->getMessage()) : 'preflight_' . strtolower((new ReflectionClass($error))->getShortName()));
+    $kind = $error instanceof InvalidArgumentException
+        ? 'input'
+        : 'preflight_' . strtolower((new ReflectionClass($error))->getShortName());
+    dev20_fail($kind . '_' . dev20_safe_failure_detail($error));
 }
 
 $overallPassed = true;

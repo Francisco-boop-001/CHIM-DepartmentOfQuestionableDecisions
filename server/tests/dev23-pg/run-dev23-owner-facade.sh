@@ -700,7 +700,7 @@ if (( CHECKS_FAILED == 0 )); then
         --server-root "$SERVER_ROOT" \
         --owner-root "$OWNER_SOURCE" \
         --test-root "$DRIVER_ROOT" \
-        --runtime-root "$SCRIPT_DIR" \
+        --runtime-root "$RUNTIME_ROOT" \
         --php "$PHP_BIN" \
         --pg-socket "$SOCKET_DIR" \
         --pg-host 127.0.0.1 \
