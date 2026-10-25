@@ -204,6 +204,29 @@ class Dev23RunnerContractTests(unittest.TestCase):
         self.assertIn("$selfNamespace === $initNamespace", source)
         self.assertIn("fixture_network_namespace_not_isolated", source)
 
+    def test_private_fixture_guard_uses_protected_initial_namespace_and_role_probes(self) -> None:
+        guard = (RUNNER / "fixture_guard.php").read_text(encoding="utf-8")
+        linux = (RUNNER / "run-dev23-owner-facade.sh").read_text(encoding="utf-8")
+        api = (RUNNER / "api_driver.php").read_text(encoding="utf-8")
+        self.assertIn("qd_dev23_is_network_namespace($selfNamespace)", guard)
+        self.assertIn("$effectiveUid === 0", guard)
+        self.assertIn("fixture_initial_network_namespace_unreadable", guard)
+        self.assertIn("$selfNamespace === $initNamespace", guard)
+        self.assertIn("'initialNetworkNamespace'", guard)
+        self.assertIn("$initNamespace !== $marker['initialNetworkNamespace']", guard)
+        self.assertIn("'initialNetworkNamespace' => $marker['initialNetworkNamespace']", guard)
+        self.assertIn('"initialNetworkNamespace": init_netns', linux)
+        self.assertIn('"$SELF_NET" "$INIT_NET"', linux)
+        self.assertIn("runuser -u www-data -- /usr/bin/env -i", linux)
+        self.assertIn('if "$NSENTER_BIN" --net=/proc/1/ns/net -- /usr/sbin/runuser -u www-data -- /usr/bin/env -i', linux)
+        self.assertIn('in_array($error->getMessage(), ["fixture_network_namespace_not_isolated", "fixture_marker_mismatch"], true)', linux)
+        self.assertIn("fixture_network_namespace_not_isolated", linux)
+        self.assertLess(linux.index("fixture-guard-www-data"), linux.index('runuser -u postgres -- "$INITDB" -D "$PGDATA"'))
+        self.assertLess(linux.index("fixture-guard-initial-namespace"), linux.index('runuser -u postgres -- "$INITDB" -D "$PGDATA"'))
+        self.assertIn("private_fixture_guard_refused_", api)
+        self.assertIn("$detail = 'detail_unavailable'", api)
+        self.assertNotIn("private_fixture_guard_refused'", api)
+
 
 if __name__ == "__main__":
     unittest.main()

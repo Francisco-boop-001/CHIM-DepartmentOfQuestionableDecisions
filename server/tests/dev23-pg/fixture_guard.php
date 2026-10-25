@@ -2,15 +2,30 @@
 declare(strict_types=1);
 
 /** Reject fixture invocations that could point at a host/live CHIM tree. */
+function qd_dev23_is_network_namespace(mixed $value): bool
+{
+    return is_string($value) && preg_match('/\Anet:\[[1-9][0-9]*\]\z/D', $value) === 1;
+}
+
 function qd_dev20_assert_private_fixture(): array
 {
     if (PHP_OS_FAMILY !== 'Linux') throw new RuntimeException('fixture_linux_only');
     $selfNamespace = @readlink('/proc/self/ns/net');
     $initNamespace = @readlink('/proc/1/ns/net');
-    if (!is_string($selfNamespace) || $selfNamespace === ''
-        || !is_string($initNamespace) || $initNamespace === ''
-        || $selfNamespace === $initNamespace) {
+    if (!qd_dev23_is_network_namespace($selfNamespace)) {
+        throw new RuntimeException('fixture_self_network_namespace_invalid');
+    }
+    $effectiveUid = function_exists('posix_geteuid') ? @posix_geteuid() : null;
+    if (!is_int($effectiveUid)) throw new RuntimeException('fixture_effective_uid_unavailable');
+    $initialNamespaceReadable = is_string($initNamespace) && $initNamespace !== '';
+    if ($initialNamespaceReadable && !qd_dev23_is_network_namespace($initNamespace)) {
+        throw new RuntimeException('fixture_initial_network_namespace_invalid');
+    }
+    if ($initialNamespaceReadable && $selfNamespace === $initNamespace) {
         throw new RuntimeException('fixture_network_namespace_not_isolated');
+    }
+    if (!$initialNamespaceReadable && $effectiveUid === 0) {
+        throw new RuntimeException('fixture_initial_network_namespace_unreadable');
     }
     $runId = getenv('QD_DEV20_RUN_ID');
     $scratchInput = getenv('QD_DEV20_SCRATCH_ROOT');
@@ -45,11 +60,16 @@ function qd_dev20_assert_private_fixture(): array
     $marker = is_string($raw) ? json_decode($raw, true, 8) : null;
     $markerKeys = is_array($marker) ? array_keys($marker) : [];
     sort($markerKeys, SORT_STRING);
-    if (!is_array($marker) || $markerKeys !== ['coreRoot', 'networkNamespace', 'runId', 'schema']
+    if (!is_array($marker) || $markerKeys !== ['coreRoot', 'initialNetworkNamespace', 'networkNamespace', 'runId', 'schema']
         || ($marker['schema'] ?? null) !== 'department.dev23.fixture.v1'
         || ($marker['runId'] ?? null) !== $runId || ($marker['coreRoot'] ?? null) !== $expectedCore
-        || ($marker['networkNamespace'] ?? null) !== $selfNamespace) {
+        || !qd_dev23_is_network_namespace($marker['networkNamespace'] ?? null)
+        || !qd_dev23_is_network_namespace($marker['initialNetworkNamespace'] ?? null)
+        || ($marker['networkNamespace'] ?? null) !== $selfNamespace
+        || ($marker['initialNetworkNamespace'] ?? null) === $selfNamespace
+        || ($initialNamespaceReadable && $initNamespace !== $marker['initialNetworkNamespace'])) {
         throw new RuntimeException('fixture_marker_mismatch');
     }
-    return ['runId' => $runId, 'scratchRoot' => $scratchRoot, 'coreRoot' => $expectedCore, 'networkNamespace' => $selfNamespace];
+    return ['runId' => $runId, 'scratchRoot' => $scratchRoot, 'coreRoot' => $expectedCore,
+        'networkNamespace' => $selfNamespace, 'initialNetworkNamespace' => $marker['initialNetworkNamespace']];
 }

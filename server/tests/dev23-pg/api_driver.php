@@ -159,8 +159,10 @@ function qd_dev20_lease_still_held(string $path): bool
 require_once __DIR__ . DIRECTORY_SEPARATOR . 'fixture_guard.php';
 try {
     $fixtureIdentity = qd_dev20_assert_private_fixture();
-} catch (Throwable) {
-    qd_dev20_fail('private_fixture_guard_refused');
+} catch (Throwable $error) {
+    $detail = $error->getMessage();
+    if (preg_match('/\A[a-z][a-z0-9_]{0,63}\z/iD', $detail) !== 1) $detail = 'detail_unavailable';
+    qd_dev20_fail('private_fixture_guard_refused_' . strtolower($detail));
 }
 
 $options = getopt('', ['fixture-root:']);

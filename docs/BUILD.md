@@ -4,6 +4,8 @@
 
 This candidate reuses the exact published prealpha.12 game binaries and embedded PCV and Brainwash packages. It changes the Department server package and the letter-state UI; do not rebuild the DLL for this update. The builder requires the four accepted pairing receipts from the isolated dev.23 run. See [the acceptance record](DEV23-COMPATIBILITY.md) for current status and proof limits.
 
+The archive builder checks package identity and receipt consistency. Publication additionally requires both owners' acceptance and the [Sealed Fates release preflight gate](https://github.com/Francisco-boop-001/CHIM-SealedFates/blob/29866b20925c4d1b3e0aa49b6014332dcc868e7f/scripts/release-preflight.py), including required coverage, case results, owned-database cleanup and the preserved-running TEST distro lifecycle. Building an archive does not replace those runtime checks.
+
 Run from the immutable release source, with a verified prealpha.12 MO2 ZIP, the accepted receipt directory, and a new output directory outside this checkout:
 
 ```powershell

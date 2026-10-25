@@ -36,6 +36,7 @@ PSQL_BIN=""
 PG_CTL=""
 INITDB=""
 PG_CONTROLDATA=""
+NSENTER_BIN=""
 PG_STARTED=0
 POSTMASTER_PID=""
 SYSTEM_IDENTIFIER=""
@@ -565,14 +566,15 @@ PY
 
 verify_and_stage_sources stage
 
-python3 - "$SCRATCH/fixture-marker.json" "$RUN_ID" "$CORE_ROOT" "$SELF_NET" <<'PY'
+python3 - "$SCRATCH/fixture-marker.json" "$RUN_ID" "$CORE_ROOT" "$SELF_NET" "$INIT_NET" <<'PY'
 import json, os, sys
-path, run_id, core_root, netns = sys.argv[1:]
+path, run_id, core_root, netns, init_netns = sys.argv[1:]
 value = {
     "schema": "department.dev23.fixture.v1",
     "runId": run_id,
     "coreRoot": core_root,
     "networkNamespace": netns,
+    "initialNetworkNamespace": init_netns,
 }
 fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
 with os.fdopen(fd, "w", encoding="utf-8") as stream:
@@ -600,8 +602,10 @@ PG_CTL="$PG_BINDIR/pg_ctl"
 PG_CONTROLDATA="$PG_BINDIR/pg_controldata"
 PHP_BIN="$(command -v php || true)"
 PSQL_BIN="$(command -v psql || true)"
+NSENTER_BIN="$(command -v nsenter || true)"
 [[ "$PHP_BIN" == /* && -x "$PHP_BIN" ]] || abort 'PHP CLI is unavailable.'
 [[ "$PSQL_BIN" == /* && -x "$PSQL_BIN" ]] || abort 'psql is unavailable.'
+[[ "$NSENTER_BIN" == /* && -x "$NSENTER_BIN" ]] || abort 'util-linux nsenter is unavailable for the fixed namespace guard probe.'
 [[ -x "$INITDB" && -x "$PG_CTL" && -x "$PG_CONTROLDATA" ]] || abort 'PostgreSQL 15 server utilities are unavailable.'
 [[ "$(runuser -u postgres -- "$INITDB" --version)" == *'15.'* ]] || abort 'Private fixture requires PostgreSQL 15.'
 command -v pg_isready >/dev/null 2>&1 || abort 'pg_isready is required.'
@@ -626,6 +630,26 @@ foreach ($required as $function) {
 }
 '; then
     abort 'PHP CLI must provide GD renderer functions: imagettfbbox, imagecreatefrompng, imagettftext, imagepng.'
+fi
+
+if runuser -u www-data -- /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/tmp LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC \
+    QD_CHIM_ROOT="$CORE_ROOT" QD_DEV20_RUN_ID="$RUN_ID" QD_DEV20_SCRATCH_ROOT="$SCRATCH" \
+    QD_DEV20_FIXTURE_MARKER="$SCRATCH/fixture-marker.json" \
+    "$PHP_BIN" -r 'require $argv[1]; $identity = qd_dev20_assert_private_fixture(); if (($identity["runId"] ?? null) !== getenv("QD_DEV20_RUN_ID")) exit(2); echo "private-fixture-guard-accepted";' \
+    "$DRIVER_ROOT/fixture_guard.php" >"$RUN_ROOT/fixture-guard-www-data.stdout.txt" 2>"$RUN_ROOT/fixture-guard-www-data.stderr.txt"; then
+    [[ "$(cat "$RUN_ROOT/fixture-guard-www-data.stdout.txt")" == 'private-fixture-guard-accepted' ]] || abort 'www-data fixture guard probe returned an unexpected result.'
+else
+    abort 'www-data fixture guard probe refused the protected private-namespace marker.'
+fi
+
+if "$NSENTER_BIN" --net=/proc/1/ns/net -- /usr/sbin/runuser -u www-data -- /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin HOME=/tmp LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC \
+    QD_CHIM_ROOT="$CORE_ROOT" QD_DEV20_RUN_ID="$RUN_ID" QD_DEV20_SCRATCH_ROOT="$SCRATCH" \
+    QD_DEV20_FIXTURE_MARKER="$SCRATCH/fixture-marker.json" \
+    "$PHP_BIN" -r 'require $argv[1]; try { qd_dev20_assert_private_fixture(); } catch (Throwable $error) { if (in_array($error->getMessage(), ["fixture_network_namespace_not_isolated", "fixture_marker_mismatch"], true)) { echo "initial-namespace-refused"; exit(0); } fwrite(STDERR, "unexpected-guard-refusal"); exit(2); } fwrite(STDERR, "initial-namespace-accepted"); exit(3);' \
+    "$DRIVER_ROOT/fixture_guard.php" >"$RUN_ROOT/fixture-guard-initial-namespace.stdout.txt" 2>"$RUN_ROOT/fixture-guard-initial-namespace.stderr.txt"; then
+    [[ "$(cat "$RUN_ROOT/fixture-guard-initial-namespace.stdout.txt")" == 'initial-namespace-refused' ]] || abort 'Initial network namespace fixture guard probe returned an unexpected result.'
+else
+    abort 'Initial network namespace fixture guard probe failed to prove early refusal.'
 fi
 
 "$INITDB" --version >"$RUN_ROOT/postgres-version.txt"
