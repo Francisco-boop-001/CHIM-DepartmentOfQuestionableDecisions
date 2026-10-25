@@ -524,12 +524,13 @@ function dev20_reap_process(array &$child, int $timeoutSeconds = 5): void
     }
 }
 
-function dev20_persist_process_output_files(string $directory, array $result): void
+function dev20_persist_process_output_files(string $directory, array $result, string $prefix = 'api'): void
 {
     if (is_link($directory) || !is_dir($directory) || realpath($directory) !== $directory) {
         throw new RuntimeException('process_output_directory_invalid');
     }
-    foreach (['api.stdout.jsonl' => 'stdout', 'api.stderr.log' => 'stderr'] as $name => $field) {
+    if (!in_array($prefix, ['api', 'controller'], true)) throw new InvalidArgumentException('process_output_prefix_invalid');
+    foreach ([$prefix . '.stdout.jsonl' => 'stdout', $prefix . '.stderr.log' => 'stderr'] as $name => $field) {
         $path = $directory . DIRECTORY_SEPARATOR . $name;
         if (is_link($path)) throw new RuntimeException('process_output_path_redirected');
         $bytes = $result[$field] ?? null;
@@ -537,6 +538,23 @@ function dev20_persist_process_output_files(string $directory, array $result): v
             throw new RuntimeException('process_output_persist_failed');
         }
     }
+}
+
+function dev20_persist_controller_process_outcome(string $directory, array $result, ?Throwable $finishFailure = null): void
+{
+    dev20_persist_process_output_files($directory, $result, 'controller');
+    $path = $directory . DIRECTORY_SEPARATOR . 'controller.exit.json';
+    if (is_link($path)) throw new RuntimeException('controller_outcome_path_redirected');
+    $exitCode = $result['exitCode'] ?? null;
+    if ($exitCode !== null && !is_int($exitCode)) $exitCode = null;
+    $timedOut = $result['timedOut'] ?? null;
+    if ($timedOut !== null && !is_bool($timedOut)) $timedOut = null;
+    dev20_json_write($path, [
+        'schema' => 'department.dev23.controller-process.v1',
+        'exitCode' => $exitCode,
+        'timedOut' => $timedOut,
+        'finishFailure' => $finishFailure === null ? null : dev20_safe_failure_detail($finishFailure),
+    ]);
 }
 
 function dev20_process_group_self_test(): array
@@ -2096,13 +2114,15 @@ $overallPassed = dev20_case_record($ctx, 'controller_pause_with_held_lease', sta
     $api = null;
     $controller = null;
     $controllerRelease = null;
+    $caseDirectory = null;
     try {
         $api = dev20_api_start($ctx, 'controller_pause_with_held_lease', 'correspondence.compose', dev20_compose_payload($id),
             ['operationRequestId' => $id, 'pauseAfterProfileLease' => true]);
+        $caseDirectory = $api['caseDir'];
         $marker = $api['fixtureRoot'] . DIRECTORY_SEPARATOR . 'control' . DIRECTORY_SEPARATOR . 'profile-lease-held';
         dev20_api_wait_marker($api, $marker);
         $controllerRelease = $api['caseDir'] . DIRECTORY_SEPARATOR . 'controller-release';
-        $controller = dev20_spawn_process([$ctx['php'], $ctx['runtimeRoot'] . DIRECTORY_SEPARATOR . 'controller_switch.php',
+        $controller = dev20_spawn_process([$ctx['php'], $ctx['testRoot'] . DIRECTORY_SEPARATOR . 'controller_switch.php',
             '--core-root', $ctx['coreRoot'], '--test-root', $ctx['testRoot'], '--artifact-dir', $ctx['artifactDir'],
             '--release-file', $controllerRelease, '--timeout', '120'], null,
             ['PATH' => '/usr/sbin:/usr/bin:/sbin:/bin', 'HOME' => '/tmp', 'LC_ALL' => 'C', 'TZ' => 'UTC',
@@ -2143,6 +2163,7 @@ $overallPassed = dev20_case_record($ctx, 'controller_pause_with_held_lease', sta
         }, 20);
         if (file_put_contents($controllerRelease, 'release' . PHP_EOL, LOCK_EX) === false) throw new RuntimeException('controller_release_write_failed');
         $controllerResult = dev20_finish_process($controller, 30);
+        dev20_persist_controller_process_outcome($caseDirectory, $controllerResult);
         $controller = null;
         dev20_require(($controllerResult['exitCode'] ?? null) === 0, 'controller_cleanup_failed');
         return ['pausedWhileSharedLeaseHeld' => true, 'exclusiveProbeBlocked' => true, 'requestExitCode' => $apiResult['exitCode'],
@@ -2155,7 +2176,25 @@ $overallPassed = dev20_case_record($ctx, 'controller_pause_with_held_lease', sta
         }
         if (is_array($controller)) {
             if (is_string($controllerRelease)) @file_put_contents($controllerRelease, 'release' . PHP_EOL, LOCK_EX);
-            dev20_reap_process($controller, 15);
+            $controllerFinishFailure = null;
+            try {
+                $controllerResult = dev20_finish_process($controller, 15);
+            } catch (Throwable $error) {
+                $controllerFinishFailure = $error;
+                dev20_drain_output($controller);
+                dev20_reap_process($controller, 5);
+                dev20_drain_output($controller);
+                $controllerResult = [
+                    'exitCode' => is_int($controller['exitCode'] ?? null) ? $controller['exitCode'] : null,
+                    'stdout' => is_string($controller['stdout'] ?? null) ? $controller['stdout'] : '',
+                    'stderr' => is_string($controller['stderr'] ?? null) ? $controller['stderr'] : '',
+                    'timedOut' => null,
+                ];
+            }
+            $controller = null;
+            if (is_string($caseDirectory)) {
+                dev20_persist_controller_process_outcome($caseDirectory, $controllerResult, $controllerFinishFailure);
+            }
         }
     }
 }, $admin) && $overallPassed;

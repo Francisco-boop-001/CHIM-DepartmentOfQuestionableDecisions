@@ -116,6 +116,21 @@ class Dev23RunnerContractTests(unittest.TestCase):
         self.assertNotIn('--runtime-root "$SCRIPT_DIR"', linux)
         self.assertIn("realpath($ctx['runtimeRoot'] . DIRECTORY_SEPARATOR . 'runs' . DIRECTORY_SEPARATOR . $runId)", scenarios)
 
+    def test_controller_helper_uses_test_root_and_persists_outcome_on_success_and_finally(self) -> None:
+        scenarios = (RUNNER / "pg_scenarios.php").read_text(encoding="utf-8")
+        case_start = scenarios.index("// Case 25: controller pauses while the request owns SH")
+        case_end = scenarios.index("// Case 26:", case_start)
+        case = scenarios[case_start:case_end]
+        self.assertIn("$ctx['testRoot'] . DIRECTORY_SEPARATOR . 'controller_switch.php'", case)
+        self.assertNotIn("$ctx['runtimeRoot'] . DIRECTORY_SEPARATOR . 'controller_switch.php'", scenarios)
+        self.assertIn("function dev20_persist_controller_process_outcome(", scenarios)
+        self.assertIn("dev20_persist_process_output_files($directory, $result, 'controller');", scenarios)
+        self.assertIn("'controller.exit.json'", scenarios)
+        self.assertIn("dev20_persist_controller_process_outcome($caseDirectory, $controllerResult);", case)
+        self.assertIn("dev20_persist_controller_process_outcome($caseDirectory, $controllerResult, $controllerFinishFailure);", case)
+        self.assertIn("'timedOut' => null", case)
+        self.assertIn("dev20_finish_process($controller, 15)", case)
+
     def test_preflight_failure_detail_is_bounded_and_path_redacted(self) -> None:
         scenarios = (RUNNER / "pg_scenarios.php").read_text(encoding="utf-8")
         self.assertIn("function dev20_safe_failure_detail(Throwable $error): string", scenarios)
