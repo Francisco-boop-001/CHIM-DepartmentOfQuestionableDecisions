@@ -1,18 +1,18 @@
-# Department install-and-use guide — prealpha.13
+# Department install-and-use guide — prealpha.14
 
 This PRE-ALPHA candidate adds a normal in-game connection flow. Use a disposable MO2 profile, save, and CHIM server until you have completed your own acceptance checks.
 
 ## Install the mod
 
-1. Install the single `WorldOfDramaLlama-0.1.0-prealpha.13.zip` in MO2 as an ordinary mod and enable it. Its archive root is the Skyrim Data layout: SKSE, PrismaUI, Scripts, SEQ, the Department ESP, notices, and CHIM server packages. Do not add another Data or Skyrim directory.
+1. Install the single `WorldOfDramaLlama-0.1.0-prealpha.14.zip` in MO2 as an ordinary mod and enable it. Its archive root is the Skyrim Data layout: SKSE, PrismaUI, Scripts, SEQ, the Department ESP, notices, and CHIM server packages. Do not add another Data or Skyrim directory.
 2. Meet the requirements: Skyrim SE/AE, matching SKSE64 and Address Library, PRISMA UI with its V1 API, SkyUI, CHIM, and the owner-plugin versions supported by the tabs you plan to use. Private Conversation is optional. VR is not supported. The masterless ESL-flagged ESP uses one light-plugin slot and no full-plugin slot.
 3. Load a save with CHIM enabled. CHIM's normal mod/plugin synchronization detects the three bundled schema-4 packages under CHIM/server-plugins and installs them on the server. Players do not unpack or copy those packages manually.
 
-The archive contains the Department DLL and view, its owned ESP/SEQ/Papyrus assets, seven license notices, and three server packages (Department, PCV companion and Malpractice) for CHIM's normal plugin synchronization. It does not contain AIAgent.dll, CHIM core files, or a complete Private Conversation plugin.
+The archive contains the Department DLL and view, its owned ESP/SEQ/Papyrus assets, seven license notices, and three server packages (Department, PCV companion and Malpractice) for CHIM's normal plugin synchronization. It does not contain AIAgent.dll, CHIM core files, or a complete Private Conversation plugin. Compared with prealpha.13, only the Department DLL and the `app.js` and `index.html` view members change; all server packages and other installable members are retained exactly. Source and startup provenance are separate developer archives; do not install them in MO2.
 
 ## Connect to CHIM
 
-After CHIM has synchronized the bundled server packages, open the Department UI in Skyrim. Native connection setup starts automatically and waits for CHIM confirmation in the background; there is no browser approval step. If the initial checks time out or CHIM is unavailable, choose **Retry connection** after confirming CHIM is running and has synchronized its plugins.
+After CHIM has synchronized the bundled server packages, open the Department UI in Skyrim. The local bridge initializes first; CHIM connection setup then starts automatically and waits for confirmation in the background. There is no browser approval step. If the UI reports **Companion bridge did not start**, reopen the game interface and check `WorldOfDramaLlama.log`; it records timestamps and plugin version and rotates at 1 MiB per file with three backups. If the bridge starts but CHIM setup cannot be confirmed, choose **Retry connection** after confirming CHIM is running and has synchronized its plugins.
 
 No Linux command, pairing-token copy, or manual INI entry is part of this flow. The shipped WorldOfDramaLlama.ini leaves Server.BaseUrl and Server.PairToken blank. The native mod creates a per-endpoint credential and stores it in Windows Credential Manager; the credential is reused across mod updates. It is never shown in the UI or approval URL.
 
@@ -34,17 +34,19 @@ The supported current owners are Private Conversation 0.1.23, Mind Poisoning 0.1
 
 Use a disposable save and confirm:
 
-1. The Department opens from its assigned key and shows Private Conversation, Mind Poisoning, Sworn & Scorned, Sealed Fates, and Malpractice Makes Perfect.
-2. After ordinary CHIM plugin synchronization, opening the Department starts connection setup; confirm the tabs load current data after authenticated bootstrap.
+1. The Department opens from its assigned key and shows Private Conversation, Mind Poisoning, Sworn & Scorned, Sealed Fates, and Malpractice Makes Perfect. The initial local status should say that the game interface is starting while it waits for the companion bridge.
+2. After ordinary CHIM plugin synchronization, opening the Department starts connection setup after local initialization; confirm the tabs load current data after authenticated bootstrap.
 3. If using Private Conversation, install its complete 0.1.23 owner plugin. Confirm the Department reports PCV ready after bootstrap. Disable the Department and confirm the owner's original input method still works.
 4. Send or mutate once. If the result becomes uncertain, use the relevant status or reconciliation control. Do not resend an uncertain operation or remove its state to clear a lock.
 5. Confirm final NPC routing, audio, item transfer, and save/load behavior directly in Skyrim. A consumed Private Conversation text token confirms acceptance at the PCV route only; it does not prove audible delivery.
 
-Native, synthetic server, and package tests are separate from server installation and Skyrim acceptance. See the [verification record](../docs/VERIFICATION.md), [state recovery policy](../docs/STATE-RECOVERY-POLICY.md), and [pairing record](../docs/PAIRING-CHECK.md) for exact evidence and remaining limits.
+Native, synthetic browser, and package tests are separate from server installation and Skyrim acceptance. Prealpha.14's server packages are unchanged from prealpha.13, so the earlier server evidence is reused without claiming a new server run. See the [verification record](../docs/VERIFICATION.md), [state recovery policy](../docs/STATE-RECOVERY-POLICY.md), and [pairing record](../docs/PAIRING-CHECK.md) for exact evidence and remaining limits.
 
 ## Updates and removal
 
 The CHIM updater replaces each extension folder, so mutable_paths is empty and Department operation state lives in CHIM's stable private data area. Keep that state when updating; never clear unresolved IDs or receipts to work around an error. The pairing credential remains in Windows Credential Manager across ordinary mod updates.
+
+Before replacing the Department DLL during an MO2 update, fully quit Skyrim. Start Skyrim again after installing the update; reopening the in-game menu does not reload the DLL.
 
 Disabling or removing the MO2 mod removes the local game files only. It does not remove server-installed packages, revoke the pairing, or undo the optional Private Conversation overlay. Ask the CHIM maintainer to remove the two Department packages and restore the saved PCV owner files before removing server setup. Do not delete CHIM core files or the complete owner plugin.
 

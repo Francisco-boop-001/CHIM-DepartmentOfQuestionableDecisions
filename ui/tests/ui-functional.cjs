@@ -349,7 +349,7 @@ async function main() {
       const duplicateInit = await page.evaluate((request) => window.departmentInitialize(JSON.stringify({
         version: 1, viewToken: request.context.viewToken, nativeGeneration: request.context.nativeGeneration, serverContext: null,
       })), firstBootstrap);
-      assert.equal(duplicateInit, false, 'the same live view cannot start another setup orchestration');
+      assert.equal(duplicateInit, true, 'the same live view acknowledges duplicate initialization without starting another setup orchestration');
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'connection.begin').length), 1);
 
       await respond(page, begin, { state: 'pending' });

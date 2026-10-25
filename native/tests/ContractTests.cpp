@@ -408,7 +408,7 @@ int main(int argc, char** argv)
 	CHECK(!dql::contract::ParseServerResponse(catalogWithCursor.dump(), *catalogRequest.envelope).value.has_value());
 	auto validCatalogKeyBoundaries = catalogResponse;
 	validCatalogKeyBoundaries["data"]["actors"][0]["actorKey"] = "npc:1234567890123456789";
-	validCatalogKeyBoundaries["data"]["actors"][0]["label"] = std::string(512, 'L');
+	validCatalogKeyBoundaries["data"]["actors"][0]["label"] = std::string(256, 'L');
 	CHECK(dql::contract::ParseServerResponse(validCatalogKeyBoundaries.dump(), *catalogRequest.envelope).value.has_value());
 	validCatalogKeyBoundaries["data"]["actors"][0]["actorKey"] = "player";
 	CHECK(dql::contract::ParseServerResponse(validCatalogKeyBoundaries.dump(), *catalogRequest.envelope).value.has_value());
@@ -422,7 +422,7 @@ int main(int argc, char** argv)
 	badCatalogActorKey["data"]["actors"][0]["actorKey"] = "npc:01";
 	CHECK(!dql::contract::ParseServerResponse(badCatalogActorKey.dump(), *catalogRequest.envelope).value.has_value());
 	auto badCatalogLabel = catalogResponse;
-	badCatalogLabel["data"]["actors"][0]["label"] = std::string(513, 'L');
+	badCatalogLabel["data"]["actors"][0]["label"] = std::string(257, 'L');
 	CHECK(!dql::contract::ParseServerResponse(badCatalogLabel.dump(), *catalogRequest.envelope).value.has_value());
 	auto tooManyCatalogActors = dql::contract::MakeResponse(*catalogRequest.envelope, MakeCatalogData(101));
 	CHECK(!dql::contract::ParseServerResponse(tooManyCatalogActors.dump(), *catalogRequest.envelope).value.has_value());

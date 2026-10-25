@@ -98,9 +98,9 @@ namespace dql::policy
 			return currentView != View{} && domReadyView_ == currentView;
 		}
 
-		[[nodiscard]] bool TryMarkSent(View currentView, bool viewReady, bool focused, bool hasToken) noexcept
+		[[nodiscard]] bool TryMarkSent(View currentView, bool viewReady, bool hasToken) noexcept
 		{
-			if (!IsCurrentDomReady(currentView) || !viewReady || !focused || !hasToken || initializeSent_) {
+			if (!IsCurrentDomReady(currentView) || !viewReady || !hasToken || initializeSent_) {
 				return false;
 			}
 			initializeSent_ = true;
@@ -111,6 +111,15 @@ namespace dql::policy
 		View domReadyView_{};
 		bool initializeSent_{};
 	};
+
+	[[nodiscard]] inline std::string BuildInitializeInvokeScript(std::string_view payloadJson)
+	{
+		return "(()=>{const payload=" + std::string(payloadJson) +
+			";let accepted=false,status='handler_missing';try{const initialize=window.departmentInitialize;"
+			"if(typeof initialize==='function'){accepted=initialize(JSON.stringify(payload))===true;"
+			"status=accepted?'accepted':'rejected';}}catch{status='exception';}"
+			"return JSON.stringify({viewToken:payload.viewToken,nativeGeneration:payload.nativeGeneration,accepted,status});})()";
+	}
 
 	[[nodiscard]] std::optional<NavigationCommand> MapGamepadButton(std::uint32_t keyCode) noexcept;
 	[[nodiscard]] std::optional<std::uint32_t> NormalizeInputMacro(InputSource source, std::uint32_t normalizedCode) noexcept;

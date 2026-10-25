@@ -1,6 +1,22 @@
 # PRE-ALPHA verification
 
-Current development: [prealpha.9 automatic CHIM setup](#prealpha9-automatic-chim-setup-candidate--2026-10-24). Older sections retain the proof limits of their named releases.
+Current development: [prealpha.14 startup handshake](#prealpha14-startup-handshake-candidate--2026-10-25). Older sections retain the proof limits of their named releases.
+
+## Prealpha.14 startup-handshake candidate — 2026-10-25
+
+This TEST candidate is built from the exact prealpha.13 installable archive (SHA-256 `039f0b40afa9173b82a21ea7d26cbe727d153a3d830c964aba0e35769feb5d7d`). The release builder permits changes only to `SKSE/Plugins/WorldOfDramaLlama.dll`, `PrismaUI/views/WorldOfDramaLlama/app.js`, and `PrismaUI/views/WorldOfDramaLlama/index.html`. The three bundled DWPkgs and all other game files, including the blank-shipped INI and notices, are retained byte-for-byte. No developer receipts or prealpha.14 source/provenance metadata are added to the installable; the existing DWPkg manifests remain inside their unchanged packages.
+
+| Boundary | Evidence and limit |
+| --- | --- |
+| Native build and source binding | Reviewed DLL v0.1.0.14: 826,880 bytes, SHA-256 `cb3f46c4bf1859c4cd0b3ae9bea45003a8b6d6d72a88cbe100ff6d09832fa280`. The native build receipt records five passing host-test targets. Root's independent binary audit passed x64/export checks, local-path scan, and all 15 frozen native inputs. The final source-binding receipt ties the DLL to the fixed native Git-blob map; host tests do not load the plugin in Skyrim. |
+| Native diagnostics | The logger probe passed: `WorldOfDramaLlama.log` records timestamps and plugin version, suppresses private request data and unknown error details, and tolerates an unwritable destination. Rotation is 1 MiB per file plus three backups. |
+| UI startup | Focused browser checks passed 4/4 startup cases and 51/51 functional cases. Root's isolated installed-Ultralight run passed 19/19, including the native-generated Invoke script without focus, duplicate initialization, stale and closed-view handling, missing/rejected/throwing handlers, the real 20-second watchdog and late recovery; the draft remained intact. Root visually inspected three Ultralight renders. Final UI hashes matched the tested inputs. These checks do not test Skyrim or prove game focus, input, or NPC delivery. |
+| Server components and pins | All three server DWPkg members are compared byte-for-byte with prealpha.13. The supported pins remain PCV 0.1.23, MP 0.1.30, SAS 0.1.12, SF dev.23, and MMP dev.3. Existing dev.23 server evidence is reused only because the package bytes are unchanged; no new server or database run is claimed. |
+| Skyrim runtime | Not performed. Actual game startup, focus/controller behavior, rendering, audio, transfers and save/load still require acceptance in a disposable profile and save. |
+
+The release set separates the MO2 installable from the complete allowlisted source archive and the startup-provenance archive. `SHA256SUMS.txt` binds those three ZIPs. See the [install-and-use guide](../packaging/COMPANION-ONLY-TEST-PACKAGE.md) for the test setup and the exact distinction between local bridge startup and CHIM connection status.
+
+Build note: the first native build attempt stopped on a stale catalog-test fixture whose 512-byte valid label exceeded the unchanged 256-byte production limit. The test fixture was corrected to accept 256 bytes and reject 257; the same cached build then passed. No production validation changed.
 
 Published [prealpha.4](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.4) from frozen source `08680e31635a4ed91bd9efcb46d7d9b8f30d95e1` at 2026-10-21T22:34:20Z; this completion record does not move the release tag or replace its assets. The production change is confined to the correspondence adapter; owner/core/native/UI and the original Private Conversation fallback remain outside the port. Read [DEV20-COMPATIBILITY.md](DEV20-COMPATIBILITY.md) for the exact owner identity and closure rules. Both coordinators accepted the source/behavior pair and final committed-source/package closure. All eleven public assets and the tagged source archive were downloaded anonymously and matched. GitHub metadata was checked through the authenticated CLI after its anonymous API rate limit was reached.
 

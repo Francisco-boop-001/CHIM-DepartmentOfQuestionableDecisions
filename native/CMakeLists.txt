@@ -27,7 +27,7 @@ if(BUILD_TESTING)
 	target_include_directories(dql_native_boundary_tests PRIVATE tests/fixtures)
 	add_test(NAME dql_native_boundary_tests COMMAND dql_native_boundary_tests)
 	set_tests_properties(dql_native_boundary_tests PROPERTIES
-		ENVIRONMENT "DQL_PLUGIN_SOURCE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/src/Plugin.cpp;DQL_REFUSAL_FIXTURE_PATH=${CMAKE_CURRENT_BINARY_DIR}/../c2-02-refusal-fixture.json;DQL_QUEUE_REFUSAL_FIXTURE_PATH=${CMAKE_CURRENT_BINARY_DIR}/../c2-02-queue-refusal-fixture.json")
+		ENVIRONMENT "DQL_PLUGIN_SOURCE_PATH=${CMAKE_CURRENT_SOURCE_DIR}/src/Plugin.cpp;DQL_REFUSAL_FIXTURE_PATH=${CMAKE_CURRENT_BINARY_DIR}/../c2-02-refusal-fixture.json;DQL_QUEUE_REFUSAL_FIXTURE_PATH=${CMAKE_CURRENT_BINARY_DIR}/../c2-02-queue-refusal-fixture.json;DQL_INITIALIZE_SCRIPT_PATH=${CMAKE_CURRENT_BINARY_DIR}/department-initialize-script.js")
 
 	add_executable(dql_pcv_companion_policy_tests tests/PcvCompanionPolicyTests.cpp)
 	target_link_libraries(dql_pcv_companion_policy_tests PRIVATE dql_contract)

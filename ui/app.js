@@ -7,6 +7,9 @@
   const MAX_CATALOG_ACTORS = 10000;
   const MAX_UNRESOLVED_LETTERS = 3;
   const CONNECTION_STATES = new Set(['pending', 'approved', 'expired']);
+  const STARTUP_TIMEOUT_MS = 20000;
+  const STARTUP_TIMEOUT_TITLE = 'Companion bridge did not start';
+  const STARTUP_TIMEOUT_GUIDANCE = 'Reopen the game interface in Skyrim. See WorldOfDramaLlama.log for startup details.';
   const CONNECTION_SETUP_COPY = 'Setting up the connection with CHIM.';
   const CONNECTION_FAILURE_COPY = 'CHIM connection could not be confirmed. Retry connection to try again.';
   const CONNECTION_TIMEOUT_COPY = 'CHIM connection setup timed out. Retry connection to try again.';
@@ -73,8 +76,9 @@
 
   const $ = (id) => document.getElementById(id);
   const text = (id, value) => { const node = $(id); if (node) node.textContent = value == null ? '' : String(value); };
+  let startupWatchdog = null;
   const state = {
-    initialized: false, closed: true, closing: false, bootstrapping: false, bootstrapFailure: null,
+    initialized: false, closed: true, closing: false, bootstrapping: false, bootstrapFailure: null, startupFailure: false,
     viewToken: null, nativeGeneration: null, serverContext: null, lastAuthenticatedScopeToken: null, seenViewTokens: [], idCounter: 0,
     authenticated: false, authRequired: true,
     connection: createConnectionState(),
@@ -685,6 +689,12 @@
     });
   }
 
+  function clearStartupWatchdog() {
+    if (startupWatchdog === null) return;
+    window.clearTimeout(startupWatchdog);
+    startupWatchdog = null;
+  }
+
   function clearConnectionPoll() {
     if (state.connection.pollTimer !== null) {
       window.clearTimeout(state.connection.pollTimer);
@@ -813,8 +823,12 @@
     let init;
     try { init = JSON.parse(raw); } catch { return false; }
     if (!isPlainObject(init) || init.version !== 1 || !validUuid(init.viewToken) || !validGeneration(init.nativeGeneration) || init.serverContext !== null) return false;
+    if (state.initialized && !state.closed && !state.closing && init.viewToken === state.viewToken && init.nativeGeneration === state.nativeGeneration) {
+      clearStartupWatchdog();
+      return true;
+    }
     if (state.seenViewTokens.includes(init.viewToken)) return false;
-    if (state.initialized && !state.closed && init.viewToken === state.viewToken && init.nativeGeneration === state.nativeGeneration) return false;
+    clearStartupWatchdog();
     resetBrainwashEditor();
     const pendingSend = [...state.pending.values()].find((item) => item.envelope.operation === 'pcv.send');
     if (pendingSend) {
@@ -832,6 +846,7 @@
     state.closing = false;
     state.bootstrapping = true;
     state.bootstrapFailure = null;
+    state.startupFailure = false;
     state.connection = createConnectionState();
     state.viewToken = init.viewToken;
     state.nativeGeneration = init.nativeGeneration;
@@ -883,12 +898,31 @@
     $('retry-connection').disabled = !available || state.connection.busy;
   }
 
+  function preAuthStatus() {
+    if (!state.initialized) return state.startupFailure
+      ? { message: `${STARTUP_TIMEOUT_TITLE}. ${STARTUP_TIMEOUT_GUIDANCE}`, state: 'error' }
+      : { message: 'The game interface is starting; waiting for the local companion bridge.', state: 'waiting' };
+    if (state.bootstrapFailure) return { message: state.bootstrapFailure.message, state: 'error' };
+    if (state.bootstrapping) {
+      return { message: CONNECTION_SETUP_COPY, state: 'waiting' };
+    }
+    return null;
+  }
+
   function renderBootstrap() {
     const connected = state.initialized && !state.closed;
     $('close-view').disabled = !connected;
     if (!connected) {
-      setStatus('connection-status', 'Waiting for CHIM connection', 'waiting');
-      setStatus('permission-status', 'This game connects automatically when CHIM is available.');
+      if (state.initialized) {
+        setStatus('connection-status', 'Game interface closed', 'waiting');
+        setStatus('permission-status', 'Reopen it from Skyrim to continue.');
+      } else if (state.startupFailure) {
+        setStatus('connection-status', STARTUP_TIMEOUT_TITLE, 'error');
+        setStatus('permission-status', STARTUP_TIMEOUT_GUIDANCE, 'error');
+      } else {
+        setStatus('connection-status', 'Starting game interface', 'waiting');
+        setStatus('permission-status', 'Waiting for the local companion bridge.', 'waiting');
+      }
     } else if (state.bootstrapping) {
       setStatus('connection-status', 'Connecting to CHIM', 'waiting');
       setStatus('permission-status', 'Private data loads after CHIM confirms the connection.');
@@ -1218,7 +1252,8 @@
     const canPick = mode === 'free' || (mode === 'solo' ? Boolean($('actor-a').value) : Boolean($('actor-a').value && $('actor-b').value));
     $('pcv-arm').disabled = !authorized || !rosterReady || !statusReady || !distinct || !canPick || state.pcv.mutationPending || state.pcv.mutationUnknown;
     if (!state.authenticated) {
-      setStatus('pcv-state', 'Private Conversation becomes available after CHIM connects.', 'waiting');
+      const startup = preAuthStatus();
+      setStatus('pcv-state', startup ? startup.message : 'Private Conversation becomes available after CHIM connects.', startup ? startup.state : 'waiting');
     } else if (!authorized) {
       setStatus('pcv-state', 'An authenticated PCV permission is required for this control.', 'error');
     } else if (!rosterReady) {
@@ -1533,7 +1568,8 @@
     $('mp-refresh').disabled = !enabled || state.inFlight.has('mp.relationships.read');
     $('mp-more').disabled = !enabled || !state.mp.nextCursor || state.inFlight.has('mp.relationships.read');
     if (!enabled) {
-      setStatus('mp-state', state.authenticated ? (state.capabilities.mp ? 'Inspector permission or an authorized perspective is unavailable.' : 'Mind Poisoning relationship history is unavailable in this installation.') : 'Authentication is required to inspect relationship history.', 'error');
+      const startup = !state.authenticated ? preAuthStatus() : null;
+      setStatus('mp-state', startup ? startup.message : state.authenticated ? (state.capabilities.mp ? 'Inspector permission or an authorized perspective is unavailable.' : 'Mind Poisoning relationship history is unavailable in this installation.') : 'Authentication is required to inspect relationship history.', startup ? startup.state : 'error');
       $('mp-rows').replaceChildren();
       const row = document.createElement('tr'); const cell = document.createElement('td'); cell.colSpan = 5; cell.className = 'empty-row'; cell.textContent = 'No authorized history is available.'; row.append(cell); $('mp-rows').append(row);
     }
@@ -1544,7 +1580,8 @@
     $('sas-refresh').disabled = !enabled || state.inFlight.has('sas.issues.read');
     $('sas-more').disabled = !enabled || !state.sas.nextCursor || state.inFlight.has('sas.issues.read');
     if (!enabled) {
-      setStatus('sas-state', state.authenticated ? (state.capabilities.sas ? 'Inspector permission or an authorized perspective is unavailable.' : 'Sworn & Scorned issue history is unavailable in this installation.') : 'Authentication is required to inspect private issues.', 'error');
+      const startup = !state.authenticated ? preAuthStatus() : null;
+      setStatus('sas-state', startup ? startup.message : state.authenticated ? (state.capabilities.sas ? 'Inspector permission or an authorized perspective is unavailable.' : 'Sworn & Scorned issue history is unavailable in this installation.') : 'Authentication is required to inspect private issues.', startup ? startup.state : 'error');
       $('sas-grievances').replaceChildren(); $('sas-promises').replaceChildren();
       const empty1 = document.createElement('p'); empty1.className = 'empty-row'; empty1.textContent = 'No authorized grievances are available.'; $('sas-grievances').append(empty1);
       const empty2 = document.createElement('p'); empty2.className = 'empty-row'; empty2.textContent = 'No authorized promises are available.'; $('sas-promises').append(empty2);
@@ -1897,7 +1934,8 @@
     $('letter-send').disabled = !formValid || !state.mail.reviewed || state.mail.operations.length >= MAX_UNRESOLVED_LETTERS
       || recovery.transferBlocked || recovery.duplicateBlocked || !recovery.fingerprint;
     if (!correspondenceReady) {
-      setStatus('mail-state', authenticated ? 'Sealed Fates is unavailable in this installation.' : 'Authentication is required to use Sealed Fates.', 'error');
+      const startup = !authenticated ? preAuthStatus() : null;
+      setStatus('mail-state', startup ? startup.message : authenticated ? 'Sealed Fates is unavailable in this installation.' : 'Authentication is required to use Sealed Fates.', startup ? startup.state : 'error');
     } else if (!canCatalog) {
       setStatus('mail-state', 'Sealed Fates permission is unavailable for this session.', 'error');
     } else if (state.mail.catalogError) {
@@ -2452,6 +2490,7 @@
   }
   function closeView() {
     if (!state.initialized || state.closed || state.closing) return false;
+    clearStartupWatchdog();
     preserveOutstandingOperations();
     const envelope = { version: 1, requestId: newUuid(), operation: 'view.close', context: makeContext(), payload: {} };
     let serialized = '';
@@ -2563,6 +2602,12 @@
   mountBrainwashEditor();
   wireEvents();
   renderBootstrap();
+  startupWatchdog = window.setTimeout(() => {
+    startupWatchdog = null;
+    if (state.initialized) return;
+    state.startupFailure = true;
+    renderBootstrap();
+  }, STARTUP_TIMEOUT_MS);
   renderPcvStatus();
   renderRoster();
   renderMpChoices();

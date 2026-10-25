@@ -12,6 +12,7 @@
 #include <SKSE/API.h>
 #include <SKSE/InputMap.h>
 #include <SKSE/Interfaces.h>
+#include <SKSE/Logger.h>
 #include <SKSE/SKSE.h>
 
 #include <Windows.h>
@@ -44,6 +45,10 @@
 #include <utility>
 #include <vector>
 #include <cstring>
+#include <filesystem>
+
+#include <spdlog/sinks/rotating_file_sink.h>
+#include <spdlog/spdlog.h>
 
 using namespace REL::literals;
 
@@ -52,6 +57,86 @@ namespace
 	constexpr std::string_view kPluginName = "WorldOfDramaLlama";
 	constexpr std::string_view kViewPath = "WorldOfDramaLlama/index.html";
 	constexpr std::string_view kPapyrusClass = "WorldOfDramaLlamaNative";
+	constexpr std::size_t kMaxInitializeCallbackBytes = 1024;
+	std::shared_ptr<spdlog::logger> gNativeLogger;
+
+	void InitializeNativeLogger() noexcept
+	{
+		try {
+			const auto logDirectory = SKSE::log::log_directory();
+			if (!logDirectory) return;
+			std::filesystem::create_directories(*logDirectory);
+			gNativeLogger = spdlog::rotating_logger_mt("WorldOfDramaLlama.native",
+				(*logDirectory / "WorldOfDramaLlama.log").string(), 1024 * 1024, 3);
+			gNativeLogger->set_level(spdlog::level::info);
+			gNativeLogger->set_pattern("%Y-%m-%d %H:%M:%S [%l] %v");
+			gNativeLogger->flush_on(spdlog::level::info);
+		} catch (...) {
+			gNativeLogger.reset();
+		}
+	}
+
+	void LogEvent(std::string_view stage, std::string_view result) noexcept
+	{
+		try {
+			if (gNativeLogger) gNativeLogger->info("stage={} result={}", stage, result);
+		} catch (...) {
+		}
+	}
+
+	const char* HttpOutcomeName(dql::http::Outcome outcome) noexcept
+	{
+		switch (outcome) {
+		case dql::http::Outcome::completed: return "completed";
+		case dql::http::Outcome::unknown: return "unknown";
+		case dql::http::Outcome::rejected: return "rejected";
+		}
+		return "invalid";
+	}
+
+	const char* HttpErrorName(dql::http::ErrorCode error) noexcept
+	{
+		switch (error) {
+		case dql::http::ErrorCode::none: return "none";
+		case dql::http::ErrorCode::invalidRequest: return "invalid_request";
+		case dql::http::ErrorCode::invalidBaseUrl: return "invalid_base_url";
+		case dql::http::ErrorCode::invalidBearer: return "invalid_bearer";
+		case dql::http::ErrorCode::queueFull: return "queue_full";
+		case dql::http::ErrorCode::shuttingDown: return "shutting_down";
+		case dql::http::ErrorCode::timeout: return "timeout";
+		case dql::http::ErrorCode::cancelled: return "cancelled";
+		case dql::http::ErrorCode::requestTooLarge: return "request_too_large";
+		case dql::http::ErrorCode::responseTooLarge: return "response_too_large";
+		case dql::http::ErrorCode::transportFailure: return "transport_failure";
+		}
+		return "invalid";
+	}
+
+	void LogHttpResult(std::string_view stage, const dql::http::HttpResult& result) noexcept
+	{
+		try {
+			if (gNativeLogger) {
+				gNativeLogger->info("stage={} result={} http={} error={}", stage,
+					HttpOutcomeName(result.outcome), result.statusCode, HttpErrorName(result.errorCode));
+			}
+		} catch (...) {
+		}
+	}
+
+	std::string_view SafeErrorCode(std::string_view code) noexcept
+	{
+		constexpr std::array codes{
+			std::string_view("busy"), std::string_view("connection_secure_storage_failed"),
+			std::string_view("connection_setup_required"), std::string_view("forbidden"),
+			std::string_view("invalid_request"), std::string_view("invalid_response"),
+			std::string_view("stale_context"), std::string_view("stale_revision"),
+			std::string_view("unauthorized"), std::string_view("unavailable")
+		};
+		for (const auto known : codes) {
+			if (code == known) return known;
+		}
+		return "other";
+	}
 
 	std::string NewUuid()
 	{
@@ -499,15 +584,26 @@ namespace
 			LoadOpenKey();
 			LoadBridgeConfiguration();
 			CaptureStockIniAtStartup();
+			LogEvent("configuration", serverBase_.empty() ? "server_missing" : "server_present");
+			LogEvent("configuration", pairToken_.empty() ? "pairing_token_missing" : "pairing_token_present");
+			LogEvent("configuration", stockIniCaptured_ ? "stock_ini_captured" :
+				stockIniMissingAtStartup_ ? "stock_ini_missing" :
+				stockIniPresentAtStartup_ ? "stock_ini_unavailable" : "stock_ini_unknown");
+			std::wstring endpointKey;
+			std::wstring trustedHttpBase;
+			LogEvent("configuration", ConnectionDestination(endpointKey, trustedHttpBase) ?
+				"destination_available" : "destination_unavailable");
 			if (!prisma_) {
 				prisma_ = static_cast<PRISMA_UI_API::IVPrismaUI1*>(PRISMA_UI_API::RequestPluginAPI());
 			}
+			LogEvent("prisma_api", prisma_ ? "available" : "unavailable");
 			if (prisma_ && !inputRegistered_) {
 				if (auto* input = RE::BSInputDeviceManager::GetSingleton()) {
 					input->AddEventSink(this);
 					inputRegistered_ = true;
 				}
 			}
+			LogEvent("input_setup", inputRegistered_ ? "registered" : "unavailable");
 		}
 
 		void OnPreLoadGame()
@@ -627,12 +723,16 @@ namespace
 				return;
 			}
 			auto raw = std::string(argument, length);
-			EnqueueMain([raw = std::move(raw)]() mutable { Instance().HandleRequest(std::move(raw)); });
+			if (!EnqueueMain([raw = std::move(raw)]() mutable { Instance().HandleRequest(std::move(raw)); })) {
+				LogEvent("request_schedule", "main_queue_unavailable");
+			}
 		}
 
 		static void DomReady(PrismaView view)
 		{
-			EnqueueMain([view] { Instance().OnDomReady(view); });
+			if (!EnqueueMain([view] { Instance().OnDomReady(view); })) {
+				LogEvent("dom_ready", "main_queue_unavailable");
+			}
 		}
 
 		template <class Task>
@@ -996,6 +1096,7 @@ namespace
 			ClearManagedRoster();
 			auto* vm = RE::SkyrimVM::GetSingleton();
 			if (!vm || !vm->impl) {
+				LogEvent("stock_roster", "papyrus_unavailable");
 				RespondError(request, "unavailable", "The CHIM-managed NPC roster is unavailable.");
 				return;
 			}
@@ -1009,12 +1110,14 @@ namespace
 						if (generation != shell.generation_) return;
 						shell.OnManagedRoster(request, *resultCopy);
 					})) {
+						LogEvent("stock_roster", "main_queue_unavailable");
 						// The shared Papyrus result is released on this thread if the task queue is unavailable.
 					}
 				}) };
 			const bool queued = vm->impl->DispatchStaticCall(
 				RE::BSFixedString("AIAgentFunctions"), RE::BSFixedString("findAllNearbyAgents"),
 				RE::MakeFunctionArguments(), callback);
+			LogEvent("stock_roster", queued ? "papyrus_queued" : "papyrus_queue_rejected");
 			if (!queued) {
 				pendingRosterRequest_.reset();
 				RespondError(request, "unavailable", "CHIM did not return its managed NPC roster.");
@@ -1379,10 +1482,15 @@ namespace
 
 		void OpenView()
 		{
-			if (!prisma_ || IsOwnViewFocused()) {
+			if (!prisma_) {
+				LogEvent("view_open", "prisma_unavailable");
+				return;
+			}
+			if (IsOwnViewFocused()) {
 				return;
 			}
 			if (prisma_->HasAnyActiveFocus()) {
+				LogEvent("view_open", "other_view_focused");
 				return;
 			}
 			auto* ui = RE::UI::GetSingleton();
@@ -1392,10 +1500,12 @@ namespace
 			if (!dql::policy::CanOpenView(uiAvailable, prisma_->HasAnyActiveFocus(),
 				uiAvailable && ui->GameIsPaused(), uiAvailable && ui->IsModalMenuOpen(),
 				uiAvailable && ui->IsMenuOpen("Console"), uiAvailable && ui->IsMenuOpen("Dialogue Menu"), mainOrLoadingMenu)) {
+				LogEvent("view_open", uiAvailable ? "blocked_by_game_ui" : "game_ui_unavailable");
 				return;
 			}
 			viewToken_ = NewUuid();
 			if (viewToken_.empty()) {
+				LogEvent("view_open", "token_unavailable");
 				return;
 			}
 			ClearServerAccess();
@@ -1405,9 +1515,11 @@ namespace
 				if (!prisma_->Focus(view_, false, false)) {
 					prisma_->Hide(view_);
 					viewToken_.clear();
+					LogEvent("view_open", "focus_rejected");
 					return;
 				}
 				viewReadyToInitialize_ = true;
+				LogEvent("view_open", "reused");
 				SendInitialize();
 				return;
 			}
@@ -1421,16 +1533,19 @@ namespace
 				view_ = 0;
 				initializeState_.Reset();
 				viewToken_.clear();
+				LogEvent("view_open", "create_failed");
 				return;
 			}
 			prisma_->RegisterJSListener(view_, "departmentRequest", &RequestTrampoline);
 			prisma_->Show(view_);
 			if (!prisma_->Focus(view_, false, false)) {
 				creatingView_ = false;
+				LogEvent("view_open", "focus_rejected");
 				CloseView();
 				return;
 			}
 			viewReadyToInitialize_ = true;
+			LogEvent("view_open", "created");
 			if (initializeState_.IsCurrentDomReady(view_)) {
 				SendInitialize();
 			}
@@ -1440,7 +1555,10 @@ namespace
 		{
 			initializeState_.ObserveDomReady(view_, view, creatingView_);
 			if (initializeState_.IsCurrentDomReady(view_)) {
+				LogEvent("dom_ready", "current_view");
 				SendInitialize();
+			} else {
+				LogEvent("dom_ready", "stale_or_unassigned_view");
 			}
 		}
 
@@ -1491,12 +1609,77 @@ namespace
 
 		void SendInitialize()
 		{
-			if (!initializeState_.TryMarkSent(view_, viewReadyToInitialize_, IsOwnViewFocused(), !viewToken_.empty())) return;
+			if (!prisma_ || !IsOwnViewValid()) {
+				LogEvent("initialize", "view_unavailable");
+				return;
+			}
+			if (!initializeState_.TryMarkSent(view_, viewReadyToInitialize_, !viewToken_.empty())) return;
 			const auto payload = dql::contract::Json{
 				{ "version", 1 }, { "viewToken", viewToken_ },
 				{ "nativeGeneration", std::to_string(generation_) }, { "serverContext", nullptr }
 			}.dump();
-			prisma_->InteropCall(view_, "departmentInitialize", payload.c_str());
+			const auto script = dql::policy::BuildInitializeInvokeScript(payload);
+			prisma_->Invoke(view_, script.c_str(), &InitializeResultTrampoline);
+			LogEvent("initialize", "dispatched");
+		}
+
+		static void InitializeResultTrampoline(const char* result) noexcept
+		{
+			try {
+				if (!result) {
+					LogEvent("initialize_callback", "missing_result");
+					return;
+				}
+				const auto length = strnlen_s(result, kMaxInitializeCallbackBytes + 1);
+				if (length == 0 || length > kMaxInitializeCallbackBytes) {
+					LogEvent("initialize_callback", length > kMaxInitializeCallbackBytes ? "result_too_large" : "empty_result");
+					return;
+				}
+				std::string boundedResult(result, length);
+				if (!EnqueueMain([boundedResult = std::move(boundedResult)]() mutable {
+					Instance().HandleInitializeResult(std::move(boundedResult));
+				})) {
+					LogEvent("initialize_callback", "main_queue_unavailable");
+				}
+			} catch (...) {
+				LogEvent("initialize_callback", "callback_error");
+			}
+		}
+
+		void HandleInitializeResult(std::string result) noexcept
+		{
+			try {
+				if (result.empty() || result.size() > kMaxInitializeCallbackBytes) {
+					LogEvent("initialize_callback", "invalid_result_size");
+					return;
+				}
+				const auto value = dql::contract::Json::parse(result, nullptr, false);
+				if (value.is_discarded() || !HasExactProperties(value,
+					{ "viewToken", "nativeGeneration", "accepted", "status" }) ||
+					!value["viewToken"].is_string() || !value["nativeGeneration"].is_string() ||
+					!value["accepted"].is_boolean() || !value["status"].is_string()) {
+					LogEvent("initialize_callback", "invalid_result");
+					return;
+				}
+				const auto& token = value["viewToken"].get_ref<const std::string&>();
+				const auto& generation = value["nativeGeneration"].get_ref<const std::string&>();
+				const auto& status = value["status"].get_ref<const std::string&>();
+				const bool accepted = value["accepted"].get<bool>();
+				const bool knownStatus = status == "accepted" || status == "rejected" ||
+					status == "handler_missing" || status == "exception";
+				if (!dql::policy::IsUuid(token) || !dql::policy::IsGeneration(generation) || !knownStatus ||
+					(accepted && status != "accepted") || (!accepted && status == "accepted")) {
+					LogEvent("initialize_callback", "invalid_result");
+					return;
+				}
+				if (!IsOwnViewValid() || token != viewToken_ || generation != std::to_string(generation_)) {
+					LogEvent("initialize_callback", "stale_result");
+					return;
+				}
+				LogEvent("initialize", accepted ? "accepted" : status);
+			} catch (...) {
+				LogEvent("initialize_callback", "result_error");
+			}
 		}
 
 		void SendNavigation(dql::policy::NavigationCommand command)
@@ -1619,6 +1802,7 @@ namespace
 		void HandleConnectionOperation(const dql::contract::Envelope& request, dql::connection::Action action)
 		{
 			if (!IsCurrentRequest(request)) return;
+			LogEvent("connection", action == dql::connection::Action::begin ? "begin_requested" : "status_requested");
 			if (serverAuthenticated_) {
 				RespondPreDispatchError(request, "unauthorized", "Connection approval is available only before pairing.");
 				return;
@@ -1638,6 +1822,7 @@ namespace
 			std::wstring trustedHttpBase;
 			if (!ConnectionDestination(endpointKey, trustedHttpBase)) {
 				releaseConnectionRequest();
+				LogEvent("connection", "destination_unavailable");
 				RespondPreDispatchError(request, "connection_setup_required",
 					"CHIM's configured server destination is unavailable or invalid.");
 				return;
@@ -1647,6 +1832,7 @@ namespace
 			if (action == dql::connection::Action::status) {
 				if (!IsCurrentConnectionClaim(request, claimId_, endpointKey)) {
 					releaseConnectionRequest();
+					LogEvent("connection", "claim_unavailable");
 					RespondPreDispatchError(request, "unavailable", "There is no pending connection approval in this view.");
 					return;
 				}
@@ -1715,13 +1901,17 @@ namespace
 					if (!EnqueueMain([context = std::move(context), resultCopy = std::move(resultCopy)]() mutable {
 						Instance().OnConnectionCompletion(context, std::move(*resultCopy));
 					})) {
+						LogEvent("connection_completion", "main_queue_unavailable");
 						Instance().connectionRequestInFlight_.store(false, std::memory_order_release);
 					}
 				});
 			if (!submitted.queued) {
 				releaseConnectionRequest();
+				LogEvent("connection_http", HttpErrorName(submitted.errorCode));
 				RespondPreDispatchError(request, submitted.errorCode == dql::http::ErrorCode::queueFull ? "busy" : "unavailable",
 					"The connection request could not be queued.");
+			} else {
+				LogEvent("connection_http", "queued");
 			}
 		}
 
@@ -1729,6 +1919,7 @@ namespace
 		{
 			[[maybe_unused]] const ConnectionFlightGuard flightGuard(connectionRequestInFlight_);
 			StringWiper wipeBody(result.body);
+			LogHttpResult("connection_http", result);
 			const auto& request = context.uiRequest;
 			if (!IsCurrentRequest(request)) return;
 			if (serverAuthenticated_) {
@@ -1758,6 +1949,8 @@ namespace
 				RespondError(request, "invalid_response", "The connection service returned an invalid approval state.");
 				return;
 			}
+			LogEvent("connection_claim", claim->state == "pending" ? "pending" :
+				claim->state == "approved" ? "approved" : "expired");
 
 			if (context.action == dql::connection::Action::begin && claim->state == "pending") {
 				std::string pairingToken;
@@ -1781,6 +1974,7 @@ namespace
 				StringWiper wipeEventMessage(event->message);
 				auto* vm = RE::SkyrimVM::GetSingleton();
 				if (!vm || !vm->impl) {
+					LogEvent("connection_papyrus", "vm_unavailable");
 					RespondError(request, "unavailable", "CHIM's native event queue is unavailable.");
 					return;
 				}
@@ -1789,6 +1983,7 @@ namespace
 					RE::BSFixedString("AIAgentFunctions"), RE::BSFixedString("logMessage"),
 					RE::MakeFunctionArguments(RE::BSFixedString(event->message),
 						RE::BSFixedString(event->type)), noCallback);
+				LogEvent("connection_papyrus", queued ? "event_queued" : "event_queue_rejected");
 				if (!queued) {
 					if (!NativeDestinationMatches()) {
 						ClearConnectionClaim();
@@ -1808,10 +2003,16 @@ namespace
 
 		bool SubmitServerRequest(const dql::contract::Envelope& request, dql::contract::Json payload)
 		{
-			if (!IsCurrentRequest(request)) return false;
+			const bool bootstrap = request.operation == "bootstrap";
+			const auto stage = bootstrap ? std::string_view("bootstrap") : std::string_view("department_http");
+			if (!IsCurrentRequest(request)) {
+				LogEvent(stage, "stale_request");
+				return false;
+			}
 			std::wstring endpointKey;
 			std::wstring trustedHttpBase;
 			if (!ConnectionDestination(endpointKey, trustedHttpBase)) {
+				LogEvent(stage, "destination_unavailable");
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (IsServerWriteOperation(request.operation)) {
 					RespondPreDispatchError(request, "unavailable", stockIniPresentAtStartup_ || serverBaseFromStockIni_ || serverBaseFromDiscovery_ ?
@@ -1844,11 +2045,15 @@ namespace
 			};
 			const auto submitted = transport_.Submit(std::move(httpRequest), [request](dql::http::HttpResult result) mutable {
 				auto resultCopy = std::make_shared<dql::http::HttpResult>(std::move(result));
-				EnqueueMain([request, resultCopy = std::move(resultCopy)]() mutable {
+				if (!EnqueueMain([request, resultCopy = std::move(resultCopy)]() mutable {
 					Instance().OnServerCompletion(request, std::move(*resultCopy));
-				});
+				})) {
+					LogEvent(request.operation == "bootstrap" ? "bootstrap_http" : "department_http",
+						"main_queue_unavailable");
+				}
 			});
 			if (!submitted.queued) {
+				LogEvent(stage, HttpErrorName(submitted.errorCode));
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (IsServerWriteOperation(request.operation)) {
 					RespondPreDispatchError(request, submitted.errorCode == dql::http::ErrorCode::queueFull ? "busy" : "unavailable",
@@ -1859,13 +2064,21 @@ namespace
 				}
 				return false;
 			}
+			LogEvent(stage, "queued");
 			return true;
 		}
 
 		void OnServerCompletion(const dql::contract::Envelope& request, dql::http::HttpResult result)
 		{
-			if (!IsCurrentRequest(request)) return;
+			const bool bootstrap = request.operation == "bootstrap";
+			const auto stage = bootstrap ? std::string_view("bootstrap_http") : std::string_view("department_http");
+			LogHttpResult(stage, result);
+			if (!IsCurrentRequest(request)) {
+				LogEvent(stage, "stale_completion");
+				return;
+			}
 			if (result.outcome != dql::http::Outcome::completed) {
+				if (bootstrap) LogEvent("bootstrap", "transport_incomplete");
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (request.operation == "pcv.roster.read") pendingRosterRequest_.reset();
 				if (IsServerWriteOperation(request.operation)) {
@@ -1878,6 +2091,7 @@ namespace
 			}
 			const auto parsed = dql::contract::ParseServerResponse(result.body, request);
 			if (!parsed.value) {
+				if (bootstrap) LogEvent("bootstrap", SafeErrorCode(parsed.errorCode));
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (request.operation == "pcv.roster.read") pendingRosterRequest_.reset();
 				if (IsServerWriteOperation(request.operation)) RespondServerWriteState(request, "unknown");
@@ -1887,6 +2101,7 @@ namespace
 			const auto& response = *parsed.value;
 			const bool ok = response["ok"].get<bool>();
 			if (result.statusCode < 200 || result.statusCode >= 300) {
+				if (bootstrap) LogEvent("bootstrap", "http_rejected");
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (request.operation == "pcv.roster.read") pendingRosterRequest_.reset();
 				if (IsServerWriteOperation(request.operation) && ok) RespondServerWriteState(request, "unknown");
@@ -1895,6 +2110,7 @@ namespace
 			}
 			if (!ok) {
 				const auto& errorCode = response["error"]["code"].get_ref<const std::string&>();
+				LogEvent(bootstrap ? "bootstrap" : "server_response", SafeErrorCode(errorCode));
 				if (errorCode == "unauthorized" || errorCode == "forbidden" || errorCode == "stale_context") ClearServerAccess();
 				if (request.operation == "bootstrap") ClearServerAccess();
 				if (request.operation == "pcv.roster.read") pendingRosterRequest_.reset();
@@ -1908,6 +2124,7 @@ namespace
 					return;
 				}
 				AdoptBootstrapData(response["data"]);
+				LogEvent("bootstrap", serverAuthenticated_ ? "authenticated" : "authentication_required");
 			}
 			if (request.operation == "pcv.roster.read") {
 				auto data = response["data"];
@@ -2237,11 +2454,13 @@ namespace
 						if (generation != shell.generation_) return;
 						shell.OnPcvFreshRoster(*pending, *resultCopy);
 					})) {
+						LogEvent("stock_roster", "main_queue_unavailable");
 						// The result and text-bearing request are released after the VM task queue rejects this callback.
 					}
 				}) };
 			const bool queued = vm->impl->DispatchStaticCall(RE::BSFixedString("AIAgentFunctions"),
 				RE::BSFixedString("findAllNearbyAgents"), RE::MakeFunctionArguments(), callback);
+			LogEvent("stock_roster", queued ? "papyrus_queued" : "papyrus_queue_rejected");
 			if (!queued) RespondPreDispatchError(pending->request, "unavailable", "The stock CHIM actor roster could not be refreshed.");
 		}
 
@@ -2378,10 +2597,15 @@ namespace
 						RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> noCallback{};
 						const std::string className(papyrusClass);
 						const std::string functionName(function);
-						return vm->impl->DispatchStaticCall(RE::BSFixedString(className), RE::BSFixedString(functionName),
+						const bool queued = vm->impl->DispatchStaticCall(RE::BSFixedString(className), RE::BSFixedString(functionName),
 							RE::MakeFunctionArguments(RE::BSFixedString(message), RE::BSFixedString(messageType),
 								static_cast<RE::Actor*>(targetActor)), noCallback);
+						LogEvent("stock_papyrus_input", queued ? "queued" : "queue_rejected");
+						return queued;
 					});
+				if (!papyrusInvoked) LogEvent("stock_papyrus_input", "not_attempted");
+				else if (dispatch == dql::companion::DispatchResult::queueNotConfirmed)
+					LogEvent("stock_papyrus_input", "queue_not_confirmed");
 				if (!papyrusInvoked || dispatch == dql::companion::DispatchResult::notAttempted) {
 					BeginCompanionCancel(context);
 					return;
@@ -2460,6 +2684,7 @@ namespace
 				return;
 			}
 			if (request.operation == "bootstrap") {
+				LogEvent("bootstrap", "request_received");
 				ClearServerAccess();
 				SubmitServerRequest(request, request.payload);
 				return;
@@ -2543,6 +2768,7 @@ namespace
 		void RespondError(const dql::contract::Envelope& request, std::string_view code, std::string_view message,
 			std::optional<bool> dispatched = std::nullopt)
 		{
+			LogEvent("native_error", SafeErrorCode(code));
 			if (!IsOwnViewValid() || request.viewToken != viewToken_) {
 				return;
 			}
@@ -2552,6 +2778,7 @@ namespace
 
 		void RespondPreDispatchError(const dql::contract::Envelope& request, std::string_view code, std::string_view message)
 		{
+			LogEvent("native_pre_dispatch_error", SafeErrorCode(code));
 			if (!IsOwnViewValid() || request.viewToken != viewToken_) {
 				return;
 			}
@@ -2577,11 +2804,13 @@ namespace
 		static bool RegisterPapyrus(RE::BSScript::IVirtualMachine* vm)
 		{
 			if (!vm) {
+				LogEvent("papyrus_setup", "vm_unavailable");
 				return false;
 			}
 			vm->RegisterFunction("SetOpenKeyCode", kPapyrusClass, SetOpenKeyCode);
 			vm->RegisterFunction("GetOpenKeyCode", kPapyrusClass, GetOpenKeyCode);
 			vm->RegisterFunction("ToggleView", kPapyrusClass, ToggleFromPapyrus);
+			LogEvent("papyrus_setup", "functions_registered");
 			return true;
 		}
 
@@ -2665,6 +2894,9 @@ namespace
 	{
 		if (const auto* serialization = SKSE::GetSerializationInterface()) {
 			serialization->SetRevertCallback(&OnRevert);
+			LogEvent("serialization_setup", "revert_callback_registered");
+		} else {
+			LogEvent("serialization_setup", "interface_unavailable");
 		}
 	}
 
@@ -2675,13 +2907,13 @@ namespace
 		}
 		switch (message->type) {
 		case SKSE::MessagingInterface::kPostLoad:
-			NativeShell::EnqueueMain([] { GetShell().OnPostLoad(); });
+			LogEvent("post_load_schedule", NativeShell::EnqueueMain([] { GetShell().OnPostLoad(); }) ? "queued" : "queue_unavailable");
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
-			NativeShell::EnqueueMain([] { GetShell().OnPreLoadGame(); });
+			LogEvent("pre_load_schedule", NativeShell::EnqueueMain([] { GetShell().OnPreLoadGame(); }) ? "queued" : "queue_unavailable");
 			break;
 		case SKSE::MessagingInterface::kNewGame:
-			NativeShell::EnqueueMain([] { GetShell().OnNewGame(); });
+			LogEvent("new_game_schedule", NativeShell::EnqueueMain([] { GetShell().OnNewGame(); }) ? "queued" : "queue_unavailable");
 			break;
 		default:
 			break;
@@ -2689,20 +2921,36 @@ namespace
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.0.9"_v,
+SKSEPluginInfo(.Version = "0.1.0.14"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
 {
 	if (!skse) {
+		LogEvent("startup", "load_interface_missing");
 		return false;
 	}
 	SKSE::Init(skse);
+	InitializeNativeLogger();
+	LogEvent("startup", "skse_initialized");
+	LogEvent("startup", "version_0_1_0_14");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
-	if (!messaging || !papyrus || !messaging->RegisterListener(&OnMessage) || !papyrus->Register(&RegisterPapyrusFunctions)) {
+	if (!messaging || !papyrus) {
+		LogEvent("startup", "required_interface_unavailable");
 		return false;
 	}
+	if (!messaging->RegisterListener(&OnMessage)) {
+		LogEvent("message_listener", "registration_rejected");
+		return false;
+	}
+	LogEvent("message_listener", "registered");
+	if (!papyrus->Register(&RegisterPapyrusFunctions)) {
+		LogEvent("papyrus_setup", "registration_rejected");
+		return false;
+	}
+	LogEvent("papyrus_setup", "registration_scheduled");
 	RegisterForRevert();
+	LogEvent("startup", "loaded");
 	return true;
 }

@@ -322,3 +322,13 @@ Confirmed design weakness: SendInitialize marks the event sent before void Inter
 - [x] Report causal evidence and remaining limits; retain product files unchanged.
 
 Review: exact PRISMA 1.4.1 queued-focus semantics plus the unchanged production initialization class reproduce the DOM-ready-before-focus skip; no later sender is wired. Exact installed Ultralight confirms deferred handlers are ready, late focus alone remains Waiting and explicit initialization starts bootstrap. Current logs cannot establish that event order in the actual session because native startup has no logger and PRISMA focus messages are debug-only. Full evidence and limits: K:\ActorwrightExchange\artifacts\department-startup-20261025\ROOT-CAUSE.md. No product changes or mod-DLL compilation.
+
+## Startup handshake fix and useful logs - 2026-10-25
+- [x] Luna/max native fix and bounded diagnostics, failing regression first.
+- [x] Luna/max UI idempotence and truthful startup status, focused regression checks.
+- [x] Root review, one release build and focused native/Ultralight checks.
+- [ ] Luna/max package update; root verifies exact source/package and unchanged owner components.
+- [ ] Root commit, push, publish and verify public installable bytes; hand off Skyrim acceptance.
+Plan: docs/superpowers/plans/2026-10-25-startup-handshake.md. No WSL, server, installed-game or Credential Manager mutation performed.
+
+Review checkpoint: root reviewed Luna/max native/UI/package changes and independently verified five native host targets, 19 exact installed-Ultralight cases and three renders, safe logging helpers and the x64 DLL version/exports. UI browser receipts pass 4/4 and 51/51. The first build stopped on an existing 512-byte valid catalog fixture above the unchanged 256-byte production bound; only the fixture was corrected to valid256/reject257 before resuming the same cached build. All 15 production build inputs and tested UI/script hashes remained frozen. Actual Skyrim and game-to-server acceptance remain unperformed; package and public-byte checks follow the source commit.

@@ -25,6 +25,15 @@ namespace
 		if (!output) throw std::runtime_error("could not write response fixture");
 	}
 
+	void WriteText(const char* path, std::string_view value)
+	{
+		if (!path || !*path) return;
+		std::ofstream output(path, std::ios::binary | std::ios::trunc);
+		if (!output) throw std::runtime_error("could not create text fixture");
+		output << value << '\n';
+		if (!output) throw std::runtime_error("could not write text fixture");
+	}
+
 	std::string ReadText(const char* path)
 	{
 		std::ifstream input(path, std::ios::binary);
@@ -155,7 +164,11 @@ namespace
 
 		CHECK(source.find("initializeState_.ObserveDomReady(view_, view, creatingView_)") != std::string::npos);
 		CHECK(source.find("creatingView_ = true;\n\t\t\tconst auto createdView = prisma_->CreateView") != std::string::npos);
-		CHECK(source.find("initializeState_.TryMarkSent(view_, viewReadyToInitialize_, IsOwnViewFocused(), !viewToken_.empty())") != std::string::npos);
+		CHECK(source.find("initializeState_.TryMarkSent(view_, viewReadyToInitialize_, !viewToken_.empty())") != std::string::npos);
+		CHECK(source.find("dql::policy::BuildInitializeInvokeScript(payload)") != std::string::npos);
+		CHECK(source.find("prisma_->Invoke(view_, script.c_str(), &InitializeResultTrampoline)") != std::string::npos);
+		CHECK(source.find("token != viewToken_ || generation != std::to_string(generation_)") != std::string::npos);
+		CHECK(source.find("kMaxInitializeCallbackBytes + 1") != std::string::npos);
 		CHECK(source.find("initializeState_.IsCurrentDomReady(view_)") != std::string::npos);
 		CHECK(source.find("initializeState_.ResetSent()") != std::string::npos);
 		CHECK(source.find("initializeState_.Reset()") != std::string::npos);
@@ -181,22 +194,40 @@ namespace
 		state.ObserveDomReady(0, 2, true); // synchronous CreateView callback before assigning the returned handle
 		CHECK(!state.IsCurrentDomReady(0));
 		CHECK(state.IsCurrentDomReady(2)); // once CreateView returns, handle 2 is assigned
-		CHECK(!state.TryMarkSent(2, false, true, true));
-		CHECK(state.TryMarkSent(2, true, true, true));
-		CHECK(!state.TryMarkSent(2, true, true, true));
+		CHECK(!state.TryMarkSent(2, false, true));
+		CHECK(state.TryMarkSent(2, true, true)); // DOM-ready initialization must not wait for queued focus.
+		CHECK(!state.TryMarkSent(2, true, true));
 		state.ResetSent(); // close and reopen the same DOM-ready view
-		CHECK(state.TryMarkSent(2, true, true, true));
+		CHECK(!state.TryMarkSent(2, true, false));
+		CHECK(state.TryMarkSent(2, true, true));
 
 		state.Reset(); // destroy and recreate; wait for the new view's callback
-		CHECK(!state.TryMarkSent(2, true, true, true)); // reopen before DOM-ready is delivered
+		CHECK(!state.TryMarkSent(2, true, true)); // reopen before DOM-ready is delivered
 		state.ObserveDomReady(2, 1, false); // delayed callback from the destroyed old view
 		CHECK(!state.IsCurrentDomReady(2));
 		state.ObserveDomReady(2, 99, false); // unrelated view callback
 		CHECK(!state.IsCurrentDomReady(2));
 		state.ObserveDomReady(2, 2, false);
 		CHECK(state.IsCurrentDomReady(2));
-		CHECK(state.TryMarkSent(2, true, true, true));
-		CHECK(!state.TryMarkSent(2, true, true, true));
+		CHECK(state.TryMarkSent(2, true, true));
+		CHECK(!state.TryMarkSent(2, true, true));
+	}
+
+	void TestInitializeInvokeScript()
+	{
+		constexpr auto viewToken = "123e4567-e89b-12d3-a456-426614174211";
+		constexpr auto generation = "42";
+		const auto payload = dql::contract::Json{
+			{ "version", 1 }, { "viewToken", viewToken },
+			{ "nativeGeneration", generation }, { "serverContext", nullptr }
+		}.dump();
+		const auto script = dql::policy::BuildInitializeInvokeScript(payload);
+		CHECK(script.find("window.departmentInitialize") != std::string::npos);
+		CHECK(script.find("===true") != std::string::npos);
+		CHECK(script.find("handler_missing") != std::string::npos);
+		CHECK(script.find("status='exception'") != std::string::npos);
+		CHECK(script.find("viewToken:payload.viewToken,nativeGeneration:payload.nativeGeneration") != std::string::npos);
+		WriteText(std::getenv("DQL_INITIALIZE_SCRIPT_PATH"), script);
 	}
 
 	void TestRawStockRouteCanFallBackToSameName()
@@ -231,6 +262,7 @@ int main()
 		TestProductionSourceWiring();
 		TestManagedNameNormalization();
 		TestInitializeLifecycle();
+		TestInitializeInvokeScript();
 		TestRawStockRouteCanFallBackToSameName();
 		std::cout << "Native boundary tests passed\n";
 		return 0;
