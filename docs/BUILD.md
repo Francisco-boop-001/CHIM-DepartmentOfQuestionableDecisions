@@ -1,5 +1,18 @@
 # Portable source build
 
+## Prealpha.12 compatibility package
+
+This candidate reuses the exact published prealpha.12 game binaries and embedded PCV and Brainwash packages. It changes the Department server package and the letter-state UI; do not rebuild the DLL for this update. The builder requires the four accepted pairing receipts from the isolated dev.23 run. See [the acceptance record](DEV23-COMPATIBILITY.md) for current status and proof limits.
+
+Run from the immutable release source, with a verified prealpha.12 MO2 ZIP, the accepted receipt directory, and a new output directory outside this checkout:
+
+```powershell
+py -3 -B packaging/build-installable-prealpha13.py build --prealpha12-zip $baseZip --pairing-dir $acceptedReceipts --source-commit $releaseCommit --output-dir $newOutput --git $git
+py -3 -B packaging/build-installable-prealpha13.py audit --prealpha12-zip $baseZip --pairing-dir $acceptedReceipts --source-commit $releaseCommit --output-dir $newOutput --git $git
+```
+
+The normal installation uses only `WorldOfDramaLlama-0.1.0-prealpha.13.zip`. The source ZIP and four-JSON pairing ZIP are optional developer downloads. `SHA256SUMS.txt` uses ordinary LF checksum lines. The following full build instructions remain available for reproducing releases that actually changed native or Papyrus code.
+
 This guide builds the companion DLL and host tests, the two Department Papyrus scripts, and the own ESP/SEQ from a clean source checkout. It uses explicit dependency, output, and evidence roots. The scripts do not install files into Skyrim or CHIM. Successful builds and synthetic tests do not establish gameplay, final NPC routing, delivery, audio, or save/load behavior.
 
 ## Toolchains

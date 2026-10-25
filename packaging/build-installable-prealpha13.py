@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and audit the prealpha.12 MO2 and developer-proof archives."""
+"""Build and audit the prealpha.13 MO2 and developer-proof archives."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from io import BytesIO
 from pathlib import Path, PurePosixPath
 
 
-VERSION = "0.1.0-prealpha.12"
+VERSION = "0.1.0-prealpha.13"
 ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_MOD_ZIP = f"WorldOfDramaLlama-{VERSION}.zip"
 OUTPUT_SOURCE_ZIP = f"WorldOfDramaLlama-{VERSION}-source.zip"
@@ -27,13 +27,13 @@ PUBLIC_CHECKSUM_NAMES = {OUTPUT_MOD_ZIP, OUTPUT_SOURCE_ZIP, OUTPUT_PAIRING_ZIP}
 COMPONENT_DIR = "component-packages"
 ZIP_TIMESTAMP = (2026, 10, 24, 0, 0, 0)
 
-BASELINE_ZIP_SHA256 = "66a85ee031f98d7f65344a159fd24722a1fb927409010d9fc0019a485032d621"
+BASELINE_ZIP_SHA256 = "c20f752f1a63483886bb528f07ae536129e3f6ee10f3d964524c404386efd704"
 BASE_DLL_SHA256 = "1451c64dc8285be897d6eeac8754980a0b90a3228f75c8780d2f5566aeacb4c9"
-BASELINE_QD_VERSION = "0.1.0-prealpha.11"
+BASELINE_QD_VERSION = "0.1.0-prealpha.12"
 BASELINE_QD_DESCRIPTION = "A small Skyrim-side Department for the affairs CHIM plugins leave behind."
 BASELINE_QD_MEMBER = f"CHIM/server-plugins/questionable_decisions/{BASELINE_QD_VERSION}.dwpkg"
 BASELINE_PCV_MEMBER = "CHIM/server-plugins/pcv_companion/0.1.0-prealpha.9.dwpkg"
-BASELINE_BRAINWASH_MEMBER = "CHIM/server-plugins/brainwash/0.1.0-dev.2.dwpkg"
+BASELINE_BRAINWASH_MEMBER = "CHIM/server-plugins/brainwash/0.1.0-dev.3.dwpkg"
 QD_MEMBER = f"CHIM/server-plugins/questionable_decisions/{VERSION}.dwpkg"
 APP_JS_MEMBER = "PrismaUI/views/WorldOfDramaLlama/app.js"
 DLL_MEMBER = "SKSE/Plugins/WorldOfDramaLlama.dll"
@@ -150,8 +150,8 @@ REQUIRED_SOURCE_PATHS = {
     *QD_SERVER_SOURCES,
     "packaging/build-installable-prealpha9.py",
     "packaging/tests/test_installable_prealpha9.py",
-    "packaging/build-installable-prealpha12.py",
-    "packaging/tests/test_installable_prealpha12.py",
+    "packaging/build-installable-prealpha13.py",
+    "packaging/tests/test_installable_prealpha13.py",
     SOURCE_ALLOWLIST_PATH,
     "docs/DEV23-COMPATIBILITY.md",
     "docs/superpowers/plans/2026-10-24-sealed-fates-dev23-compatibility.md",
@@ -464,12 +464,12 @@ def _verify_dpkg(data: bytes, version: str) -> dict[str, bytes]:
 
 def audit_base_archive(data: bytes) -> tuple[dict[str, bytes], dict[str, bytes]]:
     if BASE_BUILDER.sha256(data) != BASELINE_ZIP_SHA256:
-        raise BASE_BUILDER.PackageError("base archive is not the verified prealpha.11 ZIP")
-    files = BASE_BUILDER.read_zip_bytes(data, "prealpha.11 base archive")
+        raise BASE_BUILDER.PackageError("base archive is not the verified prealpha.12 ZIP")
+    files = BASE_BUILDER.read_zip_bytes(data, "prealpha.12 base archive")
     if set(files) != BASELINE_MO2_MEMBERS:
-        raise BASE_BUILDER.PackageError("prealpha.11 base archive member list differs")
+        raise BASE_BUILDER.PackageError("prealpha.12 base archive member list differs")
     if BASE_BUILDER.sha256(files[DLL_MEMBER]) != BASE_DLL_SHA256:
-        raise BASE_BUILDER.PackageError("prealpha.11 base DLL hash differs")
+        raise BASE_BUILDER.PackageError("prealpha.12 base DLL hash differs")
     qd_files = _verify_dpkg(files[BASELINE_QD_MEMBER], BASELINE_QD_VERSION)
     return files, qd_files
 
@@ -478,26 +478,26 @@ def validate_dll(data: bytes) -> None:
     BASE_BUILDER.validate_dll(data)
     digest = BASE_BUILDER.sha256(data)
     if digest != BASE_DLL_SHA256:
-        raise BASE_BUILDER.PackageError("prealpha.12 must reuse the exact prealpha.11 DLL")
+        raise BASE_BUILDER.PackageError("prealpha.13 must reuse the exact prealpha.12 DLL")
 
 
 def _compare_dpkg_update(previous: dict[str, bytes], current: dict[str, bytes]) -> None:
     if set(previous) != set(current):
-        raise BASE_BUILDER.PackageError("prealpha.12 Department DWPkg payload paths differ from prealpha.11")
-    old_outer = _loads_object(previous["manifest.json"], "prealpha.11 DWPkg manifest")
-    new_outer = _loads_object(current["manifest.json"], "prealpha.12 DWPkg manifest")
+        raise BASE_BUILDER.PackageError("prealpha.13 Department DWPkg payload paths differ from prealpha.12")
+    old_outer = _loads_object(previous["manifest.json"], "prealpha.12 DWPkg manifest")
+    new_outer = _loads_object(current["manifest.json"], "prealpha.13 DWPkg manifest")
     old_outer["version"] = VERSION
     if new_outer != old_outer:
-        raise BASE_BUILDER.PackageError("prealpha.12 DWPkg changed more than its version")
-    old_inner = _loads_object(previous["server/manifest.json"], "prealpha.11 server manifest")
-    new_inner = _loads_object(current["server/manifest.json"], "prealpha.12 server manifest")
+        raise BASE_BUILDER.PackageError("prealpha.13 DWPkg changed more than its version")
+    old_inner = _loads_object(previous["server/manifest.json"], "prealpha.12 server manifest")
+    new_inner = _loads_object(current["server/manifest.json"], "prealpha.13 server manifest")
     old_inner["version"] = VERSION
     if new_inner != old_inner:
-        raise BASE_BUILDER.PackageError("prealpha.12 server manifest changed more than its version")
+        raise BASE_BUILDER.PackageError("prealpha.13 server manifest changed more than its version")
     allowed_changes = {"manifest.json", "server/manifest.json", "server/adapters/correspondence.php", "checksums.sha256"}
     changed = {path for path in previous if previous[path] != current[path]}
     if not changed.issubset(allowed_changes) or "server/adapters/correspondence.php" not in changed:
-        raise BASE_BUILDER.PackageError("prealpha.12 DWPkg changed paths outside the approved correspondence update")
+        raise BASE_BUILDER.PackageError("prealpha.13 DWPkg changed paths outside the approved correspondence update")
 
 
 def _assemble_mod(base_files: dict[str, bytes], department_package: bytes, app_js: bytes) -> dict[str, bytes]:
@@ -507,12 +507,12 @@ def _assemble_mod(base_files: dict[str, bytes], department_package: bytes, app_j
     files[APP_JS_MEMBER] = app_js
     expected = (BASELINE_MO2_MEMBERS - {BASELINE_QD_MEMBER}) | {QD_MEMBER}
     if set(files) != expected:
-        raise BASE_BUILDER.PackageError("assembled prealpha.12 MO2 member list differs")
+        raise BASE_BUILDER.PackageError("assembled prealpha.13 MO2 member list differs")
     for path in set(base_files) & set(files):
         if path not in {APP_JS_MEMBER} and base_files[path] != files[path]:
-            raise BASE_BUILDER.PackageError(f"prealpha.12 changed an unrelated MO2 member: {path}")
+            raise BASE_BUILDER.PackageError(f"prealpha.13 changed an unrelated MO2 member: {path}")
     if base_files[APP_JS_MEMBER] == app_js:
-        raise BASE_BUILDER.PackageError("prealpha.12 UI script did not change from prealpha.11")
+        raise BASE_BUILDER.PackageError("prealpha.13 UI script did not change from prealpha.12")
     return files
 
 
@@ -563,14 +563,14 @@ def audit_output(output: Path, git_executable: str, source_commit: str, base_zip
     outputs = expected_output_files(output)
     base_data = base_zip.read_bytes()
     base_files, old_qd = audit_base_archive(base_data)
-    mod_files = BASE_BUILDER.read_zip_bytes(outputs[OUTPUT_MOD_ZIP], "prealpha.12 MO2 archive")
+    mod_files = BASE_BUILDER.read_zip_bytes(outputs[OUTPUT_MOD_ZIP], "prealpha.13 MO2 archive")
     expected_mod_names = (BASELINE_MO2_MEMBERS - {BASELINE_QD_MEMBER}) | {QD_MEMBER}
     if set(mod_files) != expected_mod_names:
-        raise BASE_BUILDER.PackageError("prealpha.12 MO2 member list differs")
+        raise BASE_BUILDER.PackageError("prealpha.13 MO2 member list differs")
     BASE_BUILDER.audit_mo2_bytes(outputs[OUTPUT_MOD_ZIP])
     for path in set(base_files) & set(mod_files):
         if path != APP_JS_MEMBER and base_files[path] != mod_files[path]:
-            raise BASE_BUILDER.PackageError(f"prealpha.12 MO2 changed an unrelated member: {path}")
+            raise BASE_BUILDER.PackageError(f"prealpha.13 MO2 changed an unrelated member: {path}")
     app = _read_package_source(git_executable, commit, allowed, "ui/app.js")
     BASE_BUILDER.require_canonical_bytes("UI app.js", mod_files[APP_JS_MEMBER], app)
     validate_dll(mod_files[DLL_MEMBER])
@@ -595,7 +595,7 @@ def build(git_executable: str, source_commit: str, base_zip: Path, pairing_dir: 
     allowed = set(allowlist)
     resolved_output = _safe_output_dir(output)
     if base_zip.is_symlink() or not base_zip.is_file():
-        raise BASE_BUILDER.PackageError("verified prealpha.11 ZIP input must be a regular file")
+        raise BASE_BUILDER.PackageError("verified prealpha.12 ZIP input must be a regular file")
     base_files, old_qd = audit_base_archive(base_zip.read_bytes())
 
     def read_source(relative: str) -> bytes:
@@ -628,13 +628,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     build_parser = subparsers.add_parser("build", help="build the MO2, source, and developer-proof ZIPs")
-    build_parser.add_argument("--prealpha11-zip", required=True, type=Path, help="verified prealpha.11 MO2 ZIP")
+    build_parser.add_argument("--prealpha12-zip", required=True, type=Path, help="verified prealpha.12 MO2 ZIP")
     build_parser.add_argument("--pairing-dir", required=True, type=Path, help="directory with the four accepted pairing receipts")
     build_parser.add_argument("--source-commit", required=True, help="full commit ID at current HEAD")
     build_parser.add_argument("--output-dir", required=True, type=Path, help="new output directory outside the source repository")
     build_parser.add_argument("--git", default="git", help="git executable")
     audit_parser = subparsers.add_parser("audit", help="reopen and audit all three release ZIPs")
-    audit_parser.add_argument("--prealpha11-zip", required=True, type=Path)
+    audit_parser.add_argument("--prealpha12-zip", required=True, type=Path)
     audit_parser.add_argument("--pairing-dir", required=True, type=Path)
     audit_parser.add_argument("--source-commit", required=True, help="full commit ID at current HEAD")
     audit_parser.add_argument("--output-dir", required=True, type=Path)
@@ -646,10 +646,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
         if args.command == "build":
-            build(args.git, args.source_commit, args.prealpha11_zip, args.pairing_dir, args.output_dir)
+            build(args.git, args.source_commit, args.prealpha12_zip, args.pairing_dir, args.output_dir)
             print(f"Built and audited: {args.output_dir.resolve()}")
         else:
-            audit_output(args.output_dir.resolve(), args.git, args.source_commit, args.prealpha11_zip, args.pairing_dir)
+            audit_output(args.output_dir.resolve(), args.git, args.source_commit, args.prealpha12_zip, args.pairing_dir)
             print(f"Audit passed: {args.output_dir.resolve()}")
     except (BASE_BUILDER.PackageError, OSError, subprocess.SubprocessError, zipfile.BadZipFile) as error:
         print(f"package error: {error}", file=sys.stderr)

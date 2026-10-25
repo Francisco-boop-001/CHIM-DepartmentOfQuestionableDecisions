@@ -28,6 +28,19 @@ REQUIRED_COVERAGE = {
 
 
 class Dev23RunnerContractTests(unittest.TestCase):
+    def test_source_bindings_schema_matches_package_freeze(self) -> None:
+        producer = (RUNNER / "build-source-bindings.ps1").read_text(encoding="utf-8")
+        consumer = (RUNNER / "run-dev23-owner-facade.sh").read_text(encoding="utf-8")
+        package = (ROOT / "packaging" / "build-installable-prealpha13.py").read_text(encoding="utf-8")
+        producer_match = re.search(r"schema\s*=\s*'(?P<schema>department\.dev[0-9]+\.runtime-source-bindings\.v1)'", producer)
+        consumer_match = re.search(r'bindings\.get\("schema"\)\s*!=\s*"(?P<schema>department\.dev[0-9]+\.runtime-source-bindings\.v1)"', consumer)
+        freeze_match = re.search(r'^FREEZE_SCHEMA\s*=\s*"(?P<schema>department\.dev[0-9]+\.runtime-source-bindings\.v1)"', package, re.MULTILINE)
+        self.assertIsNotNone(producer_match)
+        self.assertIsNotNone(consumer_match)
+        self.assertIsNotNone(freeze_match)
+        self.assertEqual(producer_match.group("schema"), freeze_match.group("schema"))
+        self.assertEqual(consumer_match.group("schema"), freeze_match.group("schema"))
+
     def test_runner_sources_exist_before_host_execution(self) -> None:
         required = (
             "launch-dev23-test.ps1",

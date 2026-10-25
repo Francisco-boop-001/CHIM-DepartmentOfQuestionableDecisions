@@ -433,7 +433,7 @@ try:
     core_pin = load_json(core_pin_path, 1024 * 1024)
     owner_pin = load_json(owner_pin_path, 65536)
     bindings = load_json(bindings_path, 1024 * 1024)
-    if bindings.get("schema") != "department.dev23.runtime-source-bindings.v1":
+    if bindings.get("schema") != "department.dev20.runtime-source-bindings.v1":
         fail("unexpected source-binding schema")
     expected_fields = {
         "mountRoot": "/mnt/k/ActorwrightExchange",

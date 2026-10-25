@@ -1,5 +1,11 @@
 # Department owner pairing check
 
+## Sealed Fates dev.23 candidate
+
+Department prealpha.13 adds the exact dev.23 source closure, including companion-letter runtime and migrations, while retaining the earlier supported pins. Publication is pending the [dev.23 acceptance record](DEV23-COMPATIBILITY.md). Run `server/tests/correspondence/dev23-source-contract.php --owner-root <exact-dev.23-server>` and the source pairing command below. These host checks establish source readiness only; the actual facade and letter lifecycle need the separate isolated PostgreSQL check and both owners' acceptance.
+
+Companion ownership belongs to an exact recorded document. An opted-in NPC can still author or sign ordinary player-paid letters with items or gold. An uncertain delivery remains locked; reconciliation checks the same letter without resending it. Scheduler ownership and operator closure are separate metadata and do not establish delivery.
+
 Run the source pairing check from the Department checkout with the exact Sealed Fates server source directory that will ship. That directory must contain the Correspondence `manifest.json` and `lib/` tree.
 
 ```powershell

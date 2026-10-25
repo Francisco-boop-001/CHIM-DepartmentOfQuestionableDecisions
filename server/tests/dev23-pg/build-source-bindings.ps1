@@ -216,7 +216,7 @@ function New-Bindings {
     }
 
     $result = [ordered]@{
-        schema = 'department.dev23.runtime-source-bindings.v1'
+        schema = 'department.dev20.runtime-source-bindings.v1'
         mountRoot = '/mnt/k/ActorwrightExchange'
         departmentServerRoot = 'projects/CHIM-DepartmentOfQuestionableDecisions-dev18/server'
         testRoot = 'projects/CHIM-DepartmentOfQuestionableDecisions-dev18/server/tests/dev23-pg'

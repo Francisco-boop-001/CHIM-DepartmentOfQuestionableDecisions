@@ -188,11 +188,18 @@ function dev23_companion_cases(array &$ctx): array
                 $mailbox = dev23_companion_read($ctx, $admin, 'companion_mailbox_projection', 'correspondence.mailbox.read',
                     ['recipientActorKey' => 'player', 'limit' => 50], ['authScopes' => ['inspector']]);
                 $letter = null;
+                $letterIds = [];
                 foreach (($mailbox['data']['letters'] ?? []) as $candidate) {
+                    if (!is_array($candidate)) continue;
+                    if (is_string($candidate['letterId'] ?? null)) $letterIds[] = $candidate['letterId'];
                     if (($candidate['letterId'] ?? null) === $docs[900003]['documentId']) $letter = $candidate;
                 }
                 dev20_require(is_array($letter) && ($letter['claimedSignature'] ?? null) === 'Lydia'
-                    && !array_key_exists('companionSchedulerOwned', $letter), 'companion_mailbox_projection_missing_or_expanded');
+                    && !array_key_exists('companionSchedulerOwned', $letter)
+                    && in_array($docs[900003]['documentId'], $letterIds, true)
+                    && !in_array($docs[900001]['documentId'], $letterIds, true)
+                    && !in_array($docs[900002]['documentId'], $letterIds, true),
+                    'companion_mailbox_visibility_or_projection_missing');
 
                 $detail = dev23_companion_read($ctx, $admin, 'companion_detail_projection', 'correspondence.detail.read',
                     ['recipientActorKey' => 'player', 'letterId' => $docs[900003]['documentId']], ['authScopes' => ['inspector']]);
@@ -267,16 +274,34 @@ function dev23_companion_cases(array &$ctx): array
                     try {
                         dev20_pg($admin, 'UPDATE plugins.correspondence_documents SET payload=$1::jsonb WHERE document_id=$2::uuid',
                             [json_encode($forged, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), $documentId]);
-                        $read = dev23_companion_read($ctx, $admin, 'companion_forged_npc_payer', 'correspondence.reconcile',
-                            ['operationId' => $requestId], ['authScopes' => ['compose']], false);
-                        dev20_require(($read['data']['state'] ?? null) !== 'delivered'
-                            && !array_key_exists('receipt', $read['data']), 'unowned_npc_payer_projected_as_delivered');
+                        $beforeRead = dev20_owner_snapshot($admin);
+                        $operationsBefore = dev20_pg($admin,
+                            'SELECT operation_id::text AS operation_id,payload::text AS payload FROM plugins.correspondence_operations WHERE document_id=$1::uuid ORDER BY operation_id',
+                            [$documentId]);
+                        $sqlOffset = dev20_case_log_start($ctx);
+                        $read = dev20_api_call($ctx, 'companion_forged_npc_payer', 'correspondence.reconcile',
+                            ['operationId' => $requestId], ['authScopes' => ['compose']]);
+                        $response = dev20_simple_assert_response($read, false, 'unavailable');
+                        $fence = dev20_read_fence_evidence($ctx, (string)$read['app'], $sqlOffset);
+                        dev20_assert_refused_read_transaction_shape($fence);
+                        $afterRead = dev20_owner_snapshot($admin);
+                        $operationsAfter = dev20_pg($admin,
+                            'SELECT operation_id::text AS operation_id,payload::text AS payload FROM plugins.correspondence_operations WHERE document_id=$1::uuid ORDER BY operation_id',
+                            [$documentId]);
+                        dev20_require(dev20_unchanged($beforeRead, $afterRead), 'forged_npc_payer_read_mutated_rows');
+                        dev20_require($operationsAfter === $operationsBefore, 'forged_npc_payer_read_changed_delivery_operation');
+                        dev20_require_no_owner_mutation_sql($read, 'forged_npc_payer_read_emitted_owner_mutation');
+                        $data = $response['data'] ?? [];
+                        dev20_require(!is_array($data) || ($data['state'] ?? null) !== 'delivered',
+                            'unowned_npc_payer_projected_as_delivered');
                     } finally {
                         dev20_pg($admin, 'UPDATE plugins.correspondence_documents SET payload=$1::jsonb WHERE document_id=$2::uuid',
                             [$originalPayload, $documentId]);
                     }
                     return ['ordinaryNpcWriterAndSignature' => true, 'payer' => 'player',
-                        'itemAndGoldAttachments' => true, 'forgedNpcPayerWithheld' => true, 'providerCalls' => 0];
+                        'itemAndGoldAttachments' => true, 'forgedNpcPayerError' => $response['errorCode'] ?? null,
+                        'forgedNpcPayerWithheld' => true, 'readOnly' => true, 'deliveryOperationUnchanged' => true,
+                        'readFence' => $fence, 'providerCalls' => 0];
                 });
             }
         }

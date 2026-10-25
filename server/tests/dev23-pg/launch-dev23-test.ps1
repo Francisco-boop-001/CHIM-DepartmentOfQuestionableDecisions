@@ -89,6 +89,17 @@ function Assert-NoReparsePath([string]$Path) {
     }
 }
 
+function Assert-RunOutputPaths([string]$RunsRoot, [string]$RunRoot) {
+    $runsFull = [IO.Path]::GetFullPath($RunsRoot)
+    $runFull = [IO.Path]::GetFullPath($RunRoot)
+    $runParent = [IO.Directory]::GetParent($runFull)
+    if ($null -eq $runParent -or -not [StringComparer]::OrdinalIgnoreCase.Equals($runParent.FullName, $runsFull)) {
+        throw 'The per-run output path is not an immediate child of the assigned runs root.'
+    }
+    Assert-NoReparsePath $runsFull
+    Assert-NoReparsePath $runFull
+}
+
 function Get-TargetRegistration {
     if (-not (Test-Path -LiteralPath $registryRoot -PathType Container)) { throw 'The WSL registration root is unavailable.' }
     $matches = @(
@@ -181,15 +192,37 @@ function Invoke-CleanProcess([string]$FilePath, [string[]]$Arguments) {
     return [pscustomobject]@{ exitCode = $exitCode; stdout = $stdout; stderr = $stderr }
 }
 
+function ConvertFrom-WslListOutput([string]$Text) {
+    $rows = @()
+    foreach ($line in $Text.Replace([string][char]0, '').Split([char]10)) {
+        $row = $line.Trim()
+        if ($row.Length -gt 0 -and [int][char]$row[0] -eq 0xFEFF) { $row = $row.Substring(1).Trim() }
+        if ([string]::IsNullOrWhiteSpace($row)) { continue }
+        if ($row -match '^(?i:NAME)\s+(?i:STATE)\s+(?i:VERSION)$') { continue }
+
+        $selected = $false
+        if ($row.StartsWith('*')) {
+            $selected = $true
+            $row = $row.Substring(1).TrimStart()
+        }
+        $match = [regex]::Match($row, '^(?<name>.+)\s+(?<state>\S+)\s+(?<version>\S+)$')
+        if (-not $match.Success) { throw 'WSL state output contains an unrecognized non-header row.' }
+        $name = $match.Groups['name'].Value.Trim()
+        $state = $match.Groups['state'].Value
+        $versionText = $match.Groups['version'].Value
+        if ([string]::IsNullOrWhiteSpace($name) -or $state -notmatch '^(Running|Stopped)$' -or $versionText -notmatch '^\d+$') {
+            throw 'WSL state output contains an unrecognized non-header row.'
+        }
+        $rows += [pscustomobject]@{ name = $name; state = $state; version = [int]$versionText; selected = $selected }
+    }
+    if ($rows.Count -eq 0) { throw 'WSL state output contains no distribution rows.' }
+    return $rows
+}
+
 function Get-WslSnapshot([string]$WslPath) {
     $result = Invoke-CleanProcess -FilePath $WslPath -Arguments @('--list', '--verbose', '--all')
     if ($result.exitCode -ne 0) { throw 'Could not read WSL distribution state.' }
-    $rows = @()
-    foreach ($line in ([string]$result.stdout).Replace([string][char]0, '').Split([char]10)) {
-        if ($line -match '^\s*\*?\s*(?<name>\S+)\s+(?<state>Running|Stopped)\s+(?<version>[0-9]+)\s*$') {
-            $rows += [pscustomobject]@{ name = $Matches.name; state = $Matches.state; version = [int]$Matches.version }
-        }
-    }
+    $rows = ConvertFrom-WslListOutput -Text ([string]$result.stdout)
     $targetRows = @($rows | Where-Object { $_.name -ceq $targetDistro })
     $duplicateNames = @($rows | Group-Object { $_.name.ToLowerInvariant() } | Where-Object { $_.Count -ne 1 })
     if ($targetRows.Count -ne 1 -or $targetRows[0].version -ne 2 -or $duplicateNames.Count -gt 0) { throw 'WSL state output does not identify one test2 distribution.' }
@@ -256,6 +289,17 @@ function Assert-LinuxReceiptSchemaAlignment {
             throw "The Linux receipt producer and host consumer disagree on schema $schema."
         }
     }
+
+    $bindingsProducer = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'build-source-bindings.ps1') -Raw
+    $packageFreeze = Get-Content -LiteralPath (Join-Path $workspaceRoot 'projects\CHIM-DepartmentOfQuestionableDecisions-dev18\packaging\build-installable-prealpha13.py') -Raw
+    $producerMatch = [regex]::Match($bindingsProducer, "schema\s*=\s*'(?<schema>department\.dev[0-9]+\.runtime-source-bindings\.v1)'")
+    $consumerMatch = [regex]::Match($linuxSource, 'bindings\.get\("schema"\)\s*!=\s*"(?<schema>department\.dev[0-9]+\.runtime-source-bindings\.v1)"')
+    $freezeMatch = [regex]::Match($packageFreeze, '(?m)^FREEZE_SCHEMA\s*=\s*"(?<schema>department\.dev[0-9]+\.runtime-source-bindings\.v1)"')
+    if (-not $producerMatch.Success -or -not $consumerMatch.Success -or -not $freezeMatch.Success -or
+        $producerMatch.Groups['schema'].Value -cne $consumerMatch.Groups['schema'].Value -or
+        $producerMatch.Groups['schema'].Value -cne $freezeMatch.Groups['schema'].Value) {
+        throw 'The source-binding producer, Linux consumer, and package freeze schema disagree.'
+    }
 }
 
 function Convert-WindowsPathToWsl([string]$Path) {
@@ -265,7 +309,18 @@ function Convert-WindowsPathToWsl([string]$Path) {
 }
 
 function Write-RunReceipt([bool]$Passed, [string]$Failure) {
-    if ($null -eq $script:runRoot -or -not (Test-Path -LiteralPath $script:runRoot -PathType Container)) { return }
+    if ($null -eq $script:runRoot) { return $false }
+    try {
+        $runFull = [IO.Path]::GetFullPath($script:runRoot)
+        $parent = [IO.Directory]::GetParent($runFull)
+        if ($null -eq $parent) { throw 'The host receipt path has no assigned parent.' }
+        $runsRoot = $parent.FullName
+        Assert-RunOutputPaths -RunsRoot $runsRoot -RunRoot $runFull
+    } catch {
+        if ([string]::IsNullOrEmpty($script:failure)) { $script:failure = 'The host receipt output path is unsafe; no receipt files were written.' }
+        return $false
+    }
+    if (-not (Test-Path -LiteralPath $runFull -PathType Container)) { return $false }
     $lifecycle = New-TestDistroLifecycleReceipt -InitialState $script:initialState -FinalState $script:finalState -InitialRegistration $script:initialRegistration -FinalRegistration $script:finalRegistration -ProtectedBefore $script:protectedBefore -ProtectedAfter $script:protectedAfter -RunningOthersBefore $script:runningOthersBefore -RunningOthersAfter $script:runningOthersAfter
     $effectivePassed = $Passed -and $lifecycle.preservationVerified
     $receipt = [ordered]@{
@@ -288,14 +343,80 @@ function Write-RunReceipt([bool]$Passed, [string]$Failure) {
         liveOrGameAccess = $false
         failedRunArtifactsPreserved = $true
     }
-    [IO.File]::WriteAllText((Join-Path $script:runRoot 'host-runtime.json'), ($receipt | ConvertTo-Json -Depth 12) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText((Join-Path $script:runRoot 'wsl.stdout.txt'), $script:linuxStdout, [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText((Join-Path $script:runRoot 'wsl.stderr.txt'), $script:linuxStderr, [Text.UTF8Encoding]::new($false))
+    try {
+        Assert-RunOutputPaths -RunsRoot $runsRoot -RunRoot $runFull
+    } catch {
+        if ([string]::IsNullOrEmpty($script:failure)) { $script:failure = 'The host receipt output path is unsafe; no receipt files were written.' }
+        return $false
+    }
+    [IO.File]::WriteAllText((Join-Path $runFull 'host-runtime.json'), ($receipt | ConvertTo-Json -Depth 12) + [Environment]::NewLine, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $runFull 'wsl.stdout.txt'), $script:linuxStdout, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $runFull 'wsl.stderr.txt'), $script:linuxStderr, [Text.UTF8Encoding]::new($false))
+    return $true
+}
+
+function Test-ReceiptRedirectRefusal {
+    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([char]'\')
+    $testRoot = Join-Path $tempRoot ('department-dev23-reparse-selftest-' + [guid]::NewGuid().ToString('N'))
+    $targetRuns = Join-Path $testRoot 'target-runs'
+    $redirectedRuns = Join-Path $testRoot 'runs'
+    $testRunRoot = Join-Path $redirectedRuns 'run'
+    $oldRunRoot = $script:runRoot
+    $oldRunId = $script:runId
+    $oldFailure = $script:failure
+    $didWrite = $true
+    $guardFailure = $null
+    $setupFailure = $null
+    $unexpected = @()
+    try {
+        $null = New-Item -ItemType Directory -Path $targetRuns
+        $null = New-Item -ItemType Junction -Path $redirectedRuns -Target $targetRuns
+        $null = New-Item -ItemType Directory -Path $testRunRoot
+        $script:runRoot = $testRunRoot
+        $script:runId = 'redirected-root-selftest'
+        $script:failure = $null
+        $didWrite = Write-RunReceipt -Passed $true -Failure $null
+        $guardFailure = $script:failure
+        $receiptNames = @('host-runtime.json', 'wsl.stdout.txt', 'wsl.stderr.txt')
+        $unexpected = @($receiptNames | Where-Object { Test-Path -LiteralPath (Join-Path $testRunRoot $_) })
+    } catch {
+        $setupFailure = $_.Exception.Message
+    } finally {
+        $script:runRoot = $oldRunRoot
+        $script:runId = $oldRunId
+        $script:failure = $oldFailure
+        if (Test-Path -LiteralPath $redirectedRuns) {
+            $linkItem = Get-Item -LiteralPath $redirectedRuns -Force
+            if (($linkItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { [IO.Directory]::Delete($redirectedRuns) }
+        }
+        if (Test-Path -LiteralPath $testRoot) {
+            $tempPrefix = $tempRoot.TrimEnd([char]'\') + [IO.Path]::DirectorySeparatorChar
+            $fullTestRoot = [IO.Path]::GetFullPath($testRoot)
+            if (-not $fullTestRoot.StartsWith($tempPrefix, [StringComparison]::OrdinalIgnoreCase)) { throw 'Self-test cleanup escaped its temporary root.' }
+            Assert-NoReparsePath $fullTestRoot
+            [IO.Directory]::Delete($fullTestRoot, $true)
+        }
+    }
+    if (-not [string]::IsNullOrEmpty($setupFailure)) { throw "Receipt path self-test setup failed: $setupFailure" }
+    if ($didWrite -ne $false -or [string]::IsNullOrEmpty($guardFailure) -or
+        $guardFailure -cnotmatch 'unsafe' -or $unexpected.Count -ne 0) {
+        throw 'Redirected receipt output self-test failed to suppress writes.'
+    }
 }
 
 if ($SelfTest) {
     $null = Assert-Lease
     Assert-LinuxReceiptSchemaAlignment
+    $parsedRows = @(ConvertFrom-WslListOutput -Text "  NAME                   STATE           VERSION`r`n* Dwemer Test Environment Running 2`r`n  Debian GNU/Linux Stopped 2")
+    if ($parsedRows.Count -ne 2 -or $parsedRows[0].name -cne 'Dwemer Test Environment' -or
+        $parsedRows[0].state -cne 'Running' -or $parsedRows[0].version -ne 2 -or $parsedRows[0].selected -ne $true -or
+        $parsedRows[1].name -cne 'Debian GNU/Linux' -or $parsedRows[1].state -cne 'Stopped') {
+        throw 'WSL whitespace-name parsing self-test failed.'
+    }
+    $unknownWslRowRefused = $false
+    try { $null = ConvertFrom-WslListOutput -Text "NAME STATE VERSION`nA Distribution Paused 2" } catch { $unknownWslRowRefused = $true }
+    if (-not $unknownWslRowRefused) { throw 'Unknown WSL row self-test failed to refuse.' }
+    Test-ReceiptRedirectRefusal
     $syntheticLease = [pscustomobject]@{
         lease_id = $expectedLeaseId; distro = $targetDistro; state = 'granted-to-department'
         old_sealedfates_cluster_leased = $false; distro_exclusivity = $false
@@ -384,8 +505,10 @@ try {
     $runsRoot = Join-Path $runtimeRoot 'runs'
     if (-not (Test-Path -LiteralPath $runsRoot -PathType Container)) { $null = New-Item -ItemType Directory -Path $runsRoot }
     $script:runRoot = Join-Path $runsRoot $script:runId
+    $null = Assert-RunOutputPaths -RunsRoot $runsRoot -RunRoot $script:runRoot
     if (Test-Path -LiteralPath $script:runRoot) { throw 'Generated run directory already exists.' }
     $null = New-Item -ItemType Directory -Path $script:runRoot
+    $null = Assert-RunOutputPaths -RunsRoot $runsRoot -RunRoot $script:runRoot
     $script:preflightPassed = $true
 
     $immediateRegistration = Get-TargetRegistration
@@ -406,6 +529,7 @@ try {
         'PATH=/usr/sbin:/usr/bin:/sbin:/bin', 'HOME=/nonexistent', 'LANG=C', 'LC_ALL=C', "WSL_DISTRO_NAME=$targetDistro",
         '/usr/bin/unshare', '--net', '--', '/bin/bash', '--noprofile', '--norc', $linuxRunner,
         $script:runId, $linuxRunRoot, $linuxBindings, $linuxOwnerRoot)
+    $null = Assert-RunOutputPaths -RunsRoot $runsRoot -RunRoot $script:runRoot
     $script:runnerInvoked = $true
     $result = Invoke-CleanProcess -FilePath $wslPath -Arguments $arguments
     $script:runnerExitCode = $result.exitCode

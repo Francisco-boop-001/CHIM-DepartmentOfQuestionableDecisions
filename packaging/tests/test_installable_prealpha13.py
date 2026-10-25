@@ -12,8 +12,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-BUILDER_PATH = Path(__file__).resolve().parents[1] / "build-installable-prealpha12.py"
-SPEC = importlib.util.spec_from_file_location("installable_prealpha12", BUILDER_PATH)
+BUILDER_PATH = Path(__file__).resolve().parents[1] / "build-installable-prealpha13.py"
+SPEC = importlib.util.spec_from_file_location("installable_prealpha13", BUILDER_PATH)
 assert SPEC is not None and SPEC.loader is not None
 BUILDER = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(BUILDER)
@@ -166,16 +166,16 @@ def accepted_receipts() -> tuple[dict[str, bytes], dict[str, bytes]]:
     return receipts, department_data
 
 
-class InstallablePrealpha12Tests(unittest.TestCase):
-    def test_release_identity_and_allowlist_are_prealpha12_only(self) -> None:
-        self.assertEqual(BUILDER.VERSION, "0.1.0-prealpha.12")
-        self.assertEqual(BUILDER.OUTPUT_MOD_ZIP, "WorldOfDramaLlama-0.1.0-prealpha.12.zip")
-        self.assertEqual(BUILDER.OUTPUT_SOURCE_ZIP, "WorldOfDramaLlama-0.1.0-prealpha.12-source.zip")
-        self.assertEqual(BUILDER.OUTPUT_PAIRING_ZIP, "WorldOfDramaLlama-0.1.0-prealpha.12-pairing.zip")
+class InstallablePrealpha13Tests(unittest.TestCase):
+    def test_release_identity_and_allowlist_are_prealpha13_only(self) -> None:
+        self.assertEqual(BUILDER.VERSION, "0.1.0-prealpha.13")
+        self.assertEqual(BUILDER.OUTPUT_MOD_ZIP, "WorldOfDramaLlama-0.1.0-prealpha.13.zip")
+        self.assertEqual(BUILDER.OUTPUT_SOURCE_ZIP, "WorldOfDramaLlama-0.1.0-prealpha.13-source.zip")
+        self.assertEqual(BUILDER.OUTPUT_PAIRING_ZIP, "WorldOfDramaLlama-0.1.0-prealpha.13-pairing.zip")
         self.assertEqual(len(BUILDER.PUBLIC_CHECKSUM_NAMES), 3)
-        self.assertIn("CHIM/server-plugins/questionable_decisions/0.1.0-prealpha.12.dwpkg", BUILDER.MO2_FIXED_MEMBERS)
+        self.assertIn("CHIM/server-plugins/questionable_decisions/0.1.0-prealpha.13.dwpkg", BUILDER.MO2_FIXED_MEMBERS)
         self.assertIn("CHIM/server-plugins/pcv_companion/0.1.0-prealpha.9.dwpkg", BUILDER.MO2_FIXED_MEMBERS)
-        self.assertNotIn("CHIM/server-plugins/questionable_decisions/0.1.0-prealpha.11.dwpkg", BUILDER.MO2_FIXED_MEMBERS)
+        self.assertNotIn("CHIM/server-plugins/questionable_decisions/0.1.0-prealpha.12.dwpkg", BUILDER.MO2_FIXED_MEMBERS)
         self.assertIn("server/adapters/brainwash.php", BUILDER.QD_SERVER_SOURCES)
         self.assertIn("server/preprocessing.php", BUILDER.QD_SERVER_SOURCES)
         paths = {
@@ -246,10 +246,18 @@ class InstallablePrealpha12Tests(unittest.TestCase):
                     BUILDER.build_pairing_zip(directory, "git", "a" * 40)
 
     def test_baseline_zip_and_component_updates_are_strictly_pinned(self) -> None:
-        with self.assertRaisesRegex(BUILDER.PackageError, "verified prealpha.11"):
+        with self.assertRaisesRegex(BUILDER.PackageError, "verified prealpha.12"):
             BUILDER.audit_base_archive(b"not the pinned base archive")
         self.assertEqual(len(BUILDER.BASELINE_MO2_MEMBERS), 22)
+        self.assertEqual(BUILDER.BASELINE_ZIP_SHA256, "c20f752f1a63483886bb528f07ae536129e3f6ee10f3d964524c404386efd704")
+        self.assertEqual(BUILDER.BASELINE_QD_VERSION, "0.1.0-prealpha.12")
+        self.assertEqual(BUILDER.BASELINE_BRAINWASH_MEMBER, "CHIM/server-plugins/brainwash/0.1.0-dev.3.dwpkg")
         self.assertEqual(BUILDER.BASE_DLL_SHA256, "1451c64dc8285be897d6eeac8754980a0b90a3228f75c8780d2f5566aeacb4c9")
+        args = BUILDER.parse_args([
+            "build", "--prealpha12-zip", "baseline.zip", "--pairing-dir", "receipts",
+            "--source-commit", "a" * 40, "--output-dir", "release",
+        ])
+        self.assertEqual(args.prealpha12_zip, Path("baseline.zip"))
         with patch.object(BUILDER.BASE_BUILDER, "sha256", return_value=BUILDER.BASE_DLL_SHA256):
             BUILDER.validate_dll(valid_x64_pe())
         for old_hash in {
@@ -316,9 +324,9 @@ class InstallablePrealpha12Tests(unittest.TestCase):
             )
 
     def test_actual_pinned_baseline_builds_current_component_with_only_approved_changes(self) -> None:
-        baseline_path = os.environ.get("DEPARTMENT_PREALPHA11_BASELINE_ZIP")
+        baseline_path = os.environ.get("DEPARTMENT_PREALPHA12_BASELINE_ZIP")
         if not baseline_path:
-            self.skipTest("set DEPARTMENT_PREALPHA11_BASELINE_ZIP to run the local release self-check")
+            self.skipTest("set DEPARTMENT_PREALPHA12_BASELINE_ZIP to run the local release self-check")
         base_files, old_qd = BUILDER.audit_base_archive(Path(baseline_path).read_bytes())
         self.assertEqual(
             json.loads(old_qd["manifest.json"])["description"],
