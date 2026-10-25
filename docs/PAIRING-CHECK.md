@@ -1,8 +1,8 @@
 # Department owner pairing check
 
-## Sealed Fates dev.23 candidate
+## Sealed Fates dev.23 pairing
 
-Department prealpha.13 adds the exact dev.23 source closure, including companion-letter runtime and migrations, while retaining the earlier supported pins. Publication is pending the [dev.23 acceptance record](DEV23-COMPATIBILITY.md). Run `server/tests/correspondence/dev23-source-contract.php --owner-root <exact-dev.23-server>` and the source pairing command below. These host checks establish source readiness only; the actual facade and letter lifecycle need the separate isolated PostgreSQL check and both owners' acceptance.
+Department prealpha.13 adds the exact dev.23 source closure, including companion-letter runtime and migrations, while retaining the earlier supported pins. The independent 38-case TEST run and proof limits are recorded in the [dev.23 acceptance record](DEV23-COMPATIBILITY.md). Run `server/tests/correspondence/dev23-source-contract.php --owner-root <exact-dev.23-server>` and the source pairing command below. These host commands establish source readiness only; the release additionally carries the separately accepted PostgreSQL pairing evidence.
 
 Companion ownership belongs to an exact recorded document. An opted-in NPC can still author or sign ordinary player-paid letters with items or gold. An uncertain delivery remains locked; reconciliation checks the same letter without resending it. Scheduler ownership and operator closure are separate metadata and do not establish delivery.
 

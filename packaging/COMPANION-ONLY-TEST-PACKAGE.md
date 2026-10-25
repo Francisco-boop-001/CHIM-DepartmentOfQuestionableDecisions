@@ -1,14 +1,14 @@
-# Department install-and-use guide — prealpha.9
+# Department install-and-use guide — prealpha.13
 
 This PRE-ALPHA candidate adds a normal in-game connection flow. Use a disposable MO2 profile, save, and CHIM server until you have completed your own acceptance checks.
 
 ## Install the mod
 
-1. Install the single `WorldOfDramaLlama-0.1.0-prealpha.9.zip` in MO2 as an ordinary mod and enable it. Its archive root is the Skyrim Data layout: SKSE, PrismaUI, Scripts, SEQ, the Department ESP, notices, and CHIM server packages. Do not add another Data or Skyrim directory.
+1. Install the single `WorldOfDramaLlama-0.1.0-prealpha.13.zip` in MO2 as an ordinary mod and enable it. Its archive root is the Skyrim Data layout: SKSE, PrismaUI, Scripts, SEQ, the Department ESP, notices, and CHIM server packages. Do not add another Data or Skyrim directory.
 2. Meet the requirements: Skyrim SE/AE, matching SKSE64 and Address Library, PRISMA UI with its V1 API, SkyUI, CHIM, and the owner-plugin versions supported by the tabs you plan to use. Private Conversation is optional. VR is not supported. The masterless ESL-flagged ESP uses one light-plugin slot and no full-plugin slot.
-3. Load a save with CHIM enabled. CHIM's normal mod/plugin synchronization detects the two bundled schema-4 packages under CHIM/server-plugins and installs them on the server. Players do not unpack or copy those packages manually.
+3. Load a save with CHIM enabled. CHIM's normal mod/plugin synchronization detects the three bundled schema-4 packages under CHIM/server-plugins and installs them on the server. Players do not unpack or copy those packages manually.
 
-The archive contains the Department DLL and view, its owned ESP/SEQ/Papyrus assets, seven license notices, and the two Department DWPkgs for CHIM's normal plugin synchronization. It does not contain AIAgent.dll, CHIM core files, or a complete Private Conversation plugin.
+The archive contains the Department DLL and view, its owned ESP/SEQ/Papyrus assets, seven license notices, and three server packages (Department, PCV companion and Malpractice) for CHIM's normal plugin synchronization. It does not contain AIAgent.dll, CHIM core files, or a complete Private Conversation plugin.
 
 ## Connect to CHIM
 
@@ -30,9 +30,11 @@ The Department DWPkg carries those staged setup files under its own extension. I
 
 ## First-use checks
 
+The supported current owners are Private Conversation 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Sealed Fates dev.23 and Malpractice dev.3. Malpractice is bundled; install the other complete owners and their required game components separately. Keep the original Private Conversation input fallback.
+
 Use a disposable save and confirm:
 
-1. The Department opens from its assigned key and shows Private Conversation, Mind Poisoning, Sworn & Scorned, and Sealed Fates.
+1. The Department opens from its assigned key and shows Private Conversation, Mind Poisoning, Sworn & Scorned, Sealed Fates, and Malpractice Makes Perfect.
 2. After ordinary CHIM plugin synchronization, opening the Department starts connection setup; confirm the tabs load current data after authenticated bootstrap.
 3. If using Private Conversation, install its complete 0.1.23 owner plugin. Confirm the Department reports PCV ready after bootstrap. Disable the Department and confirm the owner's original input method still works.
 4. Send or mutate once. If the result becomes uncertain, use the relevant status or reconciliation control. Do not resend an uncertain operation or remove its state to clear a lock.
