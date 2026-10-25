@@ -327,8 +327,10 @@ Review: exact PRISMA 1.4.1 queued-focus semantics plus the unchanged production 
 - [x] Luna/max native fix and bounded diagnostics, failing regression first.
 - [x] Luna/max UI idempotence and truthful startup status, focused regression checks.
 - [x] Root review, one release build and focused native/Ultralight checks.
-- [ ] Luna/max package update; root verifies exact source/package and unchanged owner components.
-- [ ] Root commit, push, publish and verify public installable bytes; hand off Skyrim acceptance.
+- [x] Luna/max package update; root verifies exact source/package and unchanged owner components.
+- [x] Root commit, push, publish and verify public installable bytes; hand off Skyrim acceptance.
 Plan: docs/superpowers/plans/2026-10-25-startup-handshake.md. No WSL, server, installed-game or Credential Manager mutation performed.
 
 Review checkpoint: root reviewed Luna/max native/UI/package changes and independently verified five native host targets, 19 exact installed-Ultralight cases and three renders, safe logging helpers and the x64 DLL version/exports. UI browser receipts pass 4/4 and 51/51. The first build stopped on an existing 512-byte valid catalog fixture above the unchanged 256-byte production bound; only the fixture was corrected to valid256/reject257 before resuming the same cached build. All 15 production build inputs and tested UI/script hashes remained frozen. Actual Skyrim and game-to-server acceptance remain unperformed; package and public-byte checks follow the source commit.
+
+Final release review: published v0.1.0-prealpha.14 at2026-10-25T21:03:02Z, release423660715, frozen source b508076f40484f4dc588ddd5848b5a42a60d0fc6. Root independently compared22 installable members (only DLL/app.js/index.html changed),190 committed source files and all four provenance members. All three bundled server packages and owner pins remain exact to .13. Installable613452 bytes, SHA2561a68afa602760860e9a7b9be5c1b234264b9668f340367b5f0f1f7f90be529a6. Draft downloads, anonymous public downloads, GitHub sizes/digests and GNU checksums match. All12 earlier releases,87 assets and24 tag refs remain unchanged. Primary main fast-forwarded only after public-byte acceptance. This completion record does not move the tag or replace assets. No WSL, game installation, Credential Manager, live/core/provider/database mutation. Skyrim startup and actual game-to-server acceptance remain for the user in isolated TEST.

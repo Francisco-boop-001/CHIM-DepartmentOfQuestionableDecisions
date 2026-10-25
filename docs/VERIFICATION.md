@@ -2,6 +2,8 @@
 
 Current development: [prealpha.14 startup handshake](#prealpha14-startup-handshake-candidate--2026-10-25). Older sections retain the proof limits of their named releases.
 
+Published [prealpha.14](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.14) at 2026-10-25T21:03:02Z from immutable source `b508076f40484f4dc588ddd5848b5a42a60d0fc6`. Root independently checked all 22 installable members, 190 committed source files and the four provenance records. Exactly DLL/app.js/index.html changed; all three server packages are identical to .13. All four draft and anonymous public downloads match local bytes, GitHub sizes/digests and GNU checksums. All 12 previous releases, 87 assets and 24 tag refs remain unchanged. Main advanced after public-byte verification. This completion record does not alter the published source or assets; Skyrim acceptance remains unperformed.
+
 ## Prealpha.14 startup-handshake candidate — 2026-10-25
 
 This TEST candidate is built from the exact prealpha.13 installable archive (SHA-256 `039f0b40afa9173b82a21ea7d26cbe727d153a3d830c964aba0e35769feb5d7d`). The release builder permits changes only to `SKSE/Plugins/WorldOfDramaLlama.dll`, `PrismaUI/views/WorldOfDramaLlama/app.js`, and `PrismaUI/views/WorldOfDramaLlama/index.html`. The three bundled DWPkgs and all other game files, including the blank-shipped INI and notices, are retained byte-for-byte. No developer receipts or prealpha.14 source/provenance metadata are added to the installable; the existing DWPkg manifests remain inside their unchanged packages.
