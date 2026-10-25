@@ -2,6 +2,8 @@
 
 Current development: [prealpha.15 Sealed Fates dev.24 source candidate](#prealpha15-sealed-fates-dev24-source-candidate). Older sections retain the proof limits of their named releases.
 
+Published [prealpha.15](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.15) at 2026-10-25T21:32:22Z from immutable source `2c44c3fb30af4692319c0d9f09875b8cc411c7dc`. Root independently checked all 22 MO2 members (21 unchanged), 194 committed source members, both proof records and the Department DWPkg checksum closure. All four draft and anonymous public downloads match local bytes, GitHub sizes/digests and GNU checksums. All 13 previous releases, 91 assets and 26 tag refs remain unchanged. Main advanced after public-byte verification. This completion record changes no release assets or tag; no new actual CHIM server, PostgreSQL, provider, native or Skyrim acceptance is claimed.
+
 ## Prealpha.15 Sealed Fates dev.24 source candidate
 
 The TEST package builder starts from the exact published prealpha.14 installable archive (SHA-256 `1a68afa602760860e9a7b9be5c1b234264b9668f340367b5f0f1f7f90be529a6`). It permits replacing only the Department DWPkg: its outer and server manifests advance to prealpha.15, its correspondence adapter adds the dev.24 owner map while retaining prior pins, and its checksums are regenerated. The other 21 MO2 members, including the native DLL, UI, PCV companion and Malpractice package, must remain byte-identical. The installable contains no developer evidence. The source and compatibility-proof archives are separate.
