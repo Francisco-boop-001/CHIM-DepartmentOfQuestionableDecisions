@@ -1,5 +1,22 @@
 # Department owner pairing check
 
+## Sealed Fates dev.24 source candidate
+
+Prealpha.15 adds Sealed Fates dev.24 while retaining the dev.23 map and every earlier supported owner pin. The exact owner input is tag `correspondence-v0.1.0-dev.24`, commit `80821db59d3e1c299bee56b4496cf20a144984fd`. The dev.24 source-contract check requires the dev.23 root as a comparison control for the manifest-replacement refusal case:
+
+```powershell
+& $php -n server/tests/correspondence/dev23-source-contract.php `
+  --owner-version 0.1.0-dev.24 `
+  --owner-root $dev24ServerRoot `
+  --legacy-owner-root $dev23ServerRoot
+```
+
+Run the source pairing-readiness command below with `$ownerServerRoot` set to the same exact dev.24 source directory and `$departmentServerRoot` set to the selected Department server source.
+
+The focused dev.24 source contract, dev.23 regression control, source pairing readiness and protected-payload comparison passed. The resulting compatibility input binds those four receipt hashes to the selected Department commit and exact 19-file dev.24 map in `server/adapters/correspondence.php`. The package builder refuses mismatched owner pins or changed adapter/protocol source.
+
+This is source and pairing-readiness evidence. PHP source/projection checks use isolated fixtures. They do not rerun the dev.23 PostgreSQL suite for dev.24 and do not prove a dev.24 database, HTTP/provider, actual CHIM-server or Skyrim result. Do not present the historical dev.23 38-case run as dev.24 proof. The archived [dev.23 acceptance record](DEV23-COMPATIBILITY.md) remains scoped to its named version and run.
+
 ## Sealed Fates dev.23 pairing
 
 Department prealpha.13 adds the exact dev.23 source closure, including companion-letter runtime and migrations, while retaining the earlier supported pins. The independent 38-case TEST run and proof limits are recorded in the [dev.23 acceptance record](DEV23-COMPATIBILITY.md). Run `server/tests/correspondence/dev23-source-contract.php --owner-root <exact-dev.23-server>` and the source pairing command below. These host commands establish source readiness only; the release additionally carries the separately accepted PostgreSQL pairing evidence.

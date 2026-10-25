@@ -104,24 +104,24 @@ try {
     dev21SourceExpect(qd_correspondence_version_uses_restore_fence('0.1.0-dev.20'), 'The dev20 restore fence was not retained.');
     dev21SourceExpect(qd_correspondence_version_uses_restore_fence('0.1.0-dev.21'), 'The dev21 restore fence is not enabled.');
     dev21SourceExpect(qd_correspondence_version_uses_restore_fence('0.1.0-dev.23'), 'The dev23 restore fence is not enabled.');
-    dev21SourceExpect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.19')
-        && !qd_correspondence_version_uses_restore_fence('0.1.0-dev.24'), 'The adapter must refuse unsupported restore-fence versions.');
+    dev21SourceExpect(qd_correspondence_version_uses_restore_fence('0.1.0-dev.24'), 'The dev24 restore fence is not enabled.');
+    dev21SourceExpect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.19'), 'The adapter must refuse unsupported restore-fence versions.');
     dev21SourceExpect(qd_correspondence_version_supports_signed_unknown('0.1.0-dev.17')
         && qd_correspondence_version_supports_signed_unknown('0.1.0-dev.18')
         && qd_correspondence_version_supports_signed_unknown('0.1.0-dev.20')
         && qd_correspondence_version_supports_signed_unknown('0.1.0-dev.21')
-        && qd_correspondence_version_supports_signed_unknown('0.1.0-dev.23'), 'Signed-unknown compatibility regressed for a pinned release.');
-    dev21SourceExpect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19')
-        && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.24'), 'The adapter must refuse unsupported signed-unknown versions.');
+        && qd_correspondence_version_supports_signed_unknown('0.1.0-dev.23')
+        && qd_correspondence_version_supports_signed_unknown('0.1.0-dev.24'), 'Signed-unknown compatibility regressed for a pinned release.');
+    dev21SourceExpect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19'), 'The adapter must refuse unsupported signed-unknown versions.');
     dev21SourceExpect(qd_correspondence_version_supports_operator_close('0.1.0-dev.20')
         && qd_correspondence_version_supports_operator_close('0.1.0-dev.21')
         && qd_correspondence_version_supports_operator_close('0.1.0-dev.23')
+        && qd_correspondence_version_supports_operator_close('0.1.0-dev.24')
         && !qd_correspondence_version_supports_operator_close('0.1.0-dev.17')
         && !qd_correspondence_version_supports_operator_close('0.1.0-dev.18')
-        && !qd_correspondence_version_supports_operator_close('0.1.0-dev.19')
-        && !qd_correspondence_version_supports_operator_close('0.1.0-dev.24'), 'Operator-close support must remain limited to pinned versions.');
+        && !qd_correspondence_version_supports_operator_close('0.1.0-dev.19'), 'Operator-close support must remain limited to pinned versions.');
 
-    foreach (['0.1.0-dev.19', '0.1.0-dev.24'] as $unsupportedVersion) {
+    foreach (['0.1.0-dev.19'] as $unsupportedVersion) {
         $unsupportedRoot = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-' . str_replace('.', '-', $unsupportedVersion);
         if (!mkdir($unsupportedRoot, 0700, true)) throw new RuntimeException('Could not create the unsupported-version fixture.');
         if (file_put_contents($unsupportedRoot . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"' . $unsupportedVersion . '"}') === false) {

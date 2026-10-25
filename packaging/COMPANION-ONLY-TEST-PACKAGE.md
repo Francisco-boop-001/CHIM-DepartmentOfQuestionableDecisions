@@ -1,14 +1,16 @@
-# Department install-and-use guide — prealpha.14
+# Department install-and-use guide — prealpha.15
 
 This PRE-ALPHA candidate adds a normal in-game connection flow. Use a disposable MO2 profile, save, and CHIM server until you have completed your own acceptance checks.
 
 ## Install the mod
 
-1. Install the single `WorldOfDramaLlama-0.1.0-prealpha.14.zip` in MO2 as an ordinary mod and enable it. Its archive root is the Skyrim Data layout: SKSE, PrismaUI, Scripts, SEQ, the Department ESP, notices, and CHIM server packages. Do not add another Data or Skyrim directory.
+1. Download and install [WorldOfDramaLlama-0.1.0-prealpha.15.zip](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.15/WorldOfDramaLlama-0.1.0-prealpha.15.zip) in MO2 as an ordinary mod and enable it. Its archive root is the Skyrim Data layout: SKSE, PrismaUI, Scripts, SEQ, the Department ESP, notices, and CHIM server packages. Do not add another Data or Skyrim directory. The published prealpha.14 archive does not include the dev.24 pin.
 2. Meet the requirements: Skyrim SE/AE, matching SKSE64 and Address Library, PRISMA UI with its V1 API, SkyUI, CHIM, and the owner-plugin versions supported by the tabs you plan to use. Private Conversation is optional. VR is not supported. The masterless ESL-flagged ESP uses one light-plugin slot and no full-plugin slot.
 3. Load a save with CHIM enabled. CHIM's normal mod/plugin synchronization detects the three bundled schema-4 packages under CHIM/server-plugins and installs them on the server. Players do not unpack or copy those packages manually.
 
-The archive contains the Department DLL and view, its owned ESP/SEQ/Papyrus assets, seven license notices, and three server packages (Department, PCV companion and Malpractice) for CHIM's normal plugin synchronization. It does not contain AIAgent.dll, CHIM core files, or a complete Private Conversation plugin. Compared with prealpha.13, only the Department DLL and the `app.js` and `index.html` view members change; all server packages and other installable members are retained exactly. Source and startup provenance are separate developer archives; do not install them in MO2.
+The [source ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.15/WorldOfDramaLlama-0.1.0-prealpha.15-source.zip), [compatibility-proof ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.15/WorldOfDramaLlama-0.1.0-prealpha.15-compatibility-proof.zip), and [SHA256SUMS.txt](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.15/SHA256SUMS.txt) are separate developer materials. Only the MO2 ZIP is installed.
+
+The archive contains the Department DLL and view, its owned ESP/SEQ/Papyrus assets, seven license notices, and three server packages (Department, PCV companion and Malpractice) for CHIM's normal plugin synchronization. It does not contain AIAgent.dll, CHIM core files, or a complete Private Conversation plugin. Compared with prealpha.14, only the Department DWPkg is replaced; all other 21 installable members are byte-identical. Within the Department DWPkg, only the version manifests, correspondence adapter and checksum file change. The four-file candidate set is the MO2 installable, source ZIP, compatibility-proof ZIP and `SHA256SUMS.txt`; install only the MO2 ZIP.
 
 ## Connect to CHIM
 
@@ -30,7 +32,7 @@ The Department DWPkg carries those staged setup files under its own extension. I
 
 ## First-use checks
 
-The supported current owners are Private Conversation 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Sealed Fates dev.23 and Malpractice dev.3. Malpractice is bundled; install the other complete owners and their required game components separately. Keep the original Private Conversation input fallback.
+The supported current owners are Private Conversation 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Sealed Fates dev.24 and Malpractice dev.3. Sealed Fates dev.23 remains supported by its retained map. Malpractice is bundled; install the other complete owners and their required game components separately. Keep the original Private Conversation input fallback.
 
 Use a disposable save and confirm:
 
@@ -40,7 +42,7 @@ Use a disposable save and confirm:
 4. Send or mutate once. If the result becomes uncertain, use the relevant status or reconciliation control. Do not resend an uncertain operation or remove its state to clear a lock.
 5. Confirm final NPC routing, audio, item transfer, and save/load behavior directly in Skyrim. A consumed Private Conversation text token confirms acceptance at the PCV route only; it does not prove audible delivery.
 
-Native, synthetic browser, and package tests are separate from server installation and Skyrim acceptance. Prealpha.14's server packages are unchanged from prealpha.13, so the earlier server evidence is reused without claiming a new server run. See the [verification record](../docs/VERIFICATION.md), [state recovery policy](../docs/STATE-RECOVERY-POLICY.md), and [pairing record](../docs/PAIRING-CHECK.md) for exact evidence and remaining limits.
+Native, synthetic browser, source-pairing and package checks are separate from server installation and Skyrim acceptance. PHP source/projection checks use isolated fixtures; the dev.23 PostgreSQL evidence remains historical and is not dev.24 proof. No dev.24 database, HTTP/provider, actual CHIM-server or Skyrim result is claimed. See the [verification record](../docs/VERIFICATION.md), [state recovery policy](../docs/STATE-RECOVERY-POLICY.md), and [pairing record](../docs/PAIRING-CHECK.md) for exact evidence and remaining limits.
 
 ## Updates and removal
 

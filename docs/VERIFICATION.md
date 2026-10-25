@@ -1,6 +1,14 @@
 # PRE-ALPHA verification
 
-Current development: [prealpha.14 startup handshake](#prealpha14-startup-handshake-candidate--2026-10-25). Older sections retain the proof limits of their named releases.
+Current development: [prealpha.15 Sealed Fates dev.24 source candidate](#prealpha15-sealed-fates-dev24-source-candidate). Older sections retain the proof limits of their named releases.
+
+## Prealpha.15 Sealed Fates dev.24 source candidate
+
+The TEST package builder starts from the exact published prealpha.14 installable archive (SHA-256 `1a68afa602760860e9a7b9be5c1b234264b9668f340367b5f0f1f7f90be529a6`). It permits replacing only the Department DWPkg: its outer and server manifests advance to prealpha.15, its correspondence adapter adds the dev.24 owner map while retaining prior pins, and its checksums are regenerated. The other 21 MO2 members, including the native DLL, UI, PCV companion and Malpractice package, must remain byte-identical. The installable contains no developer evidence. The source and compatibility-proof archives are separate.
+
+The focused checks passed: the dev.24 source contract, the dev.23 regression control, source pairing readiness and protected-payload comparison. The compatibility input binds those four receipt hashes to one frozen Department source commit, the exact dev.24 adapter map and the 19-file owner closure. Packaging verification also checks that only the pinned Department DWPkg is replaced. PHP source/projection checks use isolated fixtures; they do not establish dev.24 PostgreSQL behavior, HTTP/provider behavior, an actual CHIM-server run or Skyrim acceptance. The dev.23 38-case PostgreSQL result remains historical dev.23 evidence and is not carried forward as dev.24 proof.
+
+The candidate does not rebuild the native DLL. No new native, UI or Skyrim execution is implied; their installable bytes match prealpha.14. When assembled, the four outputs are the MO2 ZIP, allowlisted source ZIP, compatibility-proof ZIP and `SHA256SUMS.txt`; only the MO2 ZIP is installed. The package remains TEST-only and requires disposable-profile acceptance before any gameplay claim.
 
 Published [prealpha.14](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.14) at 2026-10-25T21:03:02Z from immutable source `b508076f40484f4dc588ddd5848b5a42a60d0fc6`. Root independently checked all 22 installable members, 190 committed source files and the four provenance records. Exactly DLL/app.js/index.html changed; all three server packages are identical to .13. All four draft and anonymous public downloads match local bytes, GitHub sizes/digests and GNU checksums. All 12 previous releases, 87 assets and 24 tag refs remain unchanged. Main advanced after public-byte verification. This completion record does not alter the published source or assets; Skyrim acceptance remains unperformed.
 
