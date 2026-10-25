@@ -261,10 +261,10 @@ Goal: pair the exact published SF dev.23 with a new Department candidate; keep P
 - [x] Freeze minimal adapter/UI contract and full dev.23 source closure.
 - [x] Implement focused source/lifecycle/UI changes with exact positive/refusal regressions.
 - [x] Verify actual facade on a fresh owned route-free TEST2 PG fixture; preserve shared/campaign/live/core and truthful distro lifecycle evidence.
-- [ ] Root independently review; obtain SF owner's independent frozen-pair acceptance.
-- [ ] Reuse .12 game binaries and unchanged Malpractice dev.3/PCV components, audit .13 archives/checksums, commit/push/publish and verify public downloads and old release preservation.
+- [x] Root independently review; obtain SF owner's independent frozen-pair acceptance.
+- [x] Reuse .12 game binaries and unchanged Malpractice dev.3/PCV components, audit .13 archives/checksums, commit/push/publish and verify public downloads and old release preservation.
 
-Review: investigation only. Published prealpha.9 supports SFdev.22; dev.23 is not yet accepted. Existing dist/evidence trees are preserved. No TEST2 runtime launched for this task, no live/core/game access or new DLL build.
+Review: completed prealpha.13 pairing and publication. Root and SF owner accepted the exact independent 38-case TEST run and release archives. Existing dist/evidence trees and older releases remain preserved; no live/core/game mutation or new DLL build occurred.
 
 Baseline correction before product edits: fetched published .11/623343f, preserved the new Malpractice dev.2 fifth tab and both task records. Next candidate .12; published .11 native/Brainwash/PCV assets must remain byte-identical. The original .10 plan from .9 is superseded. Runtime window remains unused.
 
@@ -293,3 +293,11 @@ Final retry freeze: root reviewed the testRoot controller caller and durable con
 Independent final run 20261025T011803Z-95a75e6d at79b7e2c passed38/38 plus8 prechecks. SF executor independently rehashed all3231 frozen inputs and38 SQL chunks/deltas. Exact privatePG PID22699/system7700409541917907104 stopped after identity check; TEST2 running/running preserved with protectedbytestrue/provider0. Freeze SHA06ccd015eda271136ec5d590a0f2e8045593ce74d820b7efacb948d5cbba2657. Root manually checked controller exit0/no timeout/empty stderr and both UID33 namespace probes. Raw runs remain immutable. Private acceptance-oracle corrections follow source-supported repeated restore checks and multiple read-only profile-metadata connections per API label; no product/runtime changes or another server run. Final fourJSON, archive acceptance and publication remain pending.
 
 Root final acceptance: all38 actual cases,3231 bound inputs, raw SQL/deltas, exact owned cleanup and protected sources passed. Corrected private evidence oracles now enforce source-supported repeated restore samples and one fenced owner backend plus seven exact read-only metadata backends per API; positive/negative selfchecks and root captured missing-fence refusal pass. Final fourJSON were generated once from R4 and the pinned public SF tested-paired gate passed38. Publication remains gated on SF proof/archive reproduction and final package audit.
+
+### Completed dev.23 release review
+
+Published v0.1.0-prealpha.13 at 2026-10-25T01:48:19Z, release ID 423090352. Immutable source ada38ef84f7cb4e8a17684c4a5dfda4cd528d5a6; annotated tag 4f5b0e7b41883da665d68257b3a924bb679865d9. SF independently reproduced its four unchanged owner assets through the tested-paired gate and accepted all four Department archives before publication. Root independently compared all 186 source members with Git archive, all four proof receipts, and all 22 MO2 members against .12: 20 unchanged, app.js changed and Department package12 replaced by13. DLL SHA1451c64dc8285be897d6eeac8754980a0b90a3228f75c8780d2f5566aeacb4c9, PCV and Malpractice dev.3 components remain exact.
+
+The 579302-byte installable ZIP SHA256 is039f0b40afa9173b82a21ea7d26cbe727d153a3d830c964aba0e35769feb5d7d. Source ZIP bb7c2ffb800fc4831791fa4ad6feed7654cd4f5ca8fded1a9bbcba68aab49534; pairing ZIP2f4f5e8e076de27e3bc8ad01c0b662b0e62dadd2395c9c2d233dcf462812e977. LF checksum manifest passed ordinary GNU sha256sum. All four draft downloads and anonymous public downloads match local bytes, GitHub digests and sizes. All11 prior releases,83 assets and22 tag refs are unchanged; totals12/87/24. Root freshly checked current published owner tags: PCV0.1.23, MP0.1.30, S&S0.1.12, SFdev.23 and Malpractice dev.3. Both plugin owners were notified.
+
+Main was advanced only after public release availability. The previously clean primary checkout fast-forwarded from089067d to the release source. This completion record changes documentation only; the published tag and archives remain immutable. The isolated owned PostgreSQL instance is stopped; TEST2 remains running and original failed fixtures are preserved. No HTTP/game/provider/live acceptance is claimed. Skyrim focus/input/audio/transfers/save-load and broad coexistence remain for in-game acceptance.

@@ -65,12 +65,14 @@
 
 - [x] Update minimal manifests/pairing docs/source allowlist and deterministic wrapper; assert reused .12 DLL identity.
 - [x] Root review all diffs and run the lightest changed-boundary checks; record exact limitations.
-- [ ] Freeze source commit, build/audit archive closure and ordinary external checksums.
-- [ ] Commit/push/publish only after both owners accept frozen evidence; verify anonymous downloads and prior release/tag/asset preservation.
-- [ ] Fast-forward clean primary and record review/completion without moving the release tag.
+- [x] Freeze source commit, build/audit archive closure and ordinary external checksums.
+- [x] Commit/push/publish only after both owners accept frozen evidence; verify anonymous downloads and prior release/tag/asset preservation.
+- [x] Fast-forward clean primary and record review/completion without moving the release tag.
 
 Baseline correction: remote prealpha.11 (623343f7620239be4462d96d877683623b0fe9d7) was published by the Malpractice owner while this checkout still used .9. All workers paused before product edits, root fetched and fast-forwarded the isolated branch, and both task records were preserved. The fifth tab and its native contract are mandatory. Next free candidate is .12, subject to active publisher coordination. Published .11 ZIP SHA256 66a85ee031f98d7f65344a159fd24722a1fb927409010d9fc0019a485032d621; DLL SHA256 1451c64dc8285be897d6eeac8754980a0b90a3228f75c8780d2f5566aeacb4c9. No new compilation is needed for the correspondence response metadata.
 
 Second baseline correction before runtime: published prealpha.12/Malpractice dev.3 advanced origin/main to06788b4. Its owner acknowledged no further Department publication; root merged the minimal upstream adapter/manifest/CSS/docs delta and preserved both ledgers. The next candidate is prealpha.13, using the exact .12 archive (SHA256 c20f752f1a63483886bb528f07ae536129e3f6ee10f3d964524c404386efd704), existing DLL and embedded PCV/Malpractice components. Earlier .12 build/name steps in this plan are superseded by .13; no additional native build. Preserve .11 and .12 assets/tags.
 
 Final runtime checkpoint: independent R4 run20261025T011803Z-95a75e6d passed38/38+8prechecks at79b7e2c. Root raw acceptance and pinned public SF gate pass; no additional runtime launch. See docs/DEV23-COMPATIBILITY.md for input/cleanup/proof pins and limits. Final package/proof reproduction and publication follow.
+
+Completion: prealpha.13 published at2026-10-25T01:48:19Z from immutable ada38ef. Both owners accepted the four-file proof and exact archives; draft/public downloads and old11/83/22 preservation passed. Primary checkout fast-forwarded cleanly; this completion commit records the result without moving the published tag. No native compilation or further runtime test.
