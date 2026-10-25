@@ -1,6 +1,6 @@
 {
   "name": "questionable_decisions",
-  "version": "0.1.0-prealpha.11",
+  "version": "0.1.0-prealpha.12",
   "schema_version": 2,
   "description": "A small Skyrim-side Department for the affairs CHIM plugins leave behind.",
   "status": "development_candidate",

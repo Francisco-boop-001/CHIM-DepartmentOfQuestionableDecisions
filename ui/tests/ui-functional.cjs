@@ -1396,6 +1396,78 @@ async function main() {
       await page.close();
     });
 
+    await test('scheduler-owned and operator-closed compose uncertainty stays locked until a receipt confirms delivery', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-scheduler-owned', 'T'.repeat(43));
+      await prepareComposer(page, 'A private scheduler-owned letter.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'queued', companionSchedulerOwned: true });
+
+      let recovery = await page.locator('#letter-recovery-status').innerText();
+      assert.match(recovery, /queued/i);
+      assert.match(recovery, /Sealed Fates handles this letter automatically.*Do not send it again/i);
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'scheduler ownership never sends a second compose request');
+
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      let reconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(reconcile.payload.operationId, compose.payload.operationId);
+      await respond(page, reconcile, { operationId: compose.payload.operationId, state: 'unknown', operatorClosed: true });
+      recovery = await page.locator('#letter-recovery-status').innerText();
+      assert.match(recovery, /Sealed Fates handles this letter automatically.*Do not send it again/i, 'an omitted optional field preserves prior trusted metadata');
+      assert.match(recovery, /closed without a delivery confirmation.*check whether it arrived/i);
+      assert.doesNotMatch(recovery, /scheduler|operator/i, 'internal ownership details are not exposed');
+      assert.doesNotMatch(await page.locator('#letter-operation option:checked').innerText(), /closed/i,
+        'operator closure is metadata, not a replacement operation state');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      await saveScreenshot(page, letterRecoveryScreenshotPath);
+
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      reconcile = await latestRequest(page, 'correspondence.reconcile');
+      await respond(page, reconcile, {
+        operationId: compose.payload.operationId, state: 'unknown', companionSchedulerOwned: false, operatorClosed: 'closed',
+      });
+      recovery = await page.locator('#letter-recovery-status').innerText();
+      assert.match(recovery, /Sealed Fates handles this letter automatically.*Do not send it again/i, 'invalid optional metadata cannot erase earlier valid metadata');
+      assert.match(recovery, /closed without a delivery confirmation.*check whether it arrived/i);
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'unknown and malformed results never trigger a retry');
+
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      reconcile = await latestRequest(page, 'correspondence.reconcile');
+      await respond(page, reconcile, { operationId: compose.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'day 20' } });
+      assert.match(await page.locator('#letter-receipt').innerText(), /delivery receipt confirmed.*received day 20/i);
+      assert.equal(await page.locator('#letter-reconcile').isHidden(), true, 'a valid late receipt resolves the original operation');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1);
+
+      await prepareComposer(page, 'A separate operation without scheduler ownership.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const nextCompose = await latestRequest(page, 'correspondence.compose');
+      await respond(page, nextCompose, { operationId: nextCompose.payload.operationId, state: 'queued' });
+      recovery = await page.locator('#letter-recovery-status').innerText();
+      assert.doesNotMatch(recovery, /Sealed Fates handles this letter automatically|closed without a delivery confirmation/i, 'metadata does not carry into a new operation');
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      reconcile = await latestRequest(page, 'correspondence.reconcile');
+      await respond(page, reconcile, {
+        operationId: compose.payload.operationId, state: 'unknown', companionSchedulerOwned: true, operatorClosed: true,
+      });
+      recovery = await page.locator('#letter-recovery-status').innerText();
+      assert.doesNotMatch(recovery, /Sealed Fates handles this letter automatically|closed without a delivery confirmation/i, 'a stale result cannot attach metadata to another operation');
+      assert.equal(await page.locator('#letter-operation').inputValue(), nextCompose.payload.operationId);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 2,
+        'a stale result never replays either payload');
+      await page.close();
+    });
+
     await test('nearby-cast guidance explains missing and stale CHIM reports without requiring a first message', async () => {
       const page = await authenticatedPage(browser);
       assert.equal(await page.locator('#connection-status').innerText(), 'Connected to CHIM');

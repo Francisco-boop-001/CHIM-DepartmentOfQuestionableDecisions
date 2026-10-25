@@ -105,27 +105,28 @@ try {
     foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22'] as $version) {
         dev22SourceExpect(qd_correspondence_version_uses_restore_fence($version), 'The restore fence is missing for pinned ' . $version . '.');
     }
+    dev22SourceExpect(qd_correspondence_version_uses_restore_fence('0.1.0-dev.23'), 'The pinned dev23 restore fence is not enabled.');
     dev22SourceExpect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.19')
-        && !qd_correspondence_version_uses_restore_fence('0.1.0-dev.23'), 'The adapter accepted an unsupported restore-fence version.');
-    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22'] as $version) {
+        && !qd_correspondence_version_uses_restore_fence('0.1.0-dev.24'), 'The adapter accepted an unsupported restore-fence version.');
+    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23'] as $version) {
         dev22SourceExpect(qd_correspondence_version_supports_signed_unknown($version), 'Signed-unknown support is missing for pinned ' . $version . '.');
     }
     dev22SourceExpect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19')
-        && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.23'), 'The adapter accepted an unsupported signed-unknown version.');
-    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22'] as $version) {
+        && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.24'), 'The adapter accepted an unsupported signed-unknown version.');
+    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23'] as $version) {
         dev22SourceExpect(qd_correspondence_version_supports_operator_close($version), 'Operator-close support is missing for pinned ' . $version . '.');
     }
-    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.19', '0.1.0-dev.23'] as $version) {
+    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.19', '0.1.0-dev.24'] as $version) {
         dev22SourceExpect(!qd_correspondence_version_supports_operator_close($version), 'The adapter accepted operator-close support for unsupported ' . $version . '.');
     }
     $unsupportedRoot = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported';
     if (!@mkdir($unsupportedRoot, 0700, true)
-        || @file_put_contents($unsupportedRoot . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.23"}', LOCK_EX) === false) {
+        || @file_put_contents($unsupportedRoot . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.24"}', LOCK_EX) === false) {
         throw new RuntimeException('Could not create the unsupported-version fixture.');
     }
     dev22SourceExpect(qd_correspondence_source_files($unsupportedRoot) === []
-        && !qd_correspondence_manifest_ready($unsupportedRoot), 'An unpinned dev23 source must remain unavailable.');
-    fwrite(STDOUT, "PASS: exact dev22 closure, source drift refusal, pinned capability selection, and dev23 refusal\n");
+        && !qd_correspondence_manifest_ready($unsupportedRoot), 'An unpinned dev24 source must remain unavailable.');
+    fwrite(STDOUT, "PASS: exact dev22 closure, source drift refusal, pinned capability selection, and dev24 refusal\n");
 } finally {
     unset($GLOBALS['DEV22_TEST_CORE_ROOT']);
     dev22SourceCleanup($tempRoot);

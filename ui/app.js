@@ -1853,6 +1853,12 @@
     }
     if (selected && selected.message) messages.push(selected.message);
     else if (selected) messages.push(`${selected.operationId} remains unresolved (${selected.state}). Reconcile this same operation; absence alone does not prove it was not sent.`);
+    if (selected && selected.companionSchedulerOwned === true) {
+      messages.push('Sealed Fates handles this letter automatically. Do not send it again; check the same letter for updates.');
+    }
+    if (selected && selected.operatorClosed === true) {
+      messages.push('This letter was closed without a delivery confirmation. You can still check whether it arrived.');
+    }
     text('letter-recovery-status', messages.join(' '));
     text('letter-recovery-result', state.mail.recoveryNotice);
     $('letter-reconcile').hidden = !selected;
@@ -2076,8 +2082,14 @@
   function setReceiptText(message, kind = '') { setStatus('letter-receipt', message, kind); }
   function applyComposeResult(data, expectedOperationId) {
     if (!isPlainObject(data) || data.operationId !== expectedOperationId || !['stored', 'queued', 'dispatched', 'delivered', 'unknown', 'partial', 'rejected'].includes(data.state)) throw failLocal('UNAVAILABLE');
+    const hasSchedulerOwnership = Object.prototype.hasOwnProperty.call(data, 'companionSchedulerOwned');
+    const hasOperatorClosure = Object.prototype.hasOwnProperty.call(data, 'operatorClosed');
+    if ((hasSchedulerOwnership && typeof data.companionSchedulerOwned !== 'boolean')
+      || (hasOperatorClosure && typeof data.operatorClosed !== 'boolean')) throw failLocal('UNAVAILABLE');
     const operation = operationFor(expectedOperationId);
     if (!operation) return false;
+    if (hasSchedulerOwnership) operation.companionSchedulerOwned = data.companionSchedulerOwned;
+    if (hasOperatorClosure) operation.operatorClosed = data.operatorClosed;
     const receipt = isPlainObject(data.receipt) ? {
       deliveryConfirmed: data.receipt.deliveryConfirmed === true,
       receivedAt: boundedString(data.receipt.receivedAt, 256) ? data.receipt.receivedAt : '',

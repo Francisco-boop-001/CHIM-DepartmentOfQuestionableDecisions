@@ -253,3 +253,25 @@ Six protected cached core/client source files remain identical, as do the origin
 ### Review
 
 The focused Department contract passes 77 checks, including every frozen owner-file drift refusal, and the foundation suite passes 162 assertions with PCV readiness correctly refused until its existing overlay precondition is met. The directory-fsync guard passes. Browser functional/interaction checks pass 50/50 and 1/1; render captured 11 states. Coordinator receipts record native 5/5 and the installed TEST2/owner workflow and preservation checks. The installed harness fixture has already been consumed and cleaned. Restore-generation behavior was verified with isolated owner/dispatcher tests without mutating shared core generation. No Skyrim acceptance is claimed. Exact evidence and limits are in `docs/BRAINWASH-IMPLEMENTATION.md`.
+
+## Sealed Fates dev.23 compatibility — 2026-10-24
+
+Goal: pair the exact published SF dev.23 with a new Department candidate; keep PCV0.1.23, MP0.1.30, S&S0.1.12, old pins, automatic setup and original fallback. Requested Luna/max workers implement; root reviews, verifies and publishes after independent SF owner acceptance. Plan: docs/superpowers/plans/2026-10-24-sealed-fates-dev23-compatibility.md.
+
+- [x] Freeze minimal adapter/UI contract and full dev.23 source closure.
+- [x] Implement focused source/lifecycle/UI changes with exact positive/refusal regressions.
+- [ ] Verify actual facade on a fresh owned route-free TEST2 PG fixture; preserve shared/campaign/live/core and truthful distro lifecycle evidence.
+- [ ] Root independently review; obtain SF owner's independent frozen-pair acceptance.
+- [ ] Reuse .11 game binaries and unchanged Brainwash/PCV components, audit .12 archives/checksums, commit/push/publish and verify public downloads and old release preservation.
+
+Review: investigation only. Published prealpha.9 supports SFdev.22; dev.23 is not yet accepted. Existing dist/evidence trees are preserved. No TEST2 runtime launched for this task, no live/core/game access or new DLL build.
+
+Baseline correction before product edits: fetched published .11/623343f, preserved the new Malpractice dev.2 fifth tab and both task records. Next candidate .12; published .11 native/Brainwash/PCV assets must remain byte-identical. The original .10 plan from .9 is superseded. Runtime window remains unused.
+
+Review checkpoint: root independently passed all51 browser cases and the separate fifth-tab contract, inspected the actual closed-unknown screenshot, and confirmed the other three adapters/PCV setup are byte-identical across .9 to .11. The unchanged Brainwash dev.2 adapter accepts all8 exact frozen source files. Its existing77-check script requires an installed Linux absolute source path and was not run to completion on Windows; an initial direct source check lacked its runtime_support loader, then passed with the actual shared helper. These prerequisite failures are not product failures or passing runtime evidence. No TEST2 runtime, live access or native compilation has occurred for dev.23.
+
+Isolation correction before runtime: pinned core ptp_product has no DB override and ptp_connect hardcodes localhost:5432. Preserve that core unchanged. The fixture therefore requires a route-free lo-only network namespace with a private127.0.0.1:5432 listener and unique admin socket/datadir. SF owner reservation update requested before launch; never describe this as socket-only. No TEST2 runtime launched.
+
+Independent source checkpoint: root passed the final dev.23 focused source/identity/projection test and readiness probe (19/19 pins). Review found that new decision-row authority also affects mailbox pagination; the revision now binds a canonical bounded ownership map, with deletion/mutation/order regressions. TEST2 source-only hashing observed current core468584f; eight relevant PHP files match the cached0ec590b inputs after supported LF/CRLF normalization and both renderer assets match raw bytes. Actual PG execution will still name core0ec590b and claim only this bounded current-input equivalence. Initial unrelated missing-path and helper-loader prerequisite failures remain distinct from passing checks. Guarded runtime and both-owner acceptance are still pending.
+
+Runtime freeze checkpoint: root reviewed the actual companion identity, payload, tick, lease, receipt and facade paths. All eight runner contracts, the no-WSL host self-test and the 33-case/19-pin/30-payload harness preflight pass. The 17-file frozen map is retained privately in runtime-inputs-reviewed.json; source commit precedes actual execution. No PG has run; root and independent SF owner acceptance remain pending.

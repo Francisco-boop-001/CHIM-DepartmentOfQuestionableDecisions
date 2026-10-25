@@ -1,0 +1,33 @@
+{
+  "schema": "department.dev23.runtime-coverage.v1",
+  "ownerTag": "correspondence-v0.1.0-dev.23",
+  "behaviorCoverage": [
+    "bootstrap",
+    "catalog",
+    "mailbox",
+    "detail",
+    "compose",
+    "reconcile",
+    "restore_overlap",
+    "stale_authority",
+    "read_fence_lease_ownership",
+    "operator_close_pruned",
+    "late_receipt",
+    "signed_unknown_partial",
+    "no_resend",
+    "legacy_pins",
+    "full_forward_body"
+  ],
+  "caseFamilies": [
+    {
+      "name": "departmentFacade",
+      "expectedCases": 33,
+      "source": "pg_scenarios.php"
+    },
+    {
+      "name": "companionFacade",
+      "expectedCases": "bounded",
+      "source": "companion_cases.php"
+    }
+  ]
+}
