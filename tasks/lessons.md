@@ -38,3 +38,5 @@ Preserve UTF-8 and existing per-file line endings during documentation edits. Sc
 
 - A downloadable game mod is not install-and-use when it still requires Linux CLI provisioning, web-worker environment edits, or hand-copied tokens. Verify the actual fresh-user install and connection path before handing off Skyrim functional tests; expose missing configuration distinctly from rejected authentication and preserve the real error in the UI.
 - Ordinary install-and-use must not be redefined as manual browser pairing when the user expects existing CHIM mod integration. Establish the required trust boundary and supported automatic route before adding a separate approval workflow. For browser forms, test an actual navigation/form POST with the production response headers; manually supplied Origin/cookie headers cannot verify browser-generated behavior.
+
+- A compatible source/version matrix does not prove that the installed in-game bridge initializes or authenticates. State that boundary when answering compatibility questions; investigate actual local startup before attributing every disabled tab to its owner plugin.

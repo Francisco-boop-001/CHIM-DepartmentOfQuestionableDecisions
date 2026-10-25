@@ -301,3 +301,24 @@ Published v0.1.0-prealpha.13 at 2026-10-25T01:48:19Z, release ID 423090352. Immu
 The 579302-byte installable ZIP SHA256 is039f0b40afa9173b82a21ea7d26cbe727d153a3d830c964aba0e35769feb5d7d. Source ZIP bb7c2ffb800fc4831791fa4ad6feed7654cd4f5ca8fded1a9bbcba68aab49534; pairing ZIP2f4f5e8e076de27e3bc8ad01c0b662b0e62dadd2395c9c2d233dcf462812e977. LF checksum manifest passed ordinary GNU sha256sum. All four draft downloads and anonymous public downloads match local bytes, GitHub digests and sizes. All11 prior releases,83 assets and22 tag refs are unchanged; totals12/87/24. Root freshly checked current published owner tags: PCV0.1.23, MP0.1.30, S&S0.1.12, SFdev.23 and Malpractice dev.3. Both plugin owners were notified.
 
 Main was advanced only after public release availability. The previously clean primary checkout fast-forwarded from089067d to the release source. This completion record changes documentation only; the published tag and archives remain immutable. The isolated owned PostgreSQL instance is stopped; TEST2 remains running and original failed fixtures are preserved. No HTTP/game/provider/live acceptance is claimed. Skyrim focus/input/audio/transfers/save-load and broad coexistence remain for in-game acceptance.
+
+## In-game connection failure investigation - 2026-10-25
+
+Goal: identify why the actual game remains unauthenticated/uninitialized; distinguish local bridge startup from server pairing. Read-only installed/log investigation; no live requests, live/core/game edits, compilation or publication.
+
+- [x] Compare installed Department files and SKSE/PRISMA logs with the released package.
+- [x] Trace native-to-JavaScript initialization and game-to-server setup boundaries; establish the first failing boundary with evidence.
+- [x] Report the confirmed startup boundary, unresolved trigger, proof limits and smallest next diagnostic.
+
+Evidence so far: installed .13 package matches all released files except the expected user hotkey INI; SKSE loaded the DLL, PRISMA created the view and signaled DOM ready. The shown Waiting label is the pre-initialization/closed view branch; ordinary CHIM traffic succeeds in its local log. Do not infer a server outage from this label.
+
+Investigation review: the Waiting branch requires initialized=false or closed=true; it precedes bootstrap and server authentication. The local DLL loaded and the Department DOM completed; all installed release members match except the user hotkey INI. No Department setup marker was found in the current AIAgent log. Exact installed Ultralight DLLs were loaded read-only in an isolated workspace Python process, without attaching to Skyrim. TextEncoder works; exact installed brainwash-editor.js and app.js evaluate without errors; a valid initialization returns true, changes Waiting to Connecting and emits bootstrap into a local capture stub. This rules out the tested web-API/handler incompatibility, but does not reproduce PRISMA scheduling, focus ownership, native callback delivery, external helper behavior or the real server handshake.
+
+Confirmed design weakness: SendInitialize marks the event sent before void InteropCall and records no acknowledgement; missing/rejected startup can leave the page in its initial state with no actionable diagnostic. Existing logs cannot distinguish a skipped native focus/readiness gate, undelivered call, or reopened/closed helper view. Exact cause remains unresolved pending helper identity and targeted native startup evidence. No product edit, compile, game/server mutation or publication occurred. Probe and receipt: K:\ActorwrightExchange\artifacts\department-startup-20261025\ultralight_probe.py and ultralight_probe_results.txt. TEST2 remains reserved by the Sealed Fates audit.
+
+## Continued startup root-cause investigation - 2026-10-25
+- [x] Pin PRISMA 1.4.1 source to the installed log and trace callback/focus/interop ordering.
+- [x] Reproduce the first concrete startup fault locally, without game/server mutations.
+- [x] Report causal evidence and remaining limits; retain product files unchanged.
+
+Review: exact PRISMA 1.4.1 queued-focus semantics plus the unchanged production initialization class reproduce the DOM-ready-before-focus skip; no later sender is wired. Exact installed Ultralight confirms deferred handlers are ready, late focus alone remains Waiting and explicit initialization starts bootstrap. Current logs cannot establish that event order in the actual session because native startup has no logger and PRISMA focus messages are debug-only. Full evidence and limits: K:\ActorwrightExchange\artifacts\department-startup-20261025\ROOT-CAUSE.md. No product changes or mod-DLL compilation.
