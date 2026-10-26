@@ -1,12 +1,14 @@
 # PRE-ALPHA verification
 
-Current published release: prealpha.16 bootstrap-validator fix. The final DLL, actual PHP bootstrap boundary and public package bytes passed the checks below. Skyrim connection remains unverified. Older sections retain their original proof limits.
+Current published release: prealpha.17 Sealed Fates dev.25 compatibility. Its source/readiness/package checks passed; the prealpha.16 DLL is reused unchanged. Skyrim connection remains unverified. Older sections retain their original proof limits.
 
-## Prealpha.17 Sealed Fates dev.25 candidate — 2026-10-26
+## Prealpha.17 Sealed Fates dev.25 release — 2026-10-26
 
 The prealpha.17 package contract uses the exact published prealpha.16 installable archive (SHA-256 `5de96da71a044496d8d9e767165ef460c82725e708ba7920b40eebcededb30c1`) as its baseline. It replaces only the Department DWPkg; within that package, only `manifest.json`, `server/manifest.json`, `server/adapters/correspondence.php`, and `checksums.sha256` may change. The other 21 MO2 members are required to remain byte-identical. The Sealed Fates dev.25 adapter map keeps the 18 execution-file hashes from dev.24 and advances the owner manifest hash. The .16 DLL, UI and other server packages are reused unchanged.
 
-The candidate is limited to source pairing and package identity. The package build requires a compatibility receipt bound to the frozen Department source, exact dev.25 source pins, and the four focused source/readiness/payload checks. No database, HTTP/provider, actual CHIM-server or Skyrim acceptance is claimed by this package contract. The [dev.25 compatibility note](DEV25-COMPATIBILITY.md) records the owner source boundary; review the candidate receipts before treating it as a release.
+The candidate is limited to source pairing and package identity. The package build requires a compatibility receipt bound to the frozen Department source, exact dev.25 source pins, and the four focused source/readiness/payload checks. No database, HTTP/provider, actual CHIM-server or Skyrim acceptance is claimed by this package contract. The [dev.25 compatibility note](DEV25-COMPATIBILITY.md) records the owner source boundary; root independently passed dev25 source/projection/drift checks, dev24/dev23 controls, allthree source-readiness probes, all19 owner hashes, allfour existing capability gates and73 protected inputs. Eleven package tests and the actual baseline16 consumer passed.
+
+Published [prealpha.17](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.17) at2026-10-26T10:19:04Z from immutable source `b70a2951453d5c94f371a90bbed9876c5db11689`. Root verified22 installable members with21 unchanged,202 Git-matched source files, both proof records and the29-member Department DWPkg checksum closure. Only its manifests, correspondence adapter and checksums changed. Installable614946bytes SHA256 `0ba15af00904aa776c8186064d15d72608a8aeccd34a0aa70023be3857354197`. Draft and anonymous public downloads match local bytes, GitHub digests/sizes and GNU checksums. All15 previous releases,99 assets and30 tag refs remain unchanged. The unchanged native DLL retains prealpha.16 bytes and its historical proof; this update adds no Skyrim, provider, HTTP or database acceptance.
 
 ## Prealpha.16 bootstrap-validator release — 2026-10-25
 
