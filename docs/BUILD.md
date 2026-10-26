@@ -1,10 +1,10 @@
 # Portable source build
 
-## Current installable candidate: prealpha.19
+## Current published installable recipe: prealpha.19
 
 The .19 builder starts from the exact published prealpha.18 installable ZIP (SHA-256 `24c558a938db919fc39ac5b16ca0a15e46738b0d9d82e4332c6711f3c6c0bd02`). It replaces only the Department DWPkg; only its two version manifests, `server/adapters/correspondence.php`, and regenerated checksums may change. The other 21 installable payloads stay byte-identical, including the prealpha.18 DLL and PCV companion package. Every output ZIP entry uses timestamp 2026-10-26 00:00:04, two seconds later than prealpha.18, so CHIM's mtime-only package selection prefers the new Department package when both versions are visible. The builder does not compile a DLL. The build writes `WorldOfDramaLlama-0.1.0-prealpha.19.zip`, `WorldOfDramaLlama-0.1.0-prealpha.19-source.zip`, `WorldOfDramaLlama-0.1.0-prealpha.19-compatibility-proof.zip`, and `SHA256SUMS.txt`.
 
-Run from the exact committed source candidate after the coordinator supplies `compatibility-checks.json`. The 40-character source commit must equal `HEAD`; the output must be a new directory outside the repository.
+To reproduce the published bytes, check out immutable tag `v0.1.0-prealpha.19` (source `138f6d19acc5b4751af16c67b276949e6169c02c`), then run after the coordinator supplies `compatibility-checks.json`. The 40-character source commit must equal `HEAD`; the output must be a new directory outside the repository.
 
 ```powershell
 $Git = 'C:\Program Files\Git\cmd\git.exe'
@@ -20,7 +20,7 @@ $Output = 'K:\ActorwrightExchange\artifacts\department-dev26-20261026\prealpha19
 
 The compatibility receipt is canonical UTF-8 JSON with LF endings and no BOM. Its exact top-level fields are `schemaVersion`, `sourceCommit`, `ownerVersion`, `ownerCommit`, `ownerClosurePins`, `adapterSha256`, `protocolSha256`, `checks`, and `limits`. The owner identity is dev.26 at commit `7fd78802348d5ee7dabee9506ff6ede1c25c0657`; `ownerClosurePins` must exactly match all 19 literal pins in the selected committed adapter. Adapter and protocol hashes are checked against that same Git commit. The four check rows are `dev26SourceContract`, `dev25Regression`, `pairingReadiness`, and `protectedPayload`; each row has only `name`, `status`, and `receiptSha256`, and all four must pass. Limits are fixed to `sourceOnly: true`, `database: false`, `http: false`, and `skyrim: false`. Raw check evidence remains under `artifacts/department-dev26-20261026` and is not copied into the installable.
 
-This is source/package pairing evidence. It does not establish a live CHIM server, HTTP/provider or database behavior, newer dev.26 poll-lock runtime behavior, native startup, or Skyrim acceptance. The owner release's newer poll-lock runtime proof remains unperformed. The latest downloadable package remains prealpha.18 until root completes the build, package-consumer and publication-byte checks. See the [dev.26 compatibility note](DEV26-COMPATIBILITY.md) and [verification record](VERIFICATION.md).
+This is source/package pairing evidence. It does not establish a live CHIM server, HTTP/provider or database behavior, newer dev.26 poll-lock runtime behavior, native startup, or Skyrim acceptance. The owner release's newer poll-lock runtime proof remains unperformed. [Prealpha.19](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.19) is published after those checks; later main changes only record publication. See the [dev.26 compatibility note](DEV26-COMPATIBILITY.md) and [verification record](VERIFICATION.md).
 
 ## Historical published prealpha.18 recipe
 
