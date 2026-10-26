@@ -113,11 +113,59 @@ function overlay_test_owner_manifest(string $ownerRoot): void
         'Stock owner manifest does not match pinned PCV 0.1.23.');
 }
 
-function overlay_test_failure_child(string $fixtureRoot, string $ownerBase): void
-{
+function overlay_test_prepare_previous_overlay(
+    string $stageSource,
+    string $ownerBase,
+    string $ownerRoot,
+    string $privateRoot,
+    string $previousStatePath
+): string {
+    overlay_test_expect(hash_file('sha256', $previousStatePath) === '1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b',
+        'Previous fixture is not the exact shipped PCV state postimage.');
+    foreach (['preprocessing.php', 'scope.php'] as $name) {
+        overlay_test_expect(@copy($stageSource . DIRECTORY_SEPARATOR . $name, $ownerRoot . DIRECTORY_SEPARATOR . $name),
+            'Could not stage the previous overlay postimage for ' . $name . '.');
+    }
+    overlay_test_expect(@copy($previousStatePath, $ownerRoot . DIRECTORY_SEPARATOR . 'state.php'),
+        'Could not stage the previous state postimage.');
+
+    $files = [];
+    foreach (['preprocessing.php', 'scope.php', 'state.php'] as $name) {
+        $bytes = @file_get_contents($ownerBase . DIRECTORY_SEPARATOR . $name);
+        overlay_test_expect(is_string($bytes), 'Could not read backup provenance for ' . $name . '.');
+        $files[$name] = ['sha256' => hash('sha256', $bytes), 'bytesBase64' => base64_encode($bytes)];
+    }
+    $chimRoot = realpath(dirname($ownerRoot, 2));
+    $canonicalOwner = realpath($ownerRoot);
+    overlay_test_expect(is_string($chimRoot) && is_string($canonicalOwner), 'Previous overlay fixture paths are unavailable.');
+    $backupJson = json_encode([
+        'schemaVersion' => 1,
+        'chimRoot' => $chimRoot,
+        'pcvRoot' => $canonicalOwner,
+        'ownerVersion' => '0.1.23',
+        'ownerCommit' => '77265202d7f4a47b88e1eb88131b21f4b0752020',
+        'files' => $files,
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $backupPath = $privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php';
+    $backupBytes = QD_GUARDED_JSON_PREFIX . $backupJson;
+    overlay_test_expect(@file_put_contents($backupPath, $backupBytes, LOCK_EX) === strlen($backupBytes),
+        'Could not create the exact prior overlay backup provenance.');
+    return $backupBytes;
+}
+
+function overlay_test_failure_child(
+    string $fixtureRoot,
+    string $ownerBase,
+    string $stageSource,
+    ?string $previousStatePath = null
+): void {
+    $previousOverlay = is_string($previousStatePath);
     $privateRoot = $fixtureRoot . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'questionable_decisions-private';
     $GLOBALS['overlay_test_lock_path'] = $privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay.lock.php';
+    $GLOBALS['overlay_test_target'] = $previousOverlay ? 'state.php' : 'scope.php';
+    $GLOBALS['overlay_test_inject_after_write'] = $previousOverlay;
     $GLOBALS['overlay_test_injected'] = false;
+    $GLOBALS['overlay_test_lock_checked'] = false;
     $GLOBALS['overlay_test_lock_violation'] = false;
 
     define('QD_GUARDED_JSON_PREFIX', "<?php http_response_code(404); exit; __halt_compiler();\n");
@@ -132,11 +180,16 @@ function overlay_test_failure_child(string $fixtureRoot, string $ownerBase): voi
     function qd_atomic_write(string $path, string $content, bool $guarded = false): void
     {
         $isOwnerSource = str_contains(str_replace('\\', '/', $path), '/ext/private_conversation/');
-        if ($isOwnerSource && basename($path) === 'scope.php' && !$GLOBALS['overlay_test_injected']) {
+        $bytes = $guarded ? QD_GUARDED_JSON_PREFIX . $content : $content;
+        if ($isOwnerSource && basename($path) === $GLOBALS['overlay_test_target'] && !$GLOBALS['overlay_test_injected']) {
+            if ($GLOBALS['overlay_test_inject_after_write']) {
+                overlay_test_expect(@file_put_contents($path, $bytes, LOCK_EX) === strlen($bytes), 'Could not inject the post-write failure.');
+            }
             $GLOBALS['overlay_test_injected'] = true;
             throw new RuntimeException('Injected write failure for rollback regression.');
         }
-        if ($isOwnerSource && basename($path) === 'preprocessing.php' && $GLOBALS['overlay_test_injected']) {
+        if ($isOwnerSource && $GLOBALS['overlay_test_injected'] && !$GLOBALS['overlay_test_lock_checked']) {
+            $GLOBALS['overlay_test_lock_checked'] = true;
             $probe = @fopen($GLOBALS['overlay_test_lock_path'], 'c+b');
             overlay_test_expect(is_resource($probe), 'Could not probe the held install lock.');
             $acquired = @flock($probe, LOCK_EX | LOCK_NB);
@@ -147,7 +200,6 @@ function overlay_test_failure_child(string $fixtureRoot, string $ownerBase): voi
             fclose($probe);
             overlay_test_expect(!$acquired, 'Rollback ran after the install lock was released.');
         }
-        $bytes = $guarded ? QD_GUARDED_JSON_PREFIX . $content : $content;
         overlay_test_expect(@file_put_contents($path, $bytes, LOCK_EX) === strlen($bytes), 'Injected writer could not persist fixture bytes.');
     }
 
@@ -156,27 +208,44 @@ function overlay_test_failure_child(string $fixtureRoot, string $ownerBase): voi
     require $helper;
     $privateRoot = realpath($privateRoot) ?: $privateRoot;
     $coreRoot = realpath($fixtureRoot);
+    $ownerRoot = $coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation';
+    $backupBefore = null;
+    $previousStateBefore = null;
+    if ($previousOverlay) {
+        $backupBefore = overlay_test_prepare_previous_overlay($stageSource, $ownerBase, $ownerRoot, $privateRoot, $previousStatePath);
+        $previousStateBefore = @file_get_contents($ownerRoot . DIRECTORY_SEPARATOR . 'state.php');
+        overlay_test_expect(is_string($previousStateBefore), 'Could not capture the pre-attempt state bytes.');
+    }
     $result = qd_pcv_overlay_apply([
         'chimRoot' => $coreRoot,
         'privateRoot' => $privateRoot,
         'webRoot' => $coreRoot,
-        'pcvRoot' => $coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation',
+        'pcvRoot' => $ownerRoot,
     ]);
-    $ownerRoot = $coreRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation';
-    $expectedBase = [];
-    foreach (['preprocessing.php', 'scope.php', 'state.php'] as $name) {
-        $expectedBase[$name] = hash_file('sha256', $ownerBase . DIRECTORY_SEPARATOR . $name);
-    }
-    $actual = overlay_test_owner_hashes($ownerRoot);
-    foreach ($expectedBase as $name => $hash) {
-        overlay_test_expect($actual[$name] === $hash, 'Injected failure did not restore original bytes for ' . $name . '.');
+    if ($previousOverlay) {
+        $actualState = @file_get_contents($ownerRoot . DIRECTORY_SEPARATOR . 'state.php');
+        $actualBackup = @file_get_contents($privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php');
+        overlay_test_expect(is_string($actualState) && hash_equals($previousStateBefore, $actualState),
+            'Failed upgrade did not restore the exact previous overlay state bytes.');
+        overlay_test_expect(is_string($actualBackup) && hash_equals($backupBefore, $actualBackup),
+            'Failed upgrade changed the verified original backup provenance.');
+    } else {
+        $expectedBase = [];
+        foreach (['preprocessing.php', 'scope.php', 'state.php'] as $name) {
+            $expectedBase[$name] = hash_file('sha256', $ownerBase . DIRECTORY_SEPARATOR . $name);
+        }
+        $actual = overlay_test_owner_hashes($ownerRoot);
+        foreach ($expectedBase as $name => $hash) {
+            overlay_test_expect($actual[$name] === $hash, 'Injected failure did not restore original bytes for ' . $name . '.');
+        }
     }
     overlay_test_expect($result === ['state' => 'unavailable', 'reason' => 'write_failed'], 'Injected failure returned an unexpected result: ' . json_encode($result));
-    overlay_test_expect($GLOBALS['overlay_test_injected'] && !$GLOBALS['overlay_test_lock_violation'], 'Rollback lock invariant was not observed.');
+    overlay_test_expect($GLOBALS['overlay_test_injected'] && !$GLOBALS['overlay_test_lock_violation']
+        && $GLOBALS['overlay_test_lock_checked'], 'Rollback lock invariant was not observed.');
     overlay_test_expect(overlay_test_lock_is_free($privateRoot), 'Install lock remained held after rollback returned.');
 }
 
-function overlay_test_case(string $case, string $stageSource, string $ownerBase, string $manifestPath): void
+function overlay_test_case(string $case, string $stageSource, string $ownerBase, string $manifestPath, string $previousStatePath): void
 {
     $repoRoot = dirname(__DIR__, 3);
     $fixtureRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-overlay-' . bin2hex(random_bytes(8));
@@ -210,18 +279,23 @@ function overlay_test_case(string $case, string $stageSource, string $ownerBase,
         $initialHashes = overlay_test_owner_hashes($ownerRoot);
         $coreRoot = realpath($fixtureRoot);
         if ($case === 'rollback-failure') {
-            overlay_test_failure_child($fixtureRoot, $ownerBase);
+            overlay_test_failure_child($fixtureRoot, $ownerBase, $stageSource);
+        } elseif ($case === 'previous-overlay-rollback') {
+            overlay_test_failure_child($fixtureRoot, $ownerBase, $stageSource, $previousStatePath);
         } else {
             require_once $repoRoot . DIRECTORY_SEPARATOR . 'server' . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'auth.php';
             require $helperPath;
+            $backupBefore = $case === 'previous-overlay'
+                ? overlay_test_prepare_previous_overlay($stageSource, $ownerBase, $ownerRoot, $privateRoot, $previousStatePath) : null;
             $result = qd_pcv_overlay_apply([
                 'chimRoot' => $coreRoot,
                 'privateRoot' => realpath($privateRoot) ?: $privateRoot,
                 'webRoot' => $coreRoot,
                 'pcvRoot' => $ownerRoot,
             ]);
-            if ($case === 'normal') {
-                overlay_test_expect($result === ['state' => 'enabled', 'reason' => null], 'Stock owner install did not enable the overlay.');
+            if ($case === 'normal' || $case === 'previous-overlay') {
+                overlay_test_expect($result === ['state' => 'enabled', 'reason' => null],
+                    $case === 'normal' ? 'Stock owner install did not enable the overlay.' : 'Previous overlay did not upgrade to the current postimage.');
                 overlay_test_expect(overlay_test_lock_is_free($privateRoot), 'Install lock remained held after successful apply.');
                 $expectedPost = [];
                 foreach (OVERLAY_TEST_FILES as $name) {
@@ -241,6 +315,10 @@ function overlay_test_case(string $case, string $stageSource, string $ownerBase,
                 overlay_test_expect($again === ['state' => 'already_enabled', 'reason' => null], 'Second apply was not idempotent.');
                 overlay_test_expect(overlay_test_lock_is_free($privateRoot), 'Install lock remained held after idempotent retry.');
                 overlay_test_expect(hash_file('sha256', $backup) === $backupHash, 'Idempotent apply changed the original backup.');
+                if ($case === 'previous-overlay') {
+                    overlay_test_expect(is_string($backupBefore) && hash_equals($backupBefore, (string)@file_get_contents($backup)),
+                        'Previous overlay upgrade changed the verified original backup provenance.');
+                }
             } elseif ($case === 'already-enabled') {
                 overlay_test_expect($result === ['state' => 'already_enabled', 'reason' => null], 'Already-enabled install was not recognized.');
                 overlay_test_expect(!file_exists($privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php'), 'Already-enabled install unexpectedly created a backup.');
@@ -266,15 +344,17 @@ if (($argv[1] ?? '') === '--case') {
     $stageSource = realpath($argv[3] ?? '');
     $ownerBase = realpath($argv[4] ?? '');
     $manifestPath = realpath($argv[5] ?? '');
-    if (!in_array($case, ['normal', 'already-enabled', 'drift', 'missing-stage', 'rollback-failure'], true)
+    $previousStatePath = realpath($argv[6] ?? '');
+    if (!in_array($case, ['normal', 'already-enabled', 'drift', 'missing-stage', 'rollback-failure', 'previous-overlay', 'previous-overlay-rollback'], true)
         || !is_string($stageSource) || !is_dir($stageSource)
         || !is_string($ownerBase) || !is_dir($ownerBase)
-        || !is_string($manifestPath) || !is_file($manifestPath)) {
-        fwrite(STDERR, "Usage: php -n overlay.php --case <case> <postimage-source-dir> <stock-owner-server-dir> <source-manifest.json>\n");
+        || !is_string($manifestPath) || !is_file($manifestPath)
+        || !is_string($previousStatePath) || !is_file($previousStatePath)) {
+        fwrite(STDERR, "Usage: php -n overlay.php --case <case> <postimage-source-dir> <stock-owner-server-dir> <source-manifest.json> <previous-state.php>\n");
         exit(2);
     }
     try {
-        overlay_test_case($case, $stageSource, $ownerBase, $manifestPath);
+        overlay_test_case($case, $stageSource, $ownerBase, $manifestPath, $previousStatePath);
     } catch (Throwable $failure) {
         fwrite(STDERR, json_encode(['case' => $case, 'passed' => false, 'error' => $failure->getMessage()], JSON_UNESCAPED_SLASHES) . PHP_EOL);
         exit(1);
@@ -285,13 +365,14 @@ if (($argv[1] ?? '') === '--case') {
 $stageSource = $argv[1] ?? '';
 $ownerBase = $argv[2] ?? '';
 $manifestPath = $argv[3] ?? '';
-if ($stageSource === '' || $ownerBase === '' || $manifestPath === '') {
-    fwrite(STDERR, "Usage: php -n overlay.php <postimage-source-dir> <stock-owner-server-dir> <source-manifest.json>\n");
+$previousStatePath = realpath($argv[4] ?? '');
+if ($stageSource === '' || $ownerBase === '' || $manifestPath === '' || !is_string($previousStatePath) || !is_file($previousStatePath)) {
+    fwrite(STDERR, "Usage: php -n overlay.php <postimage-source-dir> <stock-owner-server-dir> <source-manifest.json> <previous-state.php>\n");
     exit(2);
 }
 $failures = [];
-foreach (['normal', 'already-enabled', 'drift', 'missing-stage', 'rollback-failure'] as $case) {
-    $command = [PHP_BINARY, '-n', __FILE__, '--case', $case, $stageSource, $ownerBase, $manifestPath];
+foreach (['normal', 'already-enabled', 'drift', 'missing-stage', 'rollback-failure', 'previous-overlay', 'previous-overlay-rollback'] as $case) {
+    $command = [PHP_BINARY, '-n', __FILE__, '--case', $case, $stageSource, $ownerBase, $manifestPath, $previousStatePath];
     $pipes = [];
     $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $repoRoot);
     overlay_test_expect(is_resource($process), 'Could not start isolated fixture process.');

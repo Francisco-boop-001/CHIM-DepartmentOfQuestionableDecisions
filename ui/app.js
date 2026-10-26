@@ -51,22 +51,37 @@
     ACTOR_UNAVAILABLE: 'That actor is no longer eligible. Refresh the cast and choose again.',
     INVALID_INPUT: 'Some values are invalid. Review the fields and try again.',
     BUSY: 'A previous operation is still active. Check its status before continuing.',
+    CONFLICT: 'The operation conflicts with current CHIM state. Refresh and review it before continuing.',
+    NOT_FOUND: 'The requested item could not be found. Refresh current status before continuing.',
     UNAVAILABLE: 'This feature is unavailable right now. Refresh its status later.',
     RATE_LIMITED: 'Too many requests. Wait briefly before refreshing.',
     TOO_LARGE: 'The response exceeded the safe display limit and was discarded.',
+    REQUEST_TOO_LARGE: 'The request exceeded the server safe size limit.',
+    UNSUPPORTED_OPERATION: 'This Department operation is not available on this CHIM server.',
+    UNSUPPORTED_MEDIA_TYPE: 'CHIM rejected the request format.',
+    METHOD_NOT_ALLOWED: 'CHIM rejected the request method.',
     COMPONENT_MISMATCH: 'The Department game mod and server package do not match. Reinstall the Department game mod and included server package from the same release, restart Skyrim and CHIM, then reopen the game interface.',
     CONNECTION_SETUP_REQUIRED: 'CHIM’s server address could not be determined. Check that CHIM is connected, then restart Skyrim.',
     CONNECTION_SECURE_STORAGE_FAILED: 'Windows could not save this game’s connection. Connection was not started.',
   };
   const BOOTSTRAP_TIMEOUT_COPY = 'The bootstrap request timed out. No automatic retry was made.';
   const BOOTSTRAP_FAILURE_NEXT_STEP = 'Select Retry connection to try again.';
-  const BOUNDARY_ERROR = {
+  const ERROR_CODE = {
+    invalid_request: 'INVALID_INPUT', unsupported_operation: 'UNSUPPORTED_OPERATION',
     unauthorized: 'AUTH_REQUIRED', forbidden: 'FORBIDDEN', stale_context: 'CONTEXT_STALE',
-    stale_revision: 'STALE_REVISION', actor_unavailable: 'ACTOR_UNAVAILABLE', invalid_input: 'INVALID_INPUT',
+    stale_revision: 'STALE_REVISION', conflict: 'CONFLICT', not_found: 'NOT_FOUND',
+    unsupported_media_type: 'UNSUPPORTED_MEDIA_TYPE', method_not_allowed: 'METHOD_NOT_ALLOWED',
+    payload_too_large: 'REQUEST_TOO_LARGE', actor_unavailable: 'ACTOR_UNAVAILABLE', invalid_input: 'INVALID_INPUT',
     busy: 'BUSY', unavailable: 'UNAVAILABLE', rate_limited: 'RATE_LIMITED', too_large: 'TOO_LARGE',
     invalid_response: 'COMPONENT_MISMATCH',
     connection_setup_required: 'CONNECTION_SETUP_REQUIRED', connection_secure_storage_failed: 'CONNECTION_SECURE_STORAGE_FAILED',
   };
+  // Only native-owned errors can vouch for a pre-dispatch marker.
+  const PRE_DISPATCH_ERRORS = new Set([
+    'unauthorized', 'forbidden', 'stale_context', 'stale_revision', 'actor_unavailable', 'invalid_input',
+    'busy', 'unavailable', 'rate_limited', 'too_large', 'invalid_response',
+    'connection_setup_required', 'connection_secure_storage_failed',
+  ]);
 
   function createConnectionState() {
     return {
@@ -482,7 +497,7 @@
       if (response.ok === false && validBoundaryError(response.error)) {
         state.pending.delete(response.requestId);
         window.clearTimeout(pending.timer);
-        const code = BOUNDARY_ERROR[response.error.code] || 'UNAVAILABLE';
+        const code = ERROR_CODE[response.error.code] || 'UNAVAILABLE';
         pending.reject(failLocal(code));
         state.bootstrapping = false;
         state.bootstrapFailure = { message: localError({ code }) };
@@ -551,10 +566,10 @@
     window.clearTimeout(pending.timer);
     if (response.ok) pending.resolve(response.data);
     else {
-      const code = BOUNDARY_ERROR[response.error.code] || 'UNAVAILABLE';
+      const code = ERROR_CODE[response.error.code] || 'UNAVAILABLE';
       const error = failLocal(code);
       error.boundaryCode = response.error.code;
-      error.dispatched = Object.prototype.hasOwnProperty.call(BOUNDARY_ERROR, response.error.code)
+      error.dispatched = PRE_DISPATCH_ERRORS.has(response.error.code)
         && Object.prototype.hasOwnProperty.call(response.error, 'dispatched') ? response.error.dispatched : true;
       if (['AUTH_REQUIRED', 'FORBIDDEN', 'CONTEXT_STALE'].includes(code)) {
         clearAuthorization(code);
@@ -1256,8 +1271,10 @@
     if (!state.authenticated) {
       const startup = preAuthStatus();
       setStatus('pcv-state', startup ? startup.message : 'Private Conversation becomes available after CHIM connects.', startup ? startup.state : 'waiting');
-    } else if (!authorized) {
-      setStatus('pcv-state', 'An authenticated PCV permission is required for this control.', 'error');
+    } else if (!state.access.pcv) {
+      setStatus('pcv-state', 'This CHIM session does not have Private Conversation permission.', 'error');
+    } else if (!state.capabilities.pcv) {
+      setStatus('pcv-state', 'The supported CHIM or Private Conversation (PCV) dependency is unavailable. Check that both CHIM and Private Conversation are supported for this Department release; install compatible supported versions as needed, then reopen the game interface.', 'error');
     } else if (!rosterReady) {
       const rosterState = state.pcv.roster && state.pcv.roster.state;
       const message = rosterState === 'missing'

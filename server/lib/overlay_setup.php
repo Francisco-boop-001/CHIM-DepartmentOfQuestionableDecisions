@@ -45,7 +45,8 @@ function qd_pcv_overlay_pins(): array
         ],
         'state.php' => [
             'base' => '142f5a026740dfb629af925005c7e931396aa3dcde0d534002fb42b545c5664d',
-            'post' => '1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b',
+            'previous' => '1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b',
+            'post' => '3fbc48a0f25178011f0b838cc01d3664932822695d7d39c35d49cbc11fa057c1',
         ],
     ];
 }
@@ -170,12 +171,13 @@ function qd_pcv_overlay_read_owner(string $ownerRoot, array $pins): array
             throw new QDPCVOverlayFailure('owner_incompatible');
         }
         $hash = hash('sha256', $bytes);
-        if (!hash_equals($expected['base'], $hash) && !hash_equals($expected['post'], $hash)) {
+        $knownPrevious = is_string($expected['previous'] ?? null) && hash_equals($expected['previous'], $hash);
+        if (!hash_equals($expected['base'], $hash) && !hash_equals($expected['post'], $hash) && !$knownPrevious) {
             throw new QDPCVOverlayFailure('owner_incompatible');
         }
         $current[$relative] = ['bytes' => $bytes, 'hash' => $hash];
         $allPostimage = $allPostimage && hash_equals($expected['post'], $hash);
-        $hasPostimage = $hasPostimage || (!hash_equals($expected['base'], $expected['post']) && hash_equals($expected['post'], $hash));
+        $hasPostimage = $hasPostimage || (!hash_equals($expected['base'], $expected['post']) && !hash_equals($expected['base'], $hash));
     }
 
     $guardPath = $ownerRoot . DIRECTORY_SEPARATOR . 'installation_guard.php';
@@ -230,12 +232,15 @@ function qd_pcv_overlay_backup_state(string $backupPath, string $chimRoot, array
     return $originals;
 }
 
-function qd_pcv_overlay_rollback(string $ownerRoot, array $changed, array $originals, array $pins): bool
+function qd_pcv_overlay_rollback(string $ownerRoot, array $changed, array $attemptOriginals, array $pins): bool
 {
     $restored = true;
     foreach (array_reverse($changed) as $relative) {
         $path = $ownerRoot . DIRECTORY_SEPARATOR . $relative;
-        if (is_link($path) || !is_file($path)) {
+        $original = $attemptOriginals[$relative]['bytes'] ?? null;
+        $originalHash = $attemptOriginals[$relative]['hash'] ?? null;
+        if (is_link($path) || !is_file($path) || !is_string($original) || !is_string($originalHash)
+            || !hash_equals($originalHash, hash('sha256', $original))) {
             $restored = false;
             continue;
         }
@@ -246,7 +251,7 @@ function qd_pcv_overlay_rollback(string $ownerRoot, array $changed, array $origi
         }
         if (hash_equals($pins[$relative]['post'], $currentHash)) {
             try {
-                qd_atomic_write($path, $originals[$relative], false);
+                qd_atomic_write($path, $original, false);
                 if (function_exists('opcache_invalidate')) {
                     @opcache_invalidate($path, true);
                 }
@@ -254,12 +259,12 @@ function qd_pcv_overlay_rollback(string $ownerRoot, array $changed, array $origi
                 $restored = false;
                 continue;
             }
-        } elseif (!hash_equals($pins[$relative]['base'], $currentHash)) {
+        } elseif (!hash_equals($originalHash, $currentHash)) {
             $restored = false;
             continue;
         }
         $restoredHash = @hash_file('sha256', $path);
-        if (!is_string($restoredHash) || !hash_equals($pins[$relative]['base'], $restoredHash)) {
+        if (!is_string($restoredHash) || !hash_equals($originalHash, $restoredHash)) {
             $restored = false;
         }
     }
@@ -273,6 +278,7 @@ function qd_pcv_overlay_apply(array $settings): array
     $ownerRoot = null;
     $pins = qd_pcv_overlay_pins();
     $originals = [];
+    $attemptOriginals = [];
     $failureReason = 'write_failed';
 
     try {
@@ -401,7 +407,9 @@ function qd_pcv_overlay_apply(array $settings): array
             if (is_string($currentHash) && hash_equals($pins[$relative]['post'], $currentHash)) {
                 continue;
             }
-            qd_pcv_overlay_require(is_string($currentHash) && hash_equals($pins[$relative]['base'], $currentHash), 'owner_incompatible');
+            qd_pcv_overlay_require(is_string($currentHash)
+                && hash_equals($owner['current'][$relative]['hash'], $currentHash), 'owner_incompatible');
+            $attemptOriginals[$relative] = $owner['current'][$relative];
             $changed[] = $relative;
             qd_atomic_write($path, $stage['files'][$relative], false);
             if (function_exists('opcache_invalidate')) {
@@ -416,8 +424,8 @@ function qd_pcv_overlay_apply(array $settings): array
         return qd_pcv_overlay_result('enabled');
     } catch (Throwable $failure) {
         $failureReason = $failure instanceof QDPCVOverlayFailure ? $failure->reason : 'write_failed';
-        if ($changed !== [] && is_string($ownerRoot) && $originals !== []) {
-            if (!qd_pcv_overlay_rollback($ownerRoot, $changed, $originals, $pins)) {
+        if ($changed !== [] && is_string($ownerRoot) && $attemptOriginals !== []) {
+            if (!qd_pcv_overlay_rollback($ownerRoot, $changed, $attemptOriginals, $pins)) {
                 $failureReason = 'write_failed';
             }
         }

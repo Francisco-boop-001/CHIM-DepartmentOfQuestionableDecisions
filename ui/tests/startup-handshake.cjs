@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 
@@ -8,6 +9,7 @@ const playwrightRoot = process.env.PLAYWRIGHT_MODULE_ROOT;
 if (!playwrightRoot) throw new Error('Set PLAYWRIGHT_MODULE_ROOT to the existing local Node modules directory.');
 const { chromium } = require(require.resolve('playwright', { paths: [playwrightRoot] }));
 const browserPath = process.env.PRISMA_TEST_BROWSER || 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const screenshotDirectory = process.env.UI_STARTUP_SCREENSHOT_DIR;
 const pagePath = path.resolve(__dirname, '..', 'index.html');
 const results = [];
 let tokenCounter = 1;
@@ -109,6 +111,21 @@ async function verifyLocalPage(page) {
   assert.equal(await page.evaluate(() => window.PRISMA.testSentinel), true, 'the page preserves the PRISMA framework object');
 }
 
+async function captureScreenshot(page, name) {
+  if (!screenshotDirectory) return;
+  fs.mkdirSync(screenshotDirectory, { recursive: true });
+  await page.screenshot({ path: path.join(screenshotDirectory, name), fullPage: true });
+}
+
+async function assertPcvControlsGated(page, reason) {
+  for (const id of ['#pcv-refresh', '#pcv-end', '#pcv-text', '#send-target', '#pcv-send', '#pcv-refresh-send']) {
+    assert.equal(await page.locator(id).isDisabled(), true, `${id} stays gated ${reason}`);
+  }
+  assert.equal(await page.locator('#pcv-config-fields').evaluate((fieldset) => fieldset.matches(':disabled')), true,
+    `scene settings stay gated ${reason}`);
+  assert.equal(await page.locator('#pcv-arm').isDisabled(), true, `#pcv-arm stays gated ${reason}`);
+}
+
 async function main() {
   const browser = await chromium.launch({ headless: true, executablePath: browserPath });
   await test('shows local startup state before the native bridge initializes', async () => {
@@ -155,6 +172,93 @@ async function main() {
     await verifyLocalPage(page);
     await page.close();
   });
+
+  await test('granted PCV access with an unready dependency gets separate guidance and stays gated', async () => {
+    const page = await openPage(browser, 'hold');
+    const current = await initialize(page);
+    const data = authenticatedData();
+    data.capabilities.pcv = false;
+    await receive(page, current.bootstrap, data);
+    const status = await page.locator('#pcv-state').innerText();
+    assert.match(status, /supported CHIM or Private Conversation \(PCV\) dependency is unavailable/i);
+    assert.match(status, /check that both CHIM and Private Conversation are supported for this Department release/i);
+    assert.match(status, /install compatible supported versions as needed/i);
+    assert.doesNotMatch(status, /browser|manual.?token/i);
+    await assertPcvControlsGated(page, 'until PCV is ready');
+    await captureScreenshot(page, 'pcv-unready-dependency.png');
+    await verifyLocalPage(page);
+    await page.close();
+  });
+
+  await test('PCV permission denial stays distinct from dependency readiness and remains gated', async () => {
+    for (const capabilityPcv of [true, false]) {
+      const page = await openPage(browser, 'hold');
+      const current = await initialize(page);
+      const data = authenticatedData();
+      data.capabilities.pcv = capabilityPcv;
+      data.access.pcv = false;
+      await receive(page, current.bootstrap, data);
+      const status = await page.locator('#pcv-state').innerText();
+      assert.match(status, /session.*(?:does not have|lacks).*Private Conversation permission/i);
+      assert.doesNotMatch(status, /dependency|install/i);
+      await assertPcvControlsGated(page, 'without PCV permission');
+      if (!capabilityPcv) await captureScreenshot(page, 'pcv-permission-denied.png');
+      await verifyLocalPage(page);
+      await page.close();
+    }
+  });
+
+  await test('unauthenticated PCV remains gated while CHIM setup is pending', async () => {
+    const page = await openPage(browser, 'hold');
+    const current = await initialize(page);
+    await receive(page, current.bootstrap, {
+      authenticated: false, authRequired: true, serverContext: null, scopeToken: null,
+      capabilities: { pcv: true, mp: true, sas: true, correspondence: true, brainwash: true },
+      access: { pcv: false, inspector: false, compose: false, authorDetail: false, brainwash: false },
+    });
+    await operation(page, 'connection.begin');
+    assert.match(await page.locator('#pcv-state').innerText(), /Private Conversation becomes available after CHIM connects/i);
+    await assertPcvControlsGated(page, 'before CHIM authentication');
+    await verifyLocalPage(page);
+    await page.close();
+  });
+
+  const protocolErrors = [
+    ['invalid_request', /values are invalid/i],
+    ['unsupported_operation', /Department operation is not available/i],
+    ['unauthorized', /CHIM connection is not authorized/i],
+    ['forbidden', /session does not have permission/i],
+    ['stale_context', /game context changed/i],
+    ['stale_revision', /saved state changed/i],
+    ['conflict', /conflicts with current CHIM state/i],
+    ['not_found', /requested item could not be found/i],
+    ['unavailable', /feature is unavailable right now/i],
+    ['unsupported_media_type', /CHIM rejected the request format/i],
+    ['method_not_allowed', /CHIM rejected the request method/i],
+    ['payload_too_large', /request exceeded the server.*size limit/i],
+    ['actor_unavailable', /actor is no longer eligible/i],
+    ['invalid_input', /values are invalid/i],
+    ['busy', /previous operation is still active/i],
+    ['rate_limited', /too many requests/i],
+    ['too_large', /exceeded the safe display limit/i],
+    ['invalid_response', /game mod and server package do not match/i],
+    ['connection_setup_required', /server address could not be determined/i],
+    ['connection_secure_storage_failed', /could not save this game.*connection/i],
+  ];
+  for (const [code, expectedCopy] of protocolErrors) {
+    await test(`maps ${code} without exposing server text or resending bootstrap`, async () => {
+      const page = await openPage(browser, 'hold');
+      const current = await initialize(page);
+      assert.equal(await receiveError(page, current.bootstrap, { code, message: 'UNTRUSTED_SERVER_DETAIL' }), true);
+      const status = await page.locator('#connection-status').innerText();
+      assert.match(status, expectedCopy, `wire error ${code} gets its intended local copy`);
+      assert.doesNotMatch(status, /UNTRUSTED_SERVER_DETAIL/);
+      assert.equal(await operationCount(page, 'bootstrap'), 1, `${code} does not automatically retry bootstrap`);
+      assert.equal(await operationCount(page, 'connection.begin'), 0, `${code} does not automatically start connection setup`);
+      await verifyLocalPage(page);
+      await page.close();
+    });
+  }
 
   await test('retained authentication, a pending mutation, and drafts survive duplicate initialization and reopen', async () => {
     const page = await openPage(browser, 'hold');

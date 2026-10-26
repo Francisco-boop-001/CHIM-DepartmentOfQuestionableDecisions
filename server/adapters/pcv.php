@@ -7,7 +7,7 @@ const QD_PCV_EXPECTED_CORE_MAIN_SHA256 = '3619049e6d54493a77b19c09f8b70420e3c354
 const QD_PCV_EXPECTED_CORE_MAIN_WINDOWS_CRLF_SHA256 = '9686a446bb4a2e2c02def2b59c87190734b30ba4382781bd71ea0df96baf6ff9';
 const QD_PCV_EXPECTED_OWNER_SOURCE_HASHES = [
     'manifest.json' => 'f045b9b6bd3e13a84cdabbf400a73ef4581acd8fa440e1e84f51b1dd0cb5f84e',
-    'state.php' => '1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b',
+    'state.php' => '3fbc48a0f25178011f0b838cc01d3664932822695d7d39c35d49cbc11fa057c1',
     'scope.php' => 'aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398',
     'preprocessing.php' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
     'log.php' => '0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56',
@@ -770,6 +770,7 @@ function qd_pcv_current_identity_and_catalog(bool $includeCatalog): array
             throw new RuntimeException('The active CHIM identity is unavailable.');
         }
         try {
+            qd_runtime_apply_profile_read_bounds($connection);
             $homeState = pth_state($connection);
             $active = qd_runtime_active_playthrough($connection);
             $identity = pcv_identity_from_home_state($homeState, true);

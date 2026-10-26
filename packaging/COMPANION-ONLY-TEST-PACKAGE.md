@@ -1,4 +1,10 @@
-# Department install-and-use guide — prealpha.17
+# Department install-and-use guide — prealpha.18 source candidate
+
+The current source candidate resolves the selected prealpha.17 maintainer findings. It advances the Department DWPkg to prealpha.18 and the PCV companion DWPkg to prealpha.10, updates `app.js`, and keeps the other 19 installable members byte-identical, including the DLL. It bounds Department and standalone PCV profile reads and accepts only the exact prior PCV state postimage or the current postimage during overlay setup; the upstream PCV base hash is unchanged. The reviewed UI/server checks are recorded in the [verification record](../docs/VERIFICATION.md).
+
+Prealpha.18 is not yet a published download from this source snapshot. Until the coordinator closes the frozen build, actual CHIM package-consumer, and publication-byte checks, the [published prealpha.17 installable](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.17/WorldOfDramaLlama-0.1.0-prealpha.17.zip) remains the latest downloadable package. The installation steps below therefore describe that published prealpha.17 package and its evidence, not a verified .18 install.
+
+## Published prealpha.17 install instructions
 
 Prealpha.17 adds Sealed Fates dev.25 support while retaining earlier supported versions. Only the Department server package changes; the companion DLL/UI and other bundled packages remain prealpha.16 bytes. Quit Skyrim before replacing the game mod, then let normal CHIM synchronization install Department prealpha.17 on your TEST server. See the [dev.25 compatibility note](../docs/DEV25-COMPATIBILITY.md) and [verification record](../docs/VERIFICATION.md).
 
@@ -50,7 +56,7 @@ Native, synthetic browser, source-pairing and package checks are separate from s
 
 The CHIM updater replaces each extension folder, so mutable_paths is empty and Department operation state lives in CHIM's stable private data area. Keep that state when updating; never clear unresolved IDs or receipts to work around an error. The pairing credential remains in Windows Credential Manager across ordinary mod updates.
 
-Before replacing the Department DLL during an MO2 update, fully quit Skyrim. Start Skyrim again after installing the update; reopening the in-game menu does not reload the DLL.
+For a prealpha.18 update, choose Replace for the existing MO2 mod, not Merge. If retaining an older mod for rollback, disable it while the newer one is enabled; confirm only one version-named Department DWPkg and one PCV companion DWPkg are visible to CHIM, which selects by modification time rather than semantic version. Before replacing the Department DLL during an MO2 update, fully quit Skyrim. Start Skyrim again after installing the update; reopening the in-game menu does not reload the DLL.
 
 Disabling or removing the MO2 mod removes the local game files only. It does not remove server-installed packages, revoke the pairing, or undo the optional Private Conversation overlay. Ask the CHIM maintainer to remove the two Department packages and restore the saved PCV owner files before removing server setup. Do not delete CHIM core files or the complete owner plugin.
 

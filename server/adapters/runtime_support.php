@@ -448,6 +448,83 @@ function qd_runtime_with_core_db(callable $callback): mixed
     );
 }
 
+/** Apply transaction-local profile read caps without loosening an existing shorter timeout. */
+function qd_runtime_apply_profile_read_bounds(mixed $connection): void
+{
+    $result = @pg_query_params($connection,
+        "SELECT name, setting::bigint AS setting_ms FROM pg_settings WHERE name IN ($1,$2)",
+        ['lock_timeout', 'statement_timeout']);
+    if ($result === false) {
+        throw new RuntimeException('The active CHIM profile read could not be bounded.');
+    }
+    $settings = [];
+    try {
+        if (pg_num_rows($result) !== 2) {
+            throw new RuntimeException('The active CHIM profile read limits are unavailable.');
+        }
+        for ($index = 0; $index < 2; $index++) {
+            $row = pg_fetch_assoc($result);
+            $name = is_array($row) ? ($row['name'] ?? null) : null;
+            $milliseconds = is_array($row) ? filter_var($row['setting_ms'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (!in_array($name, ['lock_timeout', 'statement_timeout'], true)
+                || !is_int($milliseconds) || $milliseconds < 0 || array_key_exists($name, $settings)) {
+                throw new RuntimeException('The active CHIM profile read limits are invalid.');
+            }
+            $settings[$name] = $milliseconds;
+        }
+    } finally {
+        @pg_free_result($result);
+    }
+
+    if (count($settings) !== 2) {
+        throw new RuntimeException('The active CHIM profile read limits are incomplete.');
+    }
+    $lockMilliseconds = $settings['lock_timeout'] > 0 ? min($settings['lock_timeout'], 2000) : 2000;
+    $statementMilliseconds = $settings['statement_timeout'] > 0 ? min($settings['statement_timeout'], 3000) : 3000;
+    $bounded = @pg_query_params($connection,
+        "SELECT set_config('lock_timeout', $1, true) AS lock_timeout, "
+            . "set_config('statement_timeout', $2, true) AS statement_timeout",
+        [$lockMilliseconds . 'ms', $statementMilliseconds . 'ms']);
+    if ($bounded === false) {
+        throw new RuntimeException('The active CHIM profile read limits could not be applied.');
+    }
+    try {
+        if (pg_num_rows($bounded) !== 1) {
+            throw new RuntimeException('The active CHIM profile read limits could not be verified.');
+        }
+    } finally {
+        @pg_free_result($bounded);
+    }
+    $verified = @pg_query_params($connection,
+        "SELECT name, setting::bigint AS setting_ms FROM pg_settings WHERE name IN ($1,$2)",
+        ['lock_timeout', 'statement_timeout']);
+    if ($verified === false) {
+        throw new RuntimeException('The active CHIM profile read limits could not be verified.');
+    }
+    $actual = [];
+    try {
+        if (pg_num_rows($verified) !== 2) {
+            throw new RuntimeException('The active CHIM profile read limits could not be verified.');
+        }
+        for ($index = 0; $index < 2; $index++) {
+            $row = pg_fetch_assoc($verified);
+            $name = is_array($row) ? ($row['name'] ?? null) : null;
+            $milliseconds = is_array($row) ? filter_var($row['setting_ms'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (!in_array($name, ['lock_timeout', 'statement_timeout'], true)
+                || !is_int($milliseconds) || array_key_exists($name, $actual)) {
+                throw new RuntimeException('The active CHIM profile read limits could not be verified.');
+            }
+            $actual[$name] = $milliseconds;
+        }
+    } finally {
+        @pg_free_result($verified);
+    }
+    if (($actual['lock_timeout'] ?? null) !== $lockMilliseconds
+        || ($actual['statement_timeout'] ?? null) !== $statementMilliseconds) {
+        throw new RuntimeException('The active CHIM profile read limits could not be verified.');
+    }
+}
+
 /** Read only the current authoritative profile identity through pinned pth_state(). */
 function qd_runtime_active_playthrough(mixed $connection): array
 {
@@ -458,11 +535,24 @@ function qd_runtime_active_playthrough(mixed $connection): array
         throw new RuntimeException('The active CHIM profile is unavailable.');
     }
 
-    $ownsTransaction = pg_transaction_status($connection) === PGSQL_TRANSACTION_IDLE;
+    $transactionStatus = pg_transaction_status($connection);
+    $ownsTransaction = $transactionStatus === PGSQL_TRANSACTION_IDLE;
+    if (!$ownsTransaction && $transactionStatus !== PGSQL_TRANSACTION_INTRANS) {
+        throw new RuntimeException('The active CHIM profile is unavailable.');
+    }
     if ($ownsTransaction && pg_query($connection, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') === false) {
         throw new RuntimeException('The active CHIM profile is unavailable.');
     }
+    $savepoint = 'qd_runtime_profile_read';
+    $callerSavepoint = false;
+    if (!$ownsTransaction) {
+        if (pg_query($connection, 'SAVEPOINT ' . $savepoint) === false) {
+            throw new RuntimeException('The active CHIM profile is unavailable.');
+        }
+        $callerSavepoint = true;
+    }
     try {
+        qd_runtime_apply_profile_read_bounds($connection);
         $homeState = pth_state($connection);
         if (($homeState['available'] ?? null) !== true || !is_array($homeState['playthroughs'] ?? null)) {
             throw new RuntimeException('The active CHIM profile is unavailable.');
@@ -513,8 +603,16 @@ function qd_runtime_active_playthrough(mixed $connection): array
         }
 
         $scopeKey = qd_runtime_scope_key_from_home_state($homeState, $schema);
-        if ($ownsTransaction && pg_query($connection, 'COMMIT') === false) {
-            throw new RuntimeException('The active CHIM profile could not be verified.');
+        if ($ownsTransaction) {
+            if (pg_query($connection, 'COMMIT') === false) {
+                throw new RuntimeException('The active CHIM profile could not be verified.');
+            }
+        } else {
+            if (pg_query($connection, 'ROLLBACK TO SAVEPOINT ' . $savepoint) === false
+                || pg_query($connection, 'RELEASE SAVEPOINT ' . $savepoint) === false) {
+                throw new RuntimeException('The caller transaction could not be restored after the profile read.');
+            }
+            $callerSavepoint = false;
         }
         return [
             'profileId' => $activeId,
@@ -525,6 +623,11 @@ function qd_runtime_active_playthrough(mixed $connection): array
     } catch (Throwable $error) {
         if ($ownsTransaction && pg_transaction_status($connection) !== PGSQL_TRANSACTION_IDLE) {
             @pg_query($connection, 'ROLLBACK');
+        } elseif ($callerSavepoint) {
+            if (@pg_query($connection, 'ROLLBACK TO SAVEPOINT ' . $savepoint) === false
+                || @pg_query($connection, 'RELEASE SAVEPOINT ' . $savepoint) === false) {
+                throw new RuntimeException('The caller transaction could not be restored after the profile read.', 0, $error);
+            }
         }
         throw $error;
     }

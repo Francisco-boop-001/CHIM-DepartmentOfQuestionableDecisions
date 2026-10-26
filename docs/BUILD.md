@@ -1,6 +1,28 @@
 # Portable source build
 
-## Prealpha.12 compatibility package
+## Current installable candidate: prealpha.18
+
+The .18 builder reuses the exact published .17 installable ZIP and the unchanged accepted DLL. The installable ZIP entries use deterministic timestamp 2026-10-26 00:00:02, two seconds later than the exact .17 Department/PCV entry timestamps, so CHIM's mtime-only package selection prefers the new version when old and new paths coexist. It updates the Department package to `.18`, the PCV companion package to `.10`, and `app.js`; it requires the other 19 MO2 member payloads to remain byte-identical; their ZIP entry metadata uses the release timestamp. It also requires the canonical maintenance receipt for the frozen source commit. The source ZIP contains only the committed public-source allowlist; the proof ZIP contains the compact receipt and package provenance, not the raw audit fixtures.
+
+Run from a clean, committed checkout after the coordinator supplies `maintenance-checks-prealpha18.json`. The source commit must be the checkout's exact `HEAD`; output must be a new directory outside the repository.
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Root = (Get-Location).Path
+$Commit = (& $Git -c "safe.directory=$Root" rev-parse HEAD).Trim()
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-dev25-20261026\public-downloads\WorldOfDramaLlama-0.1.0-prealpha.17.zip'
+$Checks = 'K:\ActorwrightExchange\artifacts\department-maintainer-fixes-20261026\maintenance-checks-prealpha18.json'
+$Output = 'K:\ActorwrightExchange\artifacts\department-maintainer-fixes-20261026\prealpha18'
+& $Python -B packaging/build-installable-prealpha18.py build --prealpha17-zip $Baseline --maintenance-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+& $Python -B packaging/build-installable-prealpha18.py audit --prealpha17-zip $Baseline --maintenance-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The receipt is canonical UTF-8 JSON with LF endings and no BOM. It binds the full 40-character source commit to the exact `.17` baseline and hashes of the selected UI, runtime, overlay, PCV pin, package manifest, builder, and focused test sources. It carries fixed check records for UI startup 28/28, UI behavior 51/51, PostgreSQL read bounds 11/11, the PCV adapter PostgreSQL probe 5/5, and overlay upgrade 7/7. Its two regression controls are recorded as `expected-red` (4/8 and 3/5); they are not passing checks. The builder validates those names, counts, evidence filenames, digest shapes, limits, and source hashes against Git. Raw evidence remains under `K:\ActorwrightExchange\artifacts\department-maintainer-fixes-20261026` and is not copied into the installable ZIP.
+
+The builder's limits are explicit: no production database or known production PostgreSQL version, live server, HTTP/provider, Skyrim, `SKSEPlugin_Load`, or native DLL build is claimed. The PCV `qd_pcv_stock_main_matches_pin()` guard rejects the supplied server 3.4.2 branch commit `d3945ecb65d4338a63978c81c3d9b09a936da585`: its `main.php` SHA-256 is `ef2ff9a50203820ca5416f334504f352793ee5413053e3b7beee1a222c8e721b`, while the accepted LF and CRLF hashes are `3619049e6d54493a77b19c09f8b70420e3c35427545a8bb6e95e93c6fe57ebac` and `9686a446bb4a2e2c02def2b59c87190734b30ba4382781bd71ea0df96baf6ff9`. This is a refusal of that public source snapshot; no immutable stable installer was available for comparison. See [the current verification record](VERIFICATION.md) for evidence and boundaries.
+
+## Historical: prealpha.12 compatibility package
 
 This candidate reuses the exact published prealpha.12 game binaries and embedded PCV and Brainwash packages. It changes the Department server package and the letter-state UI; do not rebuild the DLL for this update. The builder requires the four accepted pairing receipts from the isolated dev.23 run. See [the acceptance record](DEV23-COMPATIBILITY.md) for current status and proof limits.
 
@@ -13,7 +35,7 @@ py -3 -B packaging/build-installable-prealpha13.py build --prealpha12-zip $baseZ
 py -3 -B packaging/build-installable-prealpha13.py audit --prealpha12-zip $baseZip --pairing-dir $acceptedReceipts --source-commit $releaseCommit --output-dir $newOutput --git $git
 ```
 
-The normal installation uses only `WorldOfDramaLlama-0.1.0-prealpha.13.zip`. The source ZIP and four-JSON pairing ZIP are optional developer downloads. `SHA256SUMS.txt` uses ordinary LF checksum lines. The following full build instructions remain available for reproducing releases that actually changed native or Papyrus code.
+The normal installation uses only `WorldOfDramaLlama-0.1.0-prealpha.13.zip`. The source ZIP and four-JSON pairing ZIP are optional developer downloads. `SHA256SUMS.txt` uses ordinary LF checksum lines. The full native/Papyrus build sections below are historical recipes for releases that changed those files; prealpha.18 does not use them or rebuild those assets.
 
 This guide builds the companion DLL and host tests, the two Department Papyrus scripts, and the own ESP/SEQ from a clean source checkout. It uses explicit dependency, output, and evidence roots. The scripts do not install files into Skyrim or CHIM. Successful builds and synthetic tests do not establish gameplay, final NPC routing, delivery, audio, or save/load behavior.
 

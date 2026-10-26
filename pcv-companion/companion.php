@@ -20,7 +20,7 @@ const PCV_COMPANION_OWNER_BASE_SOURCE_HASHES = [
 ];
 const PCV_COMPANION_OWNER_SOURCE_HASHES = [
     'manifest.json' => 'f045b9b6bd3e13a84cdabbf400a73ef4581acd8fa440e1e84f51b1dd0cb5f84e',
-    'state.php' => '1c77909a23f52cca914f15e78eb74b3c71995080e870986d8ee3e21bbfb3374b',
+    'state.php' => '3fbc48a0f25178011f0b838cc01d3664932822695d7d39c35d49cbc11fa057c1',
     'scope.php' => 'aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398',
     'preprocessing.php' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
     'log.php' => '0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56',

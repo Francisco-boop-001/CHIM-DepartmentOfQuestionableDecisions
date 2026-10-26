@@ -283,7 +283,7 @@ async function main() {
         access: { pcv: false },
       });
       await page.getByRole('tab', { name: 'Private Conversation' }).click();
-      assert.equal(await page.locator('#pcv-state').innerText(), 'An authenticated PCV permission is required for this control.');
+      assert.equal(await page.locator('#pcv-state').innerText(), 'This CHIM session does not have Private Conversation permission.');
       await page.close();
     });
 

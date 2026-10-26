@@ -105,6 +105,82 @@ function pcv_identity_from_home_state(
     ];
 }
 
+function pcv_apply_identity_read_bounds($connection): void
+{
+    $result = @pg_query_params($connection,
+        "SELECT name, setting::bigint AS setting_ms FROM pg_settings WHERE name IN ($1,$2)",
+        ['lock_timeout', 'statement_timeout']);
+    if ($result === false) {
+        throw new RuntimeException('Core profile lookup could not be bounded.');
+    }
+    $settings = [];
+    try {
+        if (pg_num_rows($result) !== 2) {
+            throw new RuntimeException('Core profile lookup limits are unavailable.');
+        }
+        for ($index = 0; $index < 2; $index++) {
+            $row = pg_fetch_assoc($result);
+            $name = is_array($row) ? ($row['name'] ?? null) : null;
+            $milliseconds = is_array($row) ? filter_var($row['setting_ms'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (!in_array($name, ['lock_timeout', 'statement_timeout'], true)
+                || !is_int($milliseconds) || $milliseconds < 0 || array_key_exists($name, $settings)) {
+                throw new RuntimeException('Core profile lookup limits are invalid.');
+            }
+            $settings[$name] = $milliseconds;
+        }
+    } finally {
+        @pg_free_result($result);
+    }
+
+    if (count($settings) !== 2) {
+        throw new RuntimeException('Core profile lookup limits are incomplete.');
+    }
+    $lockMilliseconds = $settings['lock_timeout'] > 0 ? min($settings['lock_timeout'], 2000) : 2000;
+    $statementMilliseconds = $settings['statement_timeout'] > 0 ? min($settings['statement_timeout'], 3000) : 3000;
+    $bounded = @pg_query_params($connection,
+        "SELECT set_config('lock_timeout', $1, true) AS lock_timeout, "
+            . "set_config('statement_timeout', $2, true) AS statement_timeout",
+        [$lockMilliseconds . 'ms', $statementMilliseconds . 'ms']);
+    if ($bounded === false) {
+        throw new RuntimeException('Core profile lookup limits could not be applied.');
+    }
+    try {
+        if (pg_num_rows($bounded) !== 1) {
+            throw new RuntimeException('Core profile lookup limits could not be verified.');
+        }
+    } finally {
+        @pg_free_result($bounded);
+    }
+    $verified = @pg_query_params($connection,
+        "SELECT name, setting::bigint AS setting_ms FROM pg_settings WHERE name IN ($1,$2)",
+        ['lock_timeout', 'statement_timeout']);
+    if ($verified === false) {
+        throw new RuntimeException('Core profile lookup limits could not be verified.');
+    }
+    $actual = [];
+    try {
+        if (pg_num_rows($verified) !== 2) {
+            throw new RuntimeException('Core profile lookup limits could not be verified.');
+        }
+        for ($index = 0; $index < 2; $index++) {
+            $row = pg_fetch_assoc($verified);
+            $name = is_array($row) ? ($row['name'] ?? null) : null;
+            $milliseconds = is_array($row) ? filter_var($row['setting_ms'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (!in_array($name, ['lock_timeout', 'statement_timeout'], true)
+                || !is_int($milliseconds) || array_key_exists($name, $actual)) {
+                throw new RuntimeException('Core profile lookup limits could not be verified.');
+            }
+            $actual[$name] = $milliseconds;
+        }
+    } finally {
+        @pg_free_result($verified);
+    }
+    if (($actual['lock_timeout'] ?? null) !== $lockMilliseconds
+        || ($actual['statement_timeout'] ?? null) !== $statementMilliseconds) {
+        throw new RuntimeException('Core profile lookup limits could not be verified.');
+    }
+}
+
 function pcv_profile_table_exists($connection): bool
 {
     if (!function_exists('pg_query_params') || !function_exists('pg_num_rows') || !function_exists('pg_fetch_assoc')) {
@@ -178,6 +254,7 @@ function pcv_current_identity(bool $refresh = false): array
     }
 
     $connection = null;
+    $transactionStarted = false;
     try {
         require_once $homeHelper;
         if (!function_exists('ptp_connect')) {
@@ -188,19 +265,31 @@ function pcv_current_identity(bool $refresh = false): array
         if (!$connection) {
             return $identity;
         }
+        if (!function_exists('pg_transaction_status') || !function_exists('pg_query')
+            || pg_transaction_status($connection) !== PGSQL_TRANSACTION_IDLE
+            || @pg_query($connection, 'BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY') === false) {
+            throw new RuntimeException('Core profile lookup could not start a read snapshot.');
+        }
+        $transactionStarted = true;
+        pcv_apply_identity_read_bounds($connection);
         $profileTableExists = pcv_profile_table_exists($connection);
         if (!$profileTableExists) {
             $identity = pcv_identity_from_home_state([], false, pcv_core_player_name($connection));
-            return $identity;
+        } elseif (function_exists('pth_state')) {
+            $homeState = pth_state($connection);
+            $corePlayerName = pcv_home_state_has_no_active_profile($homeState)
+                ? pcv_core_player_name($connection) : null;
+            $identity = pcv_identity_from_home_state($homeState, true, $corePlayerName);
         }
-        if (!function_exists('pth_state')) {
-            return $identity;
+        if (@pg_query($connection, 'COMMIT') === false) {
+            throw new RuntimeException('Core profile lookup could not finish its read snapshot.');
         }
-        $homeState = pth_state($connection);
-        $corePlayerName = pcv_home_state_has_no_active_profile($homeState)
-            ? pcv_core_player_name($connection) : null;
-        $identity = pcv_identity_from_home_state($homeState, $profileTableExists, $corePlayerName);
+        $transactionStarted = false;
     } catch (Throwable $error) {
+        if ($transactionStarted && function_exists('pg_transaction_status')
+            && pg_transaction_status($connection) !== PGSQL_TRANSACTION_IDLE) {
+            @pg_query($connection, 'ROLLBACK');
+        }
         pcv_log_exception('state.unavailable', 'error', 'unavailable', 'profile_lookup_failed', $error, ['operation' => 'identity']);
         $identity = ['key' => null, 'player_name' => null];
     } finally {

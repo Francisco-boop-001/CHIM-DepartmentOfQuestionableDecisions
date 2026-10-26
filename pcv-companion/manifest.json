@@ -1,6 +1,6 @@
 {
   "name": "pcv_companion",
-  "version": "0.1.0-prealpha.9",
+  "version": "0.1.0-prealpha.10",
   "schema_version": 2,
   "description": "Department companion hooks for the supported Private Conversation owner plugin.",
   "status": "development_candidate",
