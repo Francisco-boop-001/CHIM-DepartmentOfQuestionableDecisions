@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
 	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $CMakePath,
+	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $PhpPath,
 	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $DependenciesRoot,
 	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $OutputRoot,
 	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $EvidenceRoot
@@ -99,6 +100,9 @@ $script:cmake = Resolve-InputFile -Path $CMakePath
 $script:ctest = Resolve-InputFile -Path (Join-Path (Split-Path -Parent $script:cmake) 'ctest.exe')
 $dependencies = [IO.Path]::GetFullPath((Resolve-Path -LiteralPath $DependenciesRoot).Path)
 Assert-DependencyCache -Root $dependencies
+$script:php = Resolve-InputFile -Path $PhpPath
+$phpVersion = (& $script:php --version | Select-Object -First 1).Trim()
+if ($phpVersion -notmatch '^PHP 8\.3\.35 \(cli\)') { throw "PHP must be the pinned PHP 8.3.35 CLI; found '$phpVersion'." }
 $cmakeVersion = (& $script:cmake --version | Select-Object -First 1).Trim()
 if ($cmakeVersion -cne "cmake version $($lock.toolchain.cmakeVersion)-msvc11" -and $cmakeVersion -cne "cmake version $($lock.toolchain.cmakeVersion)") {
 	throw "CMake version must be $($lock.toolchain.cmakeVersion); found '$cmakeVersion'."
@@ -124,6 +128,28 @@ $unpackedRoot = Join-Path $output 'sources'
 $installRoot = Join-Path $output 'dependency-install'
 $logRoot = Join-Path $evidence 'logs'
 New-Item -ItemType Directory -Path $unpackedRoot,$installRoot,$logRoot | Out-Null
+$repoRoot = Split-Path -Parent $PSScriptRoot
+$serverBootstrapGenerator = Resolve-InputFile -Path (Join-Path $repoRoot 'server\tests\native-bootstrap\generate.php')
+$serverBootstrapFixturePath = Join-Path $evidence 'server-bootstrap-fixtures.json'
+$serverBootstrapStateRoot = Resolve-FreshOutputPath -Path (Join-Path $evidence 'server-bootstrap-state')
+$serverBootstrapLog = Join-Path $logRoot 'server-bootstrap-fixtures.log'
+[IO.File]::WriteAllText($serverBootstrapLog, "PHP: $phpVersion`r`n", [Text.UTF8Encoding]::new($false))
+Push-Location -LiteralPath $repoRoot
+try {
+	$serverBootstrapOutput = & $script:php -n $serverBootstrapGenerator --output $serverBootstrapFixturePath --state-root $serverBootstrapStateRoot 2>&1
+	$serverBootstrapExitCode = $LASTEXITCODE
+} finally {
+	Pop-Location
+}
+$serverBootstrapOutput | Add-Content -LiteralPath $serverBootstrapLog
+if ($serverBootstrapExitCode -ne 0) { throw "Actual PHP bootstrap fixture generation failed with exit code $serverBootstrapExitCode; see the requested evidence log." }
+if (-not (Test-Path -LiteralPath $serverBootstrapFixturePath -PathType Leaf)) { throw 'The PHP bootstrap fixture generator did not create its output file.' }
+if (Test-Path -LiteralPath $serverBootstrapStateRoot) { throw 'The PHP bootstrap fixture generator did not remove its isolated synthetic state root.' }
+$serverBootstrapFixtures = Get-Content -LiteralPath $serverBootstrapFixturePath -Raw | ConvertFrom-Json
+if ($serverBootstrapFixtures.schemaVersion -ne 1 -or $serverBootstrapFixtures.stateCleanup -cne 'removed' -or
+	$serverBootstrapFixtures.cases.Count -ne 4 -or $serverBootstrapFixtures.sourceFiles.Count -lt 1) {
+	throw 'The PHP bootstrap fixture output did not satisfy its versioned schema or cleanup receipt.'
+}
 $commonLibRoot = Get-ArchiveSource -ArchivePath (Join-Path (Join-Path $dependencies 'downloads') $lock.commonLib.archiveName) -DestinationRoot $unpackedRoot -ExpectedDirectory $lock.commonLib.sourceDirectory
 $fmtRoot = Get-ArchiveSource -ArchivePath (Join-Path (Join-Path $dependencies 'downloads') $lock.fmt.archiveName) -DestinationRoot $unpackedRoot -ExpectedDirectory $lock.fmt.sourceDirectory
 $spdlogRoot = Get-ArchiveSource -ArchivePath (Join-Path (Join-Path $dependencies 'downloads') $lock.spdlog.archiveName) -DestinationRoot $unpackedRoot -ExpectedDirectory $lock.spdlog.sourceDirectory
@@ -180,7 +206,8 @@ $hostBuild = Join-Path $output 'build-host'
 $hostLog = Join-Path $logRoot 'host-build-test.log'
 [IO.File]::WriteAllText($hostLog, '', [Text.UTF8Encoding]::new($false))
 Invoke-CMake -Arguments (@('-S', $nativeRoot, '-B', $hostBuild) + $commonArgs + @(
-	'-DBUILD_TESTING=ON', '-DDQL_BUILD_SKSE_PLUGIN=OFF', "-DDQL_NLOHMANN_INCLUDE_ROOT=$nlohmannRoot"
+	'-DBUILD_TESTING=ON', '-DDQL_BUILD_SKSE_PLUGIN=OFF', "-DDQL_NLOHMANN_INCLUDE_ROOT=$nlohmannRoot",
+	"-DDQL_SERVER_BOOTSTRAP_FIXTURE_PATH=$serverBootstrapFixturePath"
 )) -LogPath $hostLog -Description 'host-test configure'
 Invoke-CMake -Arguments @('--build', $hostBuild, '--config', $lock.toolchain.configuration, '--parallel') -LogPath $hostLog -Description 'host-test build'
 $ctestArguments = @('--test-dir', $hostBuild, '-C', $lock.toolchain.configuration, '--output-on-failure')
@@ -235,7 +262,7 @@ if ($sdkVersions[0] -cne $lock.toolchain.windowsSdkVersion -or $toolsets[0] -cne
 $linkOptionsConfigured = [bool](Select-String -LiteralPath $pluginProjectPath -SimpleMatch '/Brepro' -Quiet)
 if (-not $linkOptionsConfigured) { throw 'The generated plugin project did not contain the deterministic /Brepro linker option.' }
 $testLine = Select-String -LiteralPath $hostLog -Pattern '100%\s+tests passed,\s+0 tests failed out of (\d+)' | Select-Object -Last 1
-if (-not $testLine -or [int]$testLine.Matches[0].Groups[1].Value -ne 5) { throw 'Host CTest result did not confirm all five expected tests passed.' }
+if (-not $testLine -or [int]$testLine.Matches[0].Groups[1].Value -ne 6) { throw 'Host CTest result did not confirm all six expected tests passed.' }
 $testCount = [int]$testLine.Matches[0].Groups[1].Value
 $receipt = [ordered]@{
 	schemaVersion = 1
@@ -252,12 +279,19 @@ $receipt = [ordered]@{
 		windowsSdkVersion = $sdkVersions[0]
 	}
 	inputs = [ordered]@{
+		phpVersion = $phpVersion
 		commonLib = [ordered]@{ version = $lock.commonLib.version; commit = $lock.commonLib.commit; archiveSha256 = $lock.commonLib.sha256 }
 		fmt = [ordered]@{ version = $lock.fmt.version; archiveSha256 = $lock.fmt.sha256 }
 		spdlog = [ordered]@{ version = $lock.spdlog.version; archiveSha256 = $lock.spdlog.sha256 }
 		rapidcsv = [ordered]@{ version = $lock.rapidcsv.version; archiveSha256 = $lock.rapidcsv.sha256 }
 		nlohmannJson = [ordered]@{ version = $lock.nlohmannJson.version; sha256 = $lock.nlohmannJson.sha256 }
 		prismaUi = [ordered]@{ repository = $lock.prismaUi.repository; commit = $lock.prismaUi.commit; sha256 = $lock.prismaUi.sha256 }
+	}
+	serverBootstrapFixtures = [ordered]@{
+		sha256 = Get-Sha256 -Path $serverBootstrapFixturePath
+		caseNames = @($serverBootstrapFixtures.cases | ForEach-Object { $_.name })
+		sourceFiles = @($serverBootstrapFixtures.sourceFiles)
+		stateCleanup = $serverBootstrapFixtures.stateCleanup
 	}
 	hostTests = [ordered]@{ result = $testLine.Line.Trim(); count = $testCount }
 	plugin = [ordered]@{ name = $dllItem.Name; bytes = $dllItem.Length; sha256 = Get-Sha256 -Path $dllPath; linkOptionsConfigured = $linkOptionsConfigured }
@@ -266,7 +300,8 @@ $receipt = [ordered]@{
 $receiptPath = Join-Path $evidence 'native-build-receipt.json'
 [IO.File]::WriteAllText($receiptPath, ($receipt | ConvertTo-Json -Depth 10) + "`n", [Text.UTF8Encoding]::new($false))
 $savedReceipt = Get-Content -LiteralPath $receiptPath -Raw | ConvertFrom-Json
-if ($savedReceipt.plugin.sha256 -cne $receipt.plugin.sha256 -or $savedReceipt.hostTests.count -ne 5) { throw 'Native build receipt did not reopen with expected outputs.' }
+if ($savedReceipt.plugin.sha256 -cne $receipt.plugin.sha256 -or $savedReceipt.hostTests.count -ne 6 -or
+	$savedReceipt.serverBootstrapFixtures.sha256 -cne $receipt.serverBootstrapFixtures.sha256) { throw 'Native build receipt did not reopen with expected outputs.' }
 Write-Output "Native host tests and DLL build passed. DLL SHA-256: $($receipt.plugin.sha256)"
 Write-Output "Outputs: $output"
 Write-Output "Evidence: $evidence"

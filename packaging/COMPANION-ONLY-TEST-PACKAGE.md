@@ -1,5 +1,7 @@
 # Department install-and-use guide — prealpha.15
 
+The prealpha.16 bootstrap-validator source candidate is not a download yet. This guide's links and installation instructions still apply to the published prealpha.15 package. The candidate is intended to preserve all three prealpha.15 server packages and change only the Department DLL and UI script; see the [verification record](../docs/VERIFICATION.md) for its current evidence and limits.
+
 This PRE-ALPHA candidate adds a normal in-game connection flow. Use a disposable MO2 profile, save, and CHIM server until you have completed your own acceptance checks.
 
 ## Install the mod

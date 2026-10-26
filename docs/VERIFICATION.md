@@ -1,6 +1,16 @@
 # PRE-ALPHA verification
 
-Current development: [prealpha.15 Sealed Fates dev.24 source candidate](#prealpha15-sealed-fates-dev24-source-candidate). Older sections retain the proof limits of their named releases.
+Current development: prealpha.16 bootstrap-validator source candidate; the final DLL and six-target native host build passed their isolated checks. Package assembly remains pending the final source freeze and reviewed cross-boundary receipts. Prealpha.15 remains the latest downloadable release. Older sections retain the proof limits of their named releases.
+
+## Prealpha.16 bootstrap-validator source candidate — 2026-10-25
+
+The package helper is based on the exact published prealpha.15 installable archive (SHA-256 `89675842fffde483998f7f127d6276841c461283ecb228de08cfb0e5954d2b09`). Its package contract allows only `SKSE/Plugins/WorldOfDramaLlama.dll` and `PrismaUI/views/WorldOfDramaLlama/app.js` to change. All three server DWPkgs remain byte-for-byte identical, preserving their owner pins and the original Private Conversation fallback. The server package stays at prealpha.15.
+
+The native fix moves bootstrap validation into the shared contract code called by the plugin and explicitly validates the server's five-key capability and access maps, including `brainwash`. The isolated PHP fixture generator called the real `qd_api_handle` path with synthetic pairing/context state. The native host target consumed those serialized request/response bodies through the production validator. A package receipt must bind the exact fixture, generator and server inputs, fixed native inputs, native build and DLL to one selected source commit; the release builder rejects incomplete or mismatched bindings.
+
+Root's isolated final-DLL run accepted all four PHP-generated bootstrap fixtures and rejected 51 malformed, authentication, schema, echo and size cases. Eleven derived positive controls exercised all five capability booleans. The tested DLL SHA-256 is `bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef`; the fixture SHA-256 is `0f576a631edad9ceb193e7f90d49c1afe831510e63307eb451af337462544265`. The native build passed 6/6 CTest targets. Root loaded the actual DLL in an isolated Python child through its pure validator export; the child did not call `SKSEPlugin_Load`. The UI startup harness passed 5/5 cases, including a native-shaped `invalid_response` bootstrap envelope and its actionable component-mismatch guidance.
+
+These checks used no HTTP, live CHIM/database, provider, core or Skyrim execution. They do not establish actual CHIM startup or in-game behavior. Final source binding/review and package assembly remain pending; prealpha.15 is still the latest downloadable release.
 
 Published [prealpha.15](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.15) at 2026-10-25T21:32:22Z from immutable source `2c44c3fb30af4692319c0d9f09875b8cc411c7dc`. Root independently checked all 22 MO2 members (21 unchanged), 194 committed source members, both proof records and the Department DWPkg checksum closure. All four draft and anonymous public downloads match local bytes, GitHub sizes/digests and GNU checksums. All 13 previous releases, 91 assets and 26 tag refs remain unchanged. Main advanced after public-byte verification. This completion record changes no release assets or tag; no new actual CHIM server, PostgreSQL, provider, native or Skyrim acceptance is claimed.
 

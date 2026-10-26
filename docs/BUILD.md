@@ -29,6 +29,8 @@ This guide builds the companion DLL and host tests, the two Department Papyrus s
 
 The native lock pins CommonLibSSE-NG v3.7.0 at commit `c4ab853d095e81e3390b282d7ba01ab2f24ebf25`, fmt 10.2.1, spdlog v1.13.0, rapidcsv v8.84, nlohmann/json v3.11.3, and the exact PrismaUI V1 header from Dwemer-Dynamics/CHIM commit `5ca1bc361d1e11a3c58067599b494b1101c2c77b`. Every upstream URL and SHA-256 is in `native/deps.lock.json`: CommonLib archive `6777B38C42CBEB82776BCC51A03F2128C3D231A635D08467144E31B08FA48554`; fmt `D368F9C39A33A3AEF800F5BE372EC1DF1C12AD57ADA1F60ADC62F24C0E348469`; spdlog `9F6763BB76FFF7DB371F5733626C83352EDD7C57899501AB00248FAFAD9CC504`; rapidcsv `6226DF921E392EB5FA88DD1EFAF26A1A7CFDC23BC00C08A7337FC0314BF8B5A8`; nlohmann/json header `9BEA4C8066EF4A1C206B2BE5A36302F8926F7FDC6087AF5D20B417D0CF103EA6`; PrismaUI header `46F77238A8C645C84E26DAC72467471B666D64FB28F143F1D369313A41175927`. The CommonLib archive's 2,067 files match the staged tree; its internal CMake metadata says 3.6.0, which is stale metadata, not the public v3.7.0 source pin. The CHIM PrismaUI header is MIT-licensed; its upstream Plugin license is in the notices component.
 
+For prealpha.16, `SKSEPluginInfo::PluginVersion` is `0.1.16.0`: the four-component packed SKSE version cannot represent `0.1.0.16`. The package and release identity remains `0.1.0-prealpha.16`.
+
 Run from the source root in PowerShell 7. Choose a new empty scratch root each time. The native fetcher downloads only the lockfile URLs and rejects any hash mismatch.
 
 ```powershell
@@ -38,18 +40,19 @@ $nativeDeps = Join-Path $buildRoot 'native-dependencies'
 $nativeOutput = Join-Path $buildRoot 'native-output'
 $nativeEvidence = Join-Path $buildRoot 'native-evidence'
 $cmake = 'C:\path\to\cmake.exe' # Set this to the installed, pinned CMake 3.28.3 executable.
+$php = (Get-Command php -ErrorAction Stop).Source # Must resolve to the pinned PHP 8.3.35 CLI.
 
 & .\native\fetch-dependencies.ps1 -CachePath $nativeDeps
-& .\native\build.ps1 -CMakePath $cmake -DependenciesRoot $nativeDeps `
+& .\native\build.ps1 -CMakePath $cmake -PhpPath $php -DependenciesRoot $nativeDeps `
   -OutputRoot $nativeOutput -EvidenceRoot $nativeEvidence
 ```
 
-The prealpha.7 native host build ran four CTest targets. Portable build A produced a 690,688-byte DLL with SHA-256 `1c6d0a0370a2f9e8133deef574be2f2ecc0e7ac1065e9eedddd7cc8554aea13`; the coordinator's independent clean-source build B2 produced the same DLL bytes and passed all four host tests. Prealpha.8 adds the connection protocol test target, so the current native host suite has five CTest targets. Compiler, toolset and SDK pins remain as recorded above; these source/build checks do not establish Skyrim runtime behavior. `nativeOutput` also receives synthetic refusal JSON fixtures from the linked production formatter. They contain only generic messages and synthetic correlations; the compose payload sentinel is omitted. To run the UI's native-producer refusal case, pass `NATIVE_REFUSAL_FIXTURE` the exact `c2-02-refusal-fixture.json` path from that fresh output. The UI test rebinds only `requestId`, `operation`, and `context` to the live synthetic browser request; it preserves the fixture's producer error object. This exercises a formatter-shaped response in the browser test; it does not invoke SKSE or a native transport.
+The prealpha.7 native host build ran four CTest targets. Portable build A produced a 690,688-byte DLL with SHA-256 `1c6d0a0370a2f9e8133deef574be2f2ecc0e7ac1065e9eedddd7cc8554aea13`; the coordinator's independent clean-source build B2 produced the same DLL bytes and passed all four host tests. Prealpha.8 adds the connection protocol target; the prealpha.16 bootstrap-validator change adds a sixth CTest target, so the current native host suite has six CTest targets. Compiler, toolset and SDK pins remain as recorded above; these source/build checks do not establish Skyrim runtime behavior. `nativeOutput` also receives synthetic refusal JSON fixtures from the linked production formatter. They contain only generic messages and synthetic correlations; the compose payload sentinel is omitted. To run the UI's native-producer refusal case, pass `NATIVE_REFUSAL_FIXTURE` the exact `c2-02-refusal-fixture.json` path from that fresh output. The UI test rebinds only `requestId`, `operation`, and `context` to the live synthetic browser request; it preserves the fixture's producer error object. This exercises a formatter-shaped response in the browser test; it does not invoke SKSE or a native transport.
 
 The negative dependency preflight can be checked with:
 
 ```powershell
-& .\native\tests\Build-Recipe.Tests.ps1 -CMakePath $cmake
+& .\native\tests\Build-Recipe.Tests.ps1 -CMakePath $cmake -PhpPath $php
 ```
 
 ## Papyrus scripts

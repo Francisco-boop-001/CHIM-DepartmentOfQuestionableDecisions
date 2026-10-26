@@ -88,6 +88,13 @@ async function receive(page, request, data) {
   })), { request, data });
 }
 
+async function receiveError(page, request, error) {
+  return page.evaluate(({ request, error }) => window.departmentReceive(JSON.stringify({
+    version: request.version, requestId: request.requestId, operation: request.operation,
+    context: request.context, ok: false, error,
+  })), { request, error });
+}
+
 function authenticatedData(serverContext = 'startup-retained-scope') {
   return {
     authenticated: true, authRequired: false, serverContext, scopeToken: 'A'.repeat(43),
@@ -128,6 +135,23 @@ async function main() {
       assert.match(await page.locator(`#${id}`).innerText(), /WorldOfDramaLlama\.log/);
     }
     assert.equal(await operationCount(page, 'bootstrap'), 0);
+    await verifyLocalPage(page);
+    await page.close();
+  });
+
+  await test('a native bootstrap invalid_response gives safe component-mismatch guidance', async () => {
+    const page = await openPage(browser, 'hold');
+    const current = await initialize(page);
+    const accepted = await receiveError(page, current.bootstrap, {
+      code: 'invalid_response', message: 'The Department server returned invalid access information.',
+    });
+    assert.equal(accepted, true, 'the native error envelope is accepted for the pending bootstrap');
+    await page.locator('#connection-status').getByText(/game mod and server package do not match/i).waitFor();
+    const status = await page.locator('#connection-status').innerText();
+    assert.match(status, /reinstall the Department game mod and included server package from the same release/i);
+    assert.match(status, /restart Skyrim and CHIM/i);
+    assert.doesNotMatch(status, /invalid access information/i, 'the native message and server detail stay hidden');
+    assert.match(await page.locator('#permission-status').innerText(), /Retry connection/i);
     await verifyLocalPage(page);
     await page.close();
   });

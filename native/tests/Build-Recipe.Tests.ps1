@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $CMakePath
+	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $CMakePath,
+	[Parameter(Mandatory)][ValidateNotNullOrEmpty()][string] $PhpPath
 )
 
 Set-StrictMode -Version Latest
@@ -21,7 +22,7 @@ New-Item -ItemType Directory -Path $dependenciesRoot | Out-Null
 try {
 	$failed = $false
 	try {
-		& $buildScript -CMakePath $CMakePath -DependenciesRoot $dependenciesRoot -OutputRoot $outputRoot -EvidenceRoot $evidenceRoot
+		& $buildScript -CMakePath $CMakePath -PhpPath $PhpPath -DependenciesRoot $dependenciesRoot -OutputRoot $outputRoot -EvidenceRoot $evidenceRoot
 	} catch {
 		$failed = $true
 		if ($_.Exception.Message -notmatch '(?i)(dependency|pin|archive|source)') { throw }

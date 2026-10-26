@@ -54,6 +54,7 @@
     UNAVAILABLE: 'This feature is unavailable right now. Refresh its status later.',
     RATE_LIMITED: 'Too many requests. Wait briefly before refreshing.',
     TOO_LARGE: 'The response exceeded the safe display limit and was discarded.',
+    COMPONENT_MISMATCH: 'The Department game mod and server package do not match. Reinstall the Department game mod and included server package from the same release, restart Skyrim and CHIM, then reopen the game interface.',
     CONNECTION_SETUP_REQUIRED: 'CHIM’s server address could not be determined. Check that CHIM is connected, then restart Skyrim.',
     CONNECTION_SECURE_STORAGE_FAILED: 'Windows could not save this game’s connection. Connection was not started.',
   };
@@ -63,6 +64,7 @@
     unauthorized: 'AUTH_REQUIRED', forbidden: 'FORBIDDEN', stale_context: 'CONTEXT_STALE',
     stale_revision: 'STALE_REVISION', actor_unavailable: 'ACTOR_UNAVAILABLE', invalid_input: 'INVALID_INPUT',
     busy: 'BUSY', unavailable: 'UNAVAILABLE', rate_limited: 'RATE_LIMITED', too_large: 'TOO_LARGE',
+    invalid_response: 'COMPONENT_MISMATCH',
     connection_setup_required: 'CONNECTION_SETUP_REQUIRED', connection_secure_storage_failed: 'CONNECTION_SECURE_STORAGE_FAILED',
   };
 

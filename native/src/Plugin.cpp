@@ -30,6 +30,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <iterator>
@@ -136,6 +137,16 @@ namespace
 			if (code == known) return known;
 		}
 		return "other";
+	}
+
+	bool IsBootstrapData(const dql::contract::Envelope& request, const dql::contract::Json& response)
+	{
+		if (request.operation != "bootstrap" || !response.is_object() ||
+			!response.contains("ok") || !response["ok"].is_boolean() || !response["ok"].get<bool>() ||
+			!response.contains("data") || !response["data"].is_object()) {
+			return false;
+		}
+		return dql::contract::ValidateBootstrapData(response["data"]);
 	}
 
 	std::string NewUuid()
@@ -1720,48 +1731,6 @@ namespace
 			};
 		}
 
-		bool ValidBootstrapData(const dql::contract::Json& data) const
-		{
-			if (!HasExactProperties(data, { "authenticated", "authRequired", "serverContext", "scopeToken", "capabilities", "access" }, { "perspectives" }) ||
-				!data["authenticated"].is_boolean() || !data["authRequired"].is_boolean() ||
-				!HasExactProperties(data["capabilities"], { "pcv", "mp", "sas", "correspondence" }) ||
-				!HasExactProperties(data["access"], { "pcv", "inspector", "compose", "authorDetail" })) {
-				return false;
-			}
-			for (const auto key : { "pcv", "mp", "sas", "correspondence" }) {
-				if (!data["capabilities"][key].is_boolean()) return false;
-			}
-			for (const auto key : { "pcv", "inspector", "compose", "authorDetail" }) {
-				if (!data["access"][key].is_boolean()) return false;
-			}
-			const bool authenticated = data["authenticated"].get<bool>();
-			if (data["authRequired"].get<bool>() == authenticated) return false;
-			if (authenticated) {
-				if (!data["serverContext"].is_string() || !data["scopeToken"].is_string() ||
-					!dql::policy::IsSafeHeaderValue(data["serverContext"].get_ref<const std::string&>()) ||
-					data["serverContext"].get_ref<const std::string&>().empty() ||
-					data["serverContext"].get_ref<const std::string&>().size() > 128 ||
-					data["scopeToken"].get_ref<const std::string&>().size() != 43 ||
-					!std::all_of(data["scopeToken"].get_ref<const std::string&>().begin(),
-						data["scopeToken"].get_ref<const std::string&>().end(), [](unsigned char ch) {
-							return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
-								(ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
-						})) {
-					return false;
-				}
-				if (data.contains("perspectives") && !data["access"]["inspector"].get<bool>()) return false;
-				return !(data["access"]["authorDetail"].get<bool>() && !data["access"]["inspector"].get<bool>());
-			}
-			if (!data["serverContext"].is_null() || !data["scopeToken"].is_null() || data.contains("perspectives")) return false;
-			for (const auto key : { "pcv", "mp", "sas", "correspondence" }) {
-				if (data["capabilities"][key].get<bool>()) return false;
-			}
-			for (const auto key : { "pcv", "inspector", "compose", "authorDetail" }) {
-				if (data["access"][key].get<bool>()) return false;
-			}
-			return true;
-		}
-
 		void AdoptBootstrapData(const dql::contract::Json& data)
 		{
 			ClearServerAccess();
@@ -2118,7 +2087,8 @@ namespace
 				return;
 			}
 			if (request.operation == "bootstrap") {
-				if (!response["data"].is_object() || !ValidBootstrapData(response["data"])) {
+				if (!IsBootstrapData(request, response)) {
+					LogEvent("bootstrap", "invalid_access");
 					ClearServerAccess();
 					RespondError(request, "invalid_response", "The Department server returned invalid access information.");
 					return;
@@ -2921,7 +2891,26 @@ namespace
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.0.14"_v,
+extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
+	const char* requestBody, std::size_t requestBytes,
+	const char* responseBody, std::size_t responseBytes) noexcept
+{
+	if (!requestBody || !responseBody || requestBytes == 0 || responseBytes == 0 ||
+		requestBytes > dql::contract::kMaxEnvelopeBytes || responseBytes > dql::contract::kMaxEnvelopeBytes) {
+		return false;
+	}
+	try {
+		const auto request = dql::contract::ParseRequest(std::string_view(requestBody, requestBytes));
+		if (!request.envelope || request.envelope->operation != "bootstrap") return false;
+		const auto response = dql::contract::ParseServerResponse(
+			std::string_view(responseBody, responseBytes), *request.envelope);
+		return response.value && IsBootstrapData(*request.envelope, *response.value);
+	} catch (...) {
+		return false;
+	}
+}
+
+SKSEPluginInfo(.Version = "0.1.16.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
@@ -2933,7 +2922,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	SKSE::Init(skse);
 	InitializeNativeLogger();
 	LogEvent("startup", "skse_initialized");
-	LogEvent("startup", "version_0_1_0_14");
+	LogEvent("startup", "version_0_1_0_16");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
 	if (!messaging || !papyrus) {

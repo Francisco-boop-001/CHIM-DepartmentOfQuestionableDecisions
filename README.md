@@ -20,7 +20,13 @@ The [prealpha.5 download](https://github.com/Francisco-boop-001/CHIM-DepartmentO
 
 Prealpha.6 was a source/package-only update from prealpha.5 for exact Mind Poisoning 0.1.30. At that release, only the MP adapter changed; PCV 0.1.22, SAS 0.1.11 and Sealed Fates dev.21 remained pinned. That matrix was superseded by prealpha.7 below. Its source-readiness probe did not establish database, HTTP, provider, native or Skyrim proof; the earlier candidate remains immutable.
 
-## Current prealpha.15 TEST source candidate
+## Current prealpha.16 bootstrap-validator source candidate
+
+Prealpha.16 carries the native bootstrap validator fix and a matching UI error for a rejected Department server reply. The release builder's contract starts from the exact published prealpha.15 installable archive (SHA-256 `89675842fffde483998f7f127d6276841c461283ecb228de08cfb0e5954d2b09`), permits changes only to `WorldOfDramaLlama.dll` and `app.js`, and requires all three server packages to remain byte-for-byte identical. This preserves the existing owner pins, including Sealed Fates dev.24 and dev.23, and the original Private Conversation fallback. The server package remains prealpha.15.
+
+Root's isolated final-DLL run passed the production validator against four serialized bootstrap fixtures generated through isolated PHP `qd_api_handle` calls: all four fixtures were accepted, 51 malformed/authentication/schema/echo/size cases were rejected, and 11 derived positive controls covered all five capability booleans. The tested DLL SHA-256 is `bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef`; the fixture SHA-256 is `0f576a631edad9ceb193e7f90d49c1afe831510e63307eb451af337462544265`. The native host build passed all six CTest targets. The DLL was loaded in an isolated Python child through its pure validator export; `SKSEPlugin_Load` was not called. No HTTP, live CHIM/database, provider or Skyrim acceptance follows from these checks. Package assembly still requires reviewed receipts binding the fixtures, source inputs, build and DLL to the frozen source commit. The prealpha.16 archive has not been assembled or published; prealpha.15 remains the latest downloadable package.
+
+## Published prealpha.15 reference
 
 Prealpha.15 adds exact [Sealed Fates dev.24](https://github.com/Francisco-boop-001/CHIM-SealedFates/releases/tag/correspondence-v0.1.0-dev.24) alongside the retained dev.23 pin. Private Conversation 0.1.23, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, and Malpractice Makes Perfect dev.3 remain supported. The owner source and focused evidence are recorded in [the dev.24 compatibility note](docs/DEV24-COMPATIBILITY.md) and [pairing record](docs/PAIRING-CHECK.md).
 

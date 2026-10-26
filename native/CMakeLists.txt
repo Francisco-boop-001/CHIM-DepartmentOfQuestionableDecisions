@@ -6,6 +6,7 @@ set(DQL_COMMONLIB_SOURCE "" CACHE PATH "Pinned CommonLibSSE-NG source directory"
 set(DQL_RAPIDCSV_INCLUDE "" CACHE PATH "Pinned rapidcsv include directory")
 set(DQL_NLOHMANN_INCLUDE_ROOT "" CACHE PATH "Pinned nlohmann/json.hpp include root")
 set(DQL_PLUGIN_OUTPUT_DIRECTORY "" CACHE PATH "Fresh output directory for the Skyrim plugin DLL")
+set(DQL_SERVER_BOOTSTRAP_FIXTURE_PATH "" CACHE FILEPATH "Serialized actual PHP bootstrap response fixtures for native host tests")
 
 if(NOT EXISTS "${DQL_NLOHMANN_INCLUDE_ROOT}/nlohmann/json.hpp")
 	message(FATAL_ERROR "Set DQL_NLOHMANN_INCLUDE_ROOT to the pinned nlohmann include root for host tests and the plugin.")
@@ -49,6 +50,14 @@ if(BUILD_TESTING)
 	target_include_directories(dql_http_transport_tests PRIVATE src)
 	target_link_libraries(dql_http_transport_tests PRIVATE dql_contract Winhttp Ws2_32)
 	add_test(NAME dql_http_transport_tests COMMAND dql_http_transport_tests)
+
+	add_executable(dql_server_bootstrap_tests tests/ServerBootstrapTests.cpp)
+	target_link_libraries(dql_server_bootstrap_tests PRIVATE dql_contract)
+	add_test(NAME dql_server_bootstrap_tests COMMAND dql_server_bootstrap_tests)
+	if(NOT DQL_SERVER_BOOTSTRAP_FIXTURE_PATH STREQUAL "")
+		set_tests_properties(dql_server_bootstrap_tests PROPERTIES
+			ENVIRONMENT "DQL_SERVER_BOOTSTRAP_FIXTURE_PATH=${DQL_SERVER_BOOTSTRAP_FIXTURE_PATH}")
+	endif()
 endif()
 
 if(DQL_BUILD_SKSE_PLUGIN)

@@ -1,4 +1,5 @@
 #include "Contract.h"
+#include "NativePolicy.h"
 
 #include <algorithm>
 #include <array>
@@ -235,6 +236,24 @@ namespace dql::contract
 			return std::all_of(keys.begin(), keys.end(), [&value](std::string_view key) { return value.contains(key); });
 		}
 
+		bool HasExactProperties(const Json& value,
+			std::initializer_list<std::string_view> required,
+			std::initializer_list<std::string_view> optional = {})
+		{
+			if (!value.is_object() || value.size() < required.size() || value.size() > required.size() + optional.size()) {
+				return false;
+			}
+			for (const auto key : required) {
+				if (!value.contains(std::string(key))) return false;
+			}
+			for (const auto& [key, _] : value.items()) {
+				const bool isRequired = std::find(required.begin(), required.end(), key) != required.end();
+				const bool isOptional = std::find(optional.begin(), optional.end(), key) != optional.end();
+				if (!isRequired && !isOptional) return false;
+			}
+			return true;
+		}
+
 		bool IsCatalogActorKey(const Json& value)
 		{
 			if (!value.is_string()) {
@@ -458,6 +477,48 @@ namespace dql::contract
 	JsonParseResult ParseBoundedJson(std::string_view raw)
 	{
 		return ParseBoundedJsonImpl(raw);
+	}
+
+	bool ValidateBootstrapData(const Json& data)
+	{
+		if (!HasExactProperties(data, { "authenticated", "authRequired", "serverContext", "scopeToken", "capabilities", "access" }, { "perspectives" }) ||
+			!data["authenticated"].is_boolean() || !data["authRequired"].is_boolean() ||
+			!HasExactProperties(data["capabilities"], { "pcv", "mp", "sas", "correspondence", "brainwash" }) ||
+			!HasExactProperties(data["access"], { "pcv", "inspector", "compose", "authorDetail", "brainwash" })) {
+			return false;
+		}
+		for (const auto key : { "pcv", "mp", "sas", "correspondence", "brainwash" }) {
+			if (!data["capabilities"][key].is_boolean()) return false;
+		}
+		for (const auto key : { "pcv", "inspector", "compose", "authorDetail", "brainwash" }) {
+			if (!data["access"][key].is_boolean()) return false;
+		}
+		const bool authenticated = data["authenticated"].get<bool>();
+		if (data["authRequired"].get<bool>() == authenticated) return false;
+		if (authenticated) {
+			if (!data["serverContext"].is_string() || !data["scopeToken"].is_string() ||
+				!dql::policy::IsSafeHeaderValue(data["serverContext"].get_ref<const std::string&>()) ||
+				data["serverContext"].get_ref<const std::string&>().empty() ||
+				data["serverContext"].get_ref<const std::string&>().size() > 128 ||
+				data["scopeToken"].get_ref<const std::string&>().size() != 43 ||
+				!std::all_of(data["scopeToken"].get_ref<const std::string&>().begin(),
+					data["scopeToken"].get_ref<const std::string&>().end(), [](unsigned char ch) {
+						return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') ||
+							(ch >= '0' && ch <= '9') || ch == '_' || ch == '-';
+					})) {
+				return false;
+			}
+			if (data.contains("perspectives") && !data["access"]["inspector"].get<bool>()) return false;
+			return !(data["access"]["authorDetail"].get<bool>() && !data["access"]["inspector"].get<bool>());
+		}
+		if (!data["serverContext"].is_null() || !data["scopeToken"].is_null() || data.contains("perspectives")) return false;
+		for (const auto key : { "pcv", "mp", "sas", "correspondence", "brainwash" }) {
+			if (data["capabilities"][key].get<bool>()) return false;
+		}
+		for (const auto key : { "pcv", "inspector", "compose", "authorDetail", "brainwash" }) {
+			if (data["access"][key].get<bool>()) return false;
+		}
+		return true;
 	}
 
 	ParseResult ParseRequest(std::string_view raw)
