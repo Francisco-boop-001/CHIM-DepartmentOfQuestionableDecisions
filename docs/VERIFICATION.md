@@ -1,6 +1,14 @@
 # PRE-ALPHA verification
 
-Current published release: prealpha.19 Sealed Fates dev.26 support. The prealpha.16 DLL is reused unchanged. Skyrim connection remains unverified. Older sections retain their original proof limits.
+Current published release: prealpha.20 paired PCV0.1.24 timeout repair. The prealpha.16 DLL is reused unchanged. Skyrim connection remains unverified. Older sections retain their original proof limits.
+
+## Prealpha.20 published paired PCV timeout repair - 2026-10-26
+
+Published [prealpha.20](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.20) at 2026-10-26T20:53:15Z from immutable source `cc33082885aa938d588eeaf5462e67b557ab282e`, paired with PCV 0.1.24 at `ce0a998773237a9fc91f6914725a327d9e621718` and bundled PCV companion 11. Root verified 22 installable members with 20 unchanged payloads, 227 Git-matched public source files, all three new DWPkgs through the unmodified CHIM archive validator, and all four draft/anonymous-public asset downloads against local bytes, GitHub digests and GNU checksums. Installable: 618763 bytes, SHA-256 `2a60c5ac9d012c7ee30d6286b876ec3d117566ea1374ff2e9801bed34416b720`. All 18 prior releases, 111 assets and 36 tag refs remain unchanged. This docs-only completion leaves the tag and assets immutable.
+
+Actual isolated PostgreSQL 15.14/PHP 8.2.35: owner 18/18 and exact overlay 6/6 passed, including 2s lock bounds, 3s statement cancellation, stricter positive settings, shared caller-state preservation, full native catalog parity and official restore-barrier refusal. Root final literal-pinned migration 15/15, six focused PHP checks, 17 PHP syntax checks and 7 packaging checks passed. All 39 other-owner source pins and 61 protected sources match. The interrupted retention stress is not a pass; its production store/fallback implementation is byte-identical after the owner pin header. No HTTP/provider operation, whole-request deadline, native startup/build or Skyrim acceptance is inferred; production database behavior is unverified. Both disposable clusters were removed and TEST2 returned Stopped. Live, installed CHIM core, campaign databases and the running game were left alone.
+
+The package starts from exact prealpha.19 SHA-256 `d7481f55074025650628644df7e914ad78bc1f6cf1762faac3d3fac7a3e55a93`; only Department20 and companion 11 DWPkgs change. Their timestamps are2026-10-26 00:00:06. Five bound rollups are `pcv-owner-timeouts.json`, `pcv-overlay-timeouts.json`, `overlay-migration-results.json`, `pcv-source-contract.json`, and `other-plugin-compatibility.json`. The old0.1.23 archive is never restoration authority for owner 0.1.24. A failed active-backup rollback retains the known legacy archive. See [PCV24 compatibility](PCV24-COMPATIBILITY.md).
 
 ## Prealpha.19 published dev.26 pairing — 2026-10-26
 
@@ -12,15 +20,7 @@ The builder requires a canonical receipt bound to the selected full Department s
 
 These are source/package checks only. They do not establish production database behavior, HTTP/provider behavior, a live CHIM server, native startup or Skyrim acceptance. See the [dev.26 compatibility note](DEV26-COMPATIBILITY.md) and [build recipe](BUILD.md).
 
-## Prealpha.20 paired PCV timeout candidate — 2026-10-26
-
-Candidate only. The package contract starts from the exact published prealpha.19 installable, SHA-256 `d7481f55074025650628644df7e914ad78bc1f6cf1762faac3d3fac7a3e55a93`, and permits only the Department and PCV companion DWPkg payloads to change. All other 20 MO2 payloads, including the UI and accepted DLL, remain byte-identical. The coordinated candidate is Department `0.1.0-prealpha.20`, PCV companion `0.1.0-prealpha.11`, and owner `0.1.24` at source commit `ce0a998773237a9fc91f6914725a327d9e621718`; `.23` remains the known backup/rollback source. Other owner pins remain MP `0.1.30`, SAS `0.1.12`, Sealed Fates dev.26 and its existing maps, and MMP dev.3. ZIP entries will use timestamp 2026-10-26 00:00:06.
-
-The owner timeout suite passed 18/18 against isolated PostgreSQL; the rebased overlay timeout suite passed 6/6; migration/refusal/rollback passed 15/15 with cleanup verified. Final source-contract and all-other-plugin receipt checks, the canonical paired rollup, package build, public-byte review, and publication remain pending. Exact raw receipt names are `pcv-owner-timeouts.json`, `pcv-overlay-timeouts.json`, `overlay-migration-results.json`, `pcv-source-contract.json`, and `other-plugin-compatibility.json`. This is not evidence of HTTP/provider, whole-request deadline, native build, live CHIM, or Skyrim behavior. No browser/Linux manual approval and no deletion of the backup are required.
-
-No final package, archive hash, public asset checks, or publication are claimed here. Prealpha.19 remains current pending the final literal/source review, paired receipt, and root-controlled build and release checks. The candidate does not alter the DLL or native UI.
-
-## PCV author coordination — 2026-10-26
+## Historical PCV author coordination — 2026-10-26
 
 The PCV author independently confirmed the exact current PCV0.1.23 seven-file base and Department18 overlay/backup identities. Department19 retains those bytes and remains compatible with that version. Standalone PCV still merits bounded identity and native NPC-catalog SQL reads; the Department adapter protects its own outer reads, not every native PCV caller. A future owner release requires rebased companion hooks and new exact pins plus an explicitly verified migration of the known0.1.23 backup, with successful-upgrade and failed-upgrade rollback evidence. It must not ship as a pin-only change. No PCV source or release was changed during this coordination pass. The earlier11/11 PostgreSQL receipt combines eight helper SQL cases, two standalone identity lock cases and one caller logical-error case; adapter5/5, identity/fallback3/3 and overlay7/7 are separate. These per-statement caps are not a whole-request deadline or native catalog/gameplay proof.
 

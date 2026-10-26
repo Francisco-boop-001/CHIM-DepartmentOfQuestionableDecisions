@@ -1,8 +1,8 @@
-# PCV 0.1.24 paired timeout compatibility — candidate
+# PCV 0.1.24 paired timeout compatibility — published
 
 ## Status
 
-This note describes an unpublished Department prealpha.20 candidate. Prealpha.19 remains the latest published release until the paired package, receipts, archive-consumer check, public bytes, and coordinated publication are reviewed. The selected PCV 0.1.24 owner source is commit `ce0a998773237a9fc91f6914725a327d9e621718`; the `private_conversation-v0.1.24` release tag is planned.
+Published [prealpha.20](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.20) at 2026-10-26T20:53:15Z from immutable source `cc33082885aa938d588eeaf5462e67b557ab282e`, paired with PCV 0.1.24 at `ce0a998773237a9fc91f6914725a327d9e621718` and bundled PCV companion 11. Root verified 22 installable members with 20 unchanged payloads, 227 Git-matched public source files, all three new DWPkgs through the unmodified CHIM archive validator, and all four draft/anonymous-public asset downloads against local bytes, GitHub digests and GNU checksums. Installable: 618763 bytes, SHA-256 `2a60c5ac9d012c7ee30d6286b876ec3d117566ea1374ff2e9801bed34416b720`. All 18 prior releases, 111 assets and 36 tag refs remain unchanged. This docs-only completion leaves the tag and assets immutable.
 
 ## Required pairing
 
@@ -26,6 +26,6 @@ The owner and overlaid timeout checks use an isolated test database. The package
 
 ## Package boundary
 
-The candidate rebases from the exact published prealpha.19 installable. Only the Department and PCV companion DWPkgs may change; the remaining 20 installable members, including the accepted DLL and UI/game assets, must match prealpha.19 byte-for-byte. This work does not rebuild the DLL or alter the native UI. The package ZIP timestamp is planned as 2026-10-26 00:00:06, after prealpha.19.
+Only the Department and PCV companion DWPkgs changed from prealpha.19; all other 20 of 22 installable payloads, including DLL/UI/game assets, are byte-identical. ZIP timestamp 2026-10-26 00:00:06 sorts after prealpha.19. No DLL rebuild.
 
-The owner timeout suite passed 18/18 against isolated PostgreSQL; the rebased overlay timeout suite passed 6/6; migration/refusal/rollback passed 15/15 with cleanup verified. Final source-contract and all-other-plugin receipt checks, the canonical paired rollup, final package, archive-consumer review, public-byte review, and coordinated publication remain pending.
+Actual isolated PostgreSQL 15.14/PHP 8.2.35: owner 18/18 and exact overlay 6/6 passed, including 2s lock bounds, 3s statement cancellation, stricter positive settings, shared caller-state preservation, full native catalog parity and official restore-barrier refusal. Root final literal-pinned migration 15/15, six focused PHP checks, 17 PHP syntax checks and 7 packaging checks passed. All 39 other-owner source pins and 61 protected sources match. The interrupted retention stress is not a pass; its production store/fallback implementation is byte-identical after the owner pin header. No HTTP/provider operation, whole-request deadline, native startup/build or Skyrim acceptance is inferred; production database behavior is unverified. Both disposable clusters were removed and TEST2 returned Stopped. Live, installed CHIM core, campaign databases and the running game were left alone.
