@@ -2,6 +2,16 @@
 
 Current published release: prealpha.18 maintainer fixes. The prealpha.16 DLL is reused unchanged. Skyrim connection remains unverified. Older sections retain their original proof limits.
 
+## Prealpha.19 dev.26 source/package candidate — 2026-10-26
+
+The current source candidate adds Sealed Fates dev.26 at owner commit `7fd78802348d5ee7dabee9506ff6ede1c25c0657`, whose manifest SHA-256 is `bee3cd6fea49e49c5e631d8da86073c02d2c931100a4da942c42d4488ce2e0f8`. The Department's dev.26 map binds the exact 19-file runtime closure; `manifest.json` and `lib/companion.php` are the only changed files inside that closure compared with dev.25. The dev.26 source also changes `index.php` and `lib/view.php`, outside the Department runtime closure.
+
+The prealpha.19 package contract starts from the exact published prealpha.18 installable (SHA-256 `24c558a938db919fc39ac5b16ca0a15e46738b0d9d82e4332c6711f3c6c0bd02`). It replaces only the Department DWPkg; its two version manifests, correspondence adapter, and checksum closure are the only allowed changes. The other 21 installable payloads, including the DLL, UI and PCV companion package, remain byte-identical. Canonical ZIP entries use timestamp 2026-10-26 00:00:04, two seconds later than prealpha.18.
+
+The builder requires a canonical receipt bound to the selected full Department source commit, the fixed dev.26 owner identity and literal 19-file pin map, and exactly four passing records: `dev26SourceContract`, `dev25Regression`, `pairingReadiness`, and `protectedPayload`. The focused packaging tests pass 7/7 on synthetic archive and receipt fixtures. The frozen commit build, complete output audit, actual CHIM package-consumer check and public-byte verification remain pending; prealpha.18 remains the latest downloadable package until those gates close. This candidate does not build a DLL. A pure PHP owner-safe-close check passed, while the newer dev.26 poll-lock runtime proof remains unperformed.
+
+These are source/package checks only. They do not establish production database behavior, HTTP/provider behavior, a live CHIM server, native startup or Skyrim acceptance. See the [dev.26 compatibility note](DEV26-COMPATIBILITY.md) and [build recipe](BUILD.md).
+
 ## Prealpha.18 published maintainer fixes — 2026-10-26
 
 The prealpha.17 audit findings are preserved in the [prompt](audits/2026-10-26-maintainer-world-prompt.md), [findings](audits/2026-10-26-maintainer-world-findings.md), [coverage](audits/2026-10-26-maintainer-world-coverage.md), and [contracts](audits/2026-10-26-maintainer-world-contracts.md) documents. Those documents describe the prealpha.17 source and its contemporaneous evidence. The reviewed prealpha.18 source addresses the selected startup/error messages and bounded profile reads, and safely upgrades the previously shipped PCV state postimage while keeping the upstream owner base pin unchanged.

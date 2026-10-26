@@ -1,6 +1,28 @@
 # Portable source build
 
-## Current installable candidate: prealpha.18
+## Current installable candidate: prealpha.19
+
+The .19 builder starts from the exact published prealpha.18 installable ZIP (SHA-256 `24c558a938db919fc39ac5b16ca0a15e46738b0d9d82e4332c6711f3c6c0bd02`). It replaces only the Department DWPkg; only its two version manifests, `server/adapters/correspondence.php`, and regenerated checksums may change. The other 21 installable payloads stay byte-identical, including the prealpha.18 DLL and PCV companion package. Every output ZIP entry uses timestamp 2026-10-26 00:00:04, two seconds later than prealpha.18, so CHIM's mtime-only package selection prefers the new Department package when both versions are visible. The builder does not compile a DLL. The build writes `WorldOfDramaLlama-0.1.0-prealpha.19.zip`, `WorldOfDramaLlama-0.1.0-prealpha.19-source.zip`, `WorldOfDramaLlama-0.1.0-prealpha.19-compatibility-proof.zip`, and `SHA256SUMS.txt`.
+
+Run from the exact committed source candidate after the coordinator supplies `compatibility-checks.json`. The 40-character source commit must equal `HEAD`; the output must be a new directory outside the repository.
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Root = (Get-Location).Path
+$Commit = (& $Git -c "safe.directory=$Root" rev-parse HEAD).Trim()
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-maintainer-fixes-20261026\public-downloads\WorldOfDramaLlama-0.1.0-prealpha.18.zip'
+$Checks = 'K:\ActorwrightExchange\artifacts\department-dev26-20261026\compatibility-checks.json'
+$Output = 'K:\ActorwrightExchange\artifacts\department-dev26-20261026\prealpha19'
+& $Python -B packaging/build-installable-prealpha19.py build --prealpha18-zip $Baseline --compatibility-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+& $Python -B packaging/build-installable-prealpha19.py audit --prealpha18-zip $Baseline --compatibility-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The compatibility receipt is canonical UTF-8 JSON with LF endings and no BOM. Its exact top-level fields are `schemaVersion`, `sourceCommit`, `ownerVersion`, `ownerCommit`, `ownerClosurePins`, `adapterSha256`, `protocolSha256`, `checks`, and `limits`. The owner identity is dev.26 at commit `7fd78802348d5ee7dabee9506ff6ede1c25c0657`; `ownerClosurePins` must exactly match all 19 literal pins in the selected committed adapter. Adapter and protocol hashes are checked against that same Git commit. The four check rows are `dev26SourceContract`, `dev25Regression`, `pairingReadiness`, and `protectedPayload`; each row has only `name`, `status`, and `receiptSha256`, and all four must pass. Limits are fixed to `sourceOnly: true`, `database: false`, `http: false`, and `skyrim: false`. Raw check evidence remains under `artifacts/department-dev26-20261026` and is not copied into the installable.
+
+This is source/package pairing evidence. It does not establish a live CHIM server, HTTP/provider or database behavior, newer dev.26 poll-lock runtime behavior, native startup, or Skyrim acceptance. The owner release's newer poll-lock runtime proof remains unperformed. The latest downloadable package remains prealpha.18 until root completes the build, package-consumer and publication-byte checks. See the [dev.26 compatibility note](DEV26-COMPATIBILITY.md) and [verification record](VERIFICATION.md).
+
+## Historical published prealpha.18 recipe
 
 The .18 builder reuses the exact published .17 installable ZIP and the unchanged accepted DLL. The installable ZIP entries use deterministic timestamp 2026-10-26 00:00:02, two seconds later than the exact .17 Department/PCV entry timestamps, so CHIM's mtime-only package selection prefers the new version when old and new paths coexist. It updates the Department package to `.18`, the PCV companion package to `.10`, and `app.js`; it requires the other 19 MO2 member payloads to remain byte-identical; their ZIP entry metadata uses the release timestamp. It also requires the canonical maintenance receipt for the frozen source commit. The source ZIP contains only the committed public-source allowlist; the proof ZIP contains the compact receipt and package provenance, not the raw audit fixtures.
 
