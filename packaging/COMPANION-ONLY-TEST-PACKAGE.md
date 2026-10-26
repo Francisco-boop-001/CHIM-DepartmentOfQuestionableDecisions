@@ -2,6 +2,8 @@
 
 Prealpha.16 fixes the companion DLL rejecting the five-plugin server bootstrap. All three bundled server packages remain byte-for-byte identical to prealpha.15; existing matching server installations need no server update for this fix. Quit Skyrim before replacing the game mod. See the [verification record](../docs/VERIFICATION.md) for proof and limits.
 
+The instructions below describe published prealpha.16. A prealpha.17 source candidate adds Sealed Fates dev.25; its source and package boundary is recorded in the [dev.25 compatibility note](../docs/DEV25-COMPATIBILITY.md). Follow a new package only after its release evidence has been reviewed. Source and pairing checks do not establish Skyrim acceptance.
+
 This PRE-ALPHA candidate adds a normal in-game connection flow. Use a disposable MO2 profile, save, and CHIM server until you have completed your own acceptance checks.
 
 ## Install the mod

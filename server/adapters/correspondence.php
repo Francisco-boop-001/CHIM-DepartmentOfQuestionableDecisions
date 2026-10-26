@@ -138,6 +138,27 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
         'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
     ],
+    '0.1.0-dev.25' => [
+        'manifest.json' => 'f5520fcb3ea21b3d6ae880f28597304dfe75e760aa109e058c7e303b1366e436',
+        'lib/runtime.php' => 'd247cb0af6b2476045157ada30b1b3ba7d1af30b9f4c4ff555f098c8fa7333e6',
+        'lib/store.php' => 'ee86741a203b998d5c05c668e52073402248a42290fd23fe153c912f56cfeb28',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => '4cf8e693705ad78a8fdd5420ea682060f8712088b1a3b03a1b84510b4672f151',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => 'c163243334c8a558c800fd946d27564acf2f49d8df51ddf914899d784809a795',
+        'lib/autonomy_host.php' => 'dfa257dbb68f1ade87b7f13750e4fb25dd306c695b3c4ddd070e7ca1a4140a61',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => '26f9f9a31844bfb433d7d6bf2c996e8ad6e0c9f6c15c5a054d96cb3630e0f439',
+        'lib/offscreen_host.php' => '7ae21d2db282d9de0f1d37ca27a43624343fefd5e371b671a5f543177e1a2155',
+        'lib/companion.php' => 'b93244fdf64206fefd21960b17a73844a57c5dbd98ed8e83a3b18ffc048a7597',
+        'lib/companion_policy.php' => 'b245767ef4764e82e4fd945f0ab0508993b4095b3bba6012ebeb3a1f09754be5',
+        'lib/companion_host.php' => 'b632693d26720fa063b7bbcd771cbce4997039aadff1c6755cb361c0239d1203',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/002_autonomy.sql' => '20e0ba2901f9ff352311e00a706c976c793e1e1185c224afcb599f426acb63d3',
+        'migrations/003_offscreen.sql' => '245ae41800da5d9d291cf25df9e4766059677710241a086c15ca6999d7500855',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+        'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -242,7 +263,7 @@ function qd_correspondence_loaded_source_version(): string
 
 function qd_correspondence_version_uses_restore_fence(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'], true);
+    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'], true);
 }
 
 function qd_correspondence_uses_restore_fence(): bool
@@ -252,17 +273,17 @@ function qd_correspondence_uses_restore_fence(): bool
 
 function qd_correspondence_version_supports_signed_unknown(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'], true);
+    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'], true);
 }
 
 function qd_correspondence_version_supports_operator_close(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'], true);
+    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'], true);
 }
 
 function qd_correspondence_version_supports_companion_scheduler(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24'], true);
+    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'], true);
 }
 
 function qd_correspondence_runtime_ready(): bool

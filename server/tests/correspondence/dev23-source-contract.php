@@ -15,19 +15,30 @@ for ($i = 1; $i < $argc; $i++) {
     } elseif ($argv[$i] === '--adapter' && isset($argv[$i + 1])) {
         $adapterPath = $argv[++$i];
     } else {
-        fwrite(STDERR, "usage: php -n dev23-source-contract.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.23|0.1.0-dev.24] [--legacy-owner-root DEV23_SERVER_DIR] [--adapter PATH]\n");
+        fwrite(STDERR, "usage: php -n dev23-source-contract.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.23|0.1.0-dev.24|0.1.0-dev.25] [--legacy-owner-root DEV23_SERVER_DIR] [--adapter PATH]\n");
         exit(2);
     }
 }
-if (!in_array($ownerVersion, ['0.1.0-dev.23', '0.1.0-dev.24'], true)
-    || ($ownerVersion === '0.1.0-dev.24' && $legacyOwnerRoot === '')) {
-    fwrite(STDERR, "usage: dev23-source-contract.php supports dev.23 and dev.24; dev.24 requires --legacy-owner-root\n");
+if (!in_array($ownerVersion, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'], true)
+    || (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25'], true) && $legacyOwnerRoot === '')) {
+    fwrite(STDERR, "usage: dev23-source-contract.php supports dev.23, dev.24, and dev.25; dev.24/dev.25 require --legacy-owner-root DEV23_SERVER_DIR\n");
     exit(2);
 }
 
 function dev23Expect(bool $condition, string $message): void
 {
     if (!$condition) throw new RuntimeException($message);
+}
+
+function dev23ExactSourceHashes(string $ownerRoot): array
+{
+    $hashes = [];
+    foreach (qd_correspondence_source_files($ownerRoot) as $relative => $source) {
+        $hash = hash_file('sha256', $source);
+        if (!is_string($hash)) throw new RuntimeException('Could not hash the legacy owner source file: ' . $relative);
+        $hashes[$relative] = $hash;
+    }
+    return $hashes;
 }
 
 function qd_runtime_core_root(): string
@@ -243,7 +254,7 @@ $ownerReal = realpath($ownerRoot);
 $legacyOwnerReal = $legacyOwnerRoot !== '' ? realpath($legacyOwnerRoot) : null;
 $adapterReal = realpath($adapterPath);
 dev23Expect(is_string($ownerReal) && is_dir($ownerReal), 'Pass the immutable Sealed Fates server source directory.');
-if ($ownerVersion === '0.1.0-dev.24') dev23Expect(is_string($legacyOwnerReal) && is_dir($legacyOwnerReal), 'Pass the immutable Sealed Fates dev.23 server source directory for manifest replacement.');
+if (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25'], true)) dev23Expect(is_string($legacyOwnerReal) && is_dir($legacyOwnerReal), 'Pass the immutable Sealed Fates dev.23 server source directory for manifest replacement.');
 dev23Expect(is_string($adapterReal) && is_file($adapterReal), 'The candidate Department adapter is unavailable.');
 $manifest = json_decode((string)@file_get_contents($ownerReal . DIRECTORY_SEPARATOR . 'manifest.json'), true);
 dev23Expect(is_array($manifest) && ($manifest['name'] ?? null) === 'correspondence' && ($manifest['version'] ?? null) === $ownerVersion, 'Owner root is not the requested exact Sealed Fates source.');
@@ -269,10 +280,25 @@ $expectedHashes = [
     'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
     'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
 ];
-if ($ownerVersion === '0.1.0-dev.24') {
-    $expectedHashes['manifest.json'] = '0c11ab7d5dd79941f5b4228b4d4d3e8d3dbc942c56a83b5911e6593fc3a4bc4e';
-    $expectedHashes['lib/runtime.php'] = 'd247cb0af6b2476045157ada30b1b3ba7d1af30b9f4c4ff555f098c8fa7333e6';
+$dev23ExpectedHashes = $expectedHashes;
+$dev24ExpectedHashes = $dev23ExpectedHashes;
+$dev24ExpectedHashes['manifest.json'] = '0c11ab7d5dd79941f5b4228b4d4d3e8d3dbc942c56a83b5911e6593fc3a4bc4e';
+$dev24ExpectedHashes['lib/runtime.php'] = 'd247cb0af6b2476045157ada30b1b3ba7d1af30b9f4c4ff555f098c8fa7333e6';
+$dev25ExpectedHashes = $dev24ExpectedHashes;
+$dev25ExpectedHashes['manifest.json'] = 'f5520fcb3ea21b3d6ae880f28597304dfe75e760aa109e058c7e303b1366e436';
+$expectedHashes = match ($ownerVersion) {
+    '0.1.0-dev.24' => $dev24ExpectedHashes,
+    '0.1.0-dev.25' => $dev25ExpectedHashes,
+    default => $dev23ExpectedHashes,
+};
+$dev25ChangesFromDev23 = [];
+$dev25ChangesFromDev24 = [];
+foreach ($dev23ExpectedHashes as $relative => $hash) {
+    if ($dev25ExpectedHashes[$relative] !== $hash) $dev25ChangesFromDev23[] = $relative;
+    if ($dev25ExpectedHashes[$relative] !== $dev24ExpectedHashes[$relative]) $dev25ChangesFromDev24[] = $relative;
 }
+dev23Expect($dev25ChangesFromDev23 === ['manifest.json', 'lib/runtime.php']
+    && $dev25ChangesFromDev24 === ['manifest.json'], 'The dev.25 pinned closure changed beyond the verified manifest/runtime transition.');
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'protocol.php';
 $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-correspondence-dev23-' . bin2hex(random_bytes(8));
@@ -283,6 +309,9 @@ $GLOBALS['DEV23_TEST_CORE_ROOT'] = $coreRoot;
 
 try {
     require $adapterReal;
+    dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.23'] ?? null) === $dev23ExpectedHashes, 'The existing dev.23 owner pin map changed.');
+    dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.24'] ?? null) === $dev24ExpectedHashes, 'The existing dev.24 owner pin map changed.');
+    dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.25'] ?? null) === $dev25ExpectedHashes, 'The dev.25 owner pin map differs from the exact 19-file closure.');
     $adapterHashes = QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$ownerVersion] ?? null;
     dev23Expect(is_array($adapterHashes) && $adapterHashes === $expectedHashes, 'The adapter owner pin map differs from the exact transitive closure.');
     $sourceFiles = qd_correspondence_source_files($ownerReal);
@@ -301,7 +330,10 @@ try {
         if (!@copy($sourceReal, $target)) throw new RuntimeException('Could not stage owner file: ' . $relative);
     }
     dev23Expect(qd_correspondence_runtime_ready(), 'Runtime readiness did not accept the exact staged owner closure.');
-    foreach (['manifest.json', 'lib/runtime.php', 'lib/companion.php', 'lib/companion_policy.php', 'lib/companion_host.php', 'migrations/002_autonomy.sql', 'migrations/003_offscreen.sql', 'migrations/005_companion.sql'] as $relative) {
+    $driftFiles = $ownerVersion === '0.1.0-dev.25'
+        ? array_keys($expectedHashes)
+        : ['manifest.json', 'lib/runtime.php', 'lib/companion.php', 'lib/companion_policy.php', 'lib/companion_host.php', 'migrations/002_autonomy.sql', 'migrations/003_offscreen.sql', 'migrations/005_companion.sql'];
+    foreach ($driftFiles as $relative) {
         $driftPath = $stagedOwnerRoot . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
         $originalBytes = @file_get_contents($driftPath);
         dev23Expect(is_string($originalBytes), 'Could not read the staged drift fixture: ' . $relative);
@@ -311,42 +343,48 @@ try {
         dev23Expect(qd_correspondence_runtime_ready(), 'Runtime readiness did not recover after restoring ' . $relative . '.');
     }
 
-    if ($ownerVersion === '0.1.0-dev.24') {
+    if (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25'], true)) {
         $legacyManifestBytes = @file_get_contents($legacyOwnerReal . DIRECTORY_SEPARATOR . 'manifest.json');
         $legacyManifest = is_string($legacyManifestBytes) ? json_decode($legacyManifestBytes, true) : null;
         dev23Expect(is_array($legacyManifest) && ($legacyManifest['version'] ?? null) === '0.1.0-dev.23'
-            && hash_equals('8c36e6703c3dfe70183034e855e0709f34593b90d8d3819c17adc1b260d012b1', hash('sha256', $legacyManifestBytes)), 'The manifest replacement fixture is not the exact dev.23 manifest.');
+            && hash_equals($dev23ExpectedHashes['manifest.json'], hash('sha256', $legacyManifestBytes))
+            && dev23ExactSourceHashes($legacyOwnerReal) === $dev23ExpectedHashes, 'The legacy source fixture is not the exact 19-file dev.23 closure.');
         $stagedManifest = $stagedOwnerRoot . DIRECTORY_SEPARATOR . 'manifest.json';
-        $dev24ManifestBytes = @file_get_contents($stagedManifest);
-        dev23Expect(is_string($dev24ManifestBytes), 'Could not read the staged dev.24 manifest.');
+        $ownerManifestBytes = @file_get_contents($stagedManifest);
+        dev23Expect(is_string($ownerManifestBytes), 'Could not read the staged owner manifest.');
         if (@file_put_contents($stagedManifest, $legacyManifestBytes, LOCK_EX) !== strlen($legacyManifestBytes)) throw new RuntimeException('Could not stage the dev.23 manifest replacement fixture.');
-        dev23Expect(!qd_correspondence_manifest_ready($stagedOwnerRoot) && !qd_correspondence_runtime_ready(), 'A dev.23 manifest replacement was accepted over dev.24 runtime bytes.');
-        if (@file_put_contents($stagedManifest, $dev24ManifestBytes, LOCK_EX) !== strlen($dev24ManifestBytes)) throw new RuntimeException('Could not restore the exact dev.24 manifest.');
-        dev23Expect(qd_correspondence_runtime_ready(), 'The exact dev.24 source did not recover after the manifest replacement fixture was restored.');
+        dev23Expect(!qd_correspondence_manifest_ready($stagedOwnerRoot) && !qd_correspondence_runtime_ready(), 'A dev.23 manifest replacement was accepted over newer runtime bytes.');
+        if (@file_put_contents($stagedManifest, $ownerManifestBytes, LOCK_EX) !== strlen($ownerManifestBytes)) throw new RuntimeException('Could not restore the exact owner manifest.');
+        dev23Expect(qd_correspondence_runtime_ready(), 'The exact owner source did not recover after the dev.23 manifest replacement fixture was restored.');
     }
 
-    foreach (['0.1.0-dev.14', '0.1.0-dev.15', '0.1.0-dev.16', '0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'] as $version) {
+    foreach (['0.1.0-dev.14', '0.1.0-dev.15', '0.1.0-dev.16', '0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'] as $version) {
         dev23Expect(isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$version]), 'An existing pinned owner version was removed: ' . $version);
     }
     dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.19']), 'The intentionally unsupported dev.19 pin was added.');
-    foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'] as $version) {
+    dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.26']), 'The unsupported dev.26 pin was added.');
+    foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'] as $version) {
         dev23Expect(qd_correspondence_version_uses_restore_fence($version), 'The restore fence is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.19'), 'The unsupported dev.19 source was enabled.');
-    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'] as $version) {
+    dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.26'), 'The unsupported dev.26 restore fence was enabled.');
+    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'] as $version) {
         dev23Expect(qd_correspondence_version_supports_signed_unknown($version), 'Signed-unknown support is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19'), 'The unsupported dev.19 signed-unknown source was enabled.');
-    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24'] as $version) {
+    dev23Expect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.26'), 'The unsupported dev.26 signed-unknown source was enabled.');
+    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'] as $version) {
         dev23Expect(qd_correspondence_version_supports_operator_close($version), 'Operator-close support is missing for ' . $version . '.');
     }
     foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.19'] as $version) {
         dev23Expect(!qd_correspondence_version_supports_operator_close($version), 'Operator-close support was broadened to ' . $version . '.');
     }
-    foreach (['0.1.0-dev.23', '0.1.0-dev.24'] as $version) {
+    dev23Expect(!qd_correspondence_version_supports_operator_close('0.1.0-dev.26'), 'The unsupported dev.26 operator-close source was enabled.');
+    foreach (['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25'] as $version) {
         dev23Expect(qd_correspondence_version_supports_companion_scheduler($version), 'Companion scheduler support is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.22'), 'Companion scheduler support was broadened before dev.23.');
+    dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.26'), 'The unsupported dev.26 companion scheduler was enabled.');
 
     $unsupportedRoot = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev19';
     if (!@mkdir($unsupportedRoot, 0700, true)
@@ -354,6 +392,13 @@ try {
         throw new RuntimeException('Could not create the unsupported-version fixture.');
     }
     dev23Expect(qd_correspondence_source_files($unsupportedRoot) === [] && !qd_correspondence_manifest_ready($unsupportedRoot), 'An unpinned dev.19 source was accepted.');
+
+    $unsupported26Root = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev26';
+    if (!@mkdir($unsupported26Root, 0700, true)
+        || @file_put_contents($unsupported26Root . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.26"}', LOCK_EX) === false) {
+        throw new RuntimeException('Could not create the unsupported-version fixture.');
+    }
+    dev23Expect(qd_correspondence_source_files($unsupported26Root) === [] && !qd_correspondence_manifest_ready($unsupported26Root), 'An unpinned dev.26 source was accepted.');
 
     dev23Expect(qd_correspondence_loaded_source_version() === $ownerVersion, 'The exact staged owner source did not load.');
     $revisionDocA = '11111111-1111-4111-8111-111111111111';

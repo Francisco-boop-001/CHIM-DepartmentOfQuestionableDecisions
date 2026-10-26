@@ -2,6 +2,12 @@
 
 Current published release: prealpha.16 bootstrap-validator fix. The final DLL, actual PHP bootstrap boundary and public package bytes passed the checks below. Skyrim connection remains unverified. Older sections retain their original proof limits.
 
+## Prealpha.17 Sealed Fates dev.25 candidate — 2026-10-26
+
+The prealpha.17 package contract uses the exact published prealpha.16 installable archive (SHA-256 `5de96da71a044496d8d9e767165ef460c82725e708ba7920b40eebcededb30c1`) as its baseline. It replaces only the Department DWPkg; within that package, only `manifest.json`, `server/manifest.json`, `server/adapters/correspondence.php`, and `checksums.sha256` may change. The other 21 MO2 members are required to remain byte-identical. The Sealed Fates dev.25 adapter map keeps the 18 execution-file hashes from dev.24 and advances the owner manifest hash. The .16 DLL, UI and other server packages are reused unchanged.
+
+The candidate is limited to source pairing and package identity. The package build requires a compatibility receipt bound to the frozen Department source, exact dev.25 source pins, and the four focused source/readiness/payload checks. No database, HTTP/provider, actual CHIM-server or Skyrim acceptance is claimed by this package contract. The [dev.25 compatibility note](DEV25-COMPATIBILITY.md) records the owner source boundary; review the candidate receipts before treating it as a release.
+
 ## Prealpha.16 bootstrap-validator release — 2026-10-25
 
 The package helper is based on the exact published prealpha.15 installable archive (SHA-256 `89675842fffde483998f7f127d6276841c461283ecb228de08cfb0e5954d2b09`). Its package contract allows only `SKSE/Plugins/WorldOfDramaLlama.dll` and `PrismaUI/views/WorldOfDramaLlama/app.js` to change. All three server DWPkgs remain byte-for-byte identical, preserving their owner pins and the original Private Conversation fallback. The server package stays at prealpha.15.
