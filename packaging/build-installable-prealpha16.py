@@ -262,7 +262,7 @@ def _validate_native_build_receipt(data: bytes, fixture_bytes: bytes, dll: bytes
         raise PackageError("native build receipt is missing its pinned toolchain record")
     inputs = receipt.get("inputs")
     if not isinstance(inputs, dict) or not isinstance(inputs.get("phpVersion"), str) or not re.match(
-            r"^PHP 8\.3\.35 \(cli\)(?:\b|$)", inputs["phpVersion"]):
+            r"^PHP 8\.3\.35 \(cli\)(?:\s|$)", inputs["phpVersion"]):
         raise PackageError("native build receipt does not identify the pinned PHP 8.3.35 CLI")
     plugin = receipt.get("plugin")
     if (not isinstance(plugin, dict) or plugin.get("name") != "WorldOfDramaLlama.dll"

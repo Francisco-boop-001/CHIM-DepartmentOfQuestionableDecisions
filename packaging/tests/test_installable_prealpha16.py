@@ -87,7 +87,7 @@ class ReceiptValidationTests(unittest.TestCase):
             "schemaVersion": 1,
             "status": "native-plugin-and-host-tests-built",
             "toolchain": {"generator": "unit-test-only"},
-            "inputs": {"phpVersion": "PHP 8.3.35 (cli)"},
+            "inputs": {"phpVersion": "PHP 8.3.35 (cli) (built: Sep 22 2026 11:14:27) (NTS Visual C++ 2019 x64)"},
             "plugin": {
                 "name": "WorldOfDramaLlama.dll",
                 "bytes": len(self.dll),
@@ -113,9 +113,11 @@ class ReceiptValidationTests(unittest.TestCase):
         wrong_count["hostTests"] = {"result": "100% tests passed, 0 tests failed out of 5", "count": 5}
         wrong_cases = copy.deepcopy(receipt)
         wrong_cases["serverBootstrapFixtures"]["caseNames"] = ["4 cases passed"]
+        wrong_php_version = copy.deepcopy(receipt)
+        wrong_php_version["inputs"]["phpVersion"] = "PHP 8.3.36 (cli) (built: Sep 22 2026 11:14:27) (NTS Visual C++ 2019 x64)"
         live_access = copy.deepcopy(receipt)
         live_access["buildAccess"]["installedGameFilesRead"] = True
-        for item in (wrong_count, wrong_cases, live_access):
+        for item in (wrong_count, wrong_cases, wrong_php_version, live_access):
             with self.subTest(item=item):
                 with self.assertRaises(BUILDER.PackageError):
                     BUILDER._validate_native_build_receipt(json.dumps(item).encode("utf-8"), self.fixture, self.dll)
