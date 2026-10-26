@@ -64,7 +64,7 @@ try {
         'currentScope' => static fn(string $pairId): string => 'synthetic-profile',
         'readiness' => static function (bool $includePcv = true) use (&$readinessArguments): array {
             $readinessArguments[] = $includePcv;
-            return ['pcv' => true, 'mp' => true, 'sas' => false, 'correspondence' => true];
+            return ['pcv' => true, 'mp' => true, 'sas' => true, 'correspondence' => true, 'brainwash' => true];
         },
         'perspectives' => static fn(string $scopeKey): array => [
             'mp' => ['choices' => [], 'limited' => true],
@@ -77,10 +77,12 @@ try {
     $data = $decoded['data'] ?? null;
     bootstrap_overlay_expect(is_array($data) && ($data['authenticated'] ?? null) === true,
         'The installed game should remain authenticated when optional PCV setup is unavailable.');
-    bootstrap_overlay_expect(($data['capabilities']['pcv'] ?? null) === false
-        && ($data['capabilities']['mp'] ?? null) === true
-        && ($data['capabilities']['correspondence'] ?? null) === true,
-        'PCV should be unavailable while independent Department tabs remain ready.');
+    $expectedCapabilities = ['pcv' => false, 'mp' => true, 'sas' => true, 'correspondence' => true, 'brainwash' => true];
+    bootstrap_overlay_expect(($data['capabilities'] ?? null) === $expectedCapabilities,
+        'A refused PCV overlay must leave all four independent plugin capabilities ready with the full schema.');
+    bootstrap_overlay_expect(array_keys($decoded) === ['version', 'requestId', 'operation', 'context', 'ok', 'data']
+        && array_keys($data) === ['authenticated', 'authRequired', 'serverContext', 'capabilities', 'access', 'perspectives', 'scopeToken'],
+        'Refusing optional PCV setup must preserve the authenticated bootstrap wire shape.');
     bootstrap_overlay_expect($readinessArguments === [false],
         'A refused overlay must suppress PCV owner readiness before profile/runtime callbacks run.');
     bootstrap_overlay_expect(!array_key_exists('pcvSetup', $data), 'Bootstrap must keep its existing wire shape.');

@@ -1,14 +1,14 @@
 <?php
 declare(strict_types=1);
 
-const QD_PCV_EXPECTED_VERSION = '0.1.23';
+const QD_PCV_EXPECTED_VERSION = '0.1.24';
 const QD_PCV_CATALOG_MAX_ROWS = 4096;
 const QD_PCV_EXPECTED_CORE_MAIN_SHA256 = '3619049e6d54493a77b19c09f8b70420e3c35427545a8bb6e95e93c6fe57ebac';
 const QD_PCV_EXPECTED_CORE_MAIN_WINDOWS_CRLF_SHA256 = '9686a446bb4a2e2c02def2b59c87190734b30ba4382781bd71ea0df96baf6ff9';
 const QD_PCV_EXPECTED_OWNER_SOURCE_HASHES = [
-    'manifest.json' => 'f045b9b6bd3e13a84cdabbf400a73ef4581acd8fa440e1e84f51b1dd0cb5f84e',
-    'state.php' => '3fbc48a0f25178011f0b838cc01d3664932822695d7d39c35d49cbc11fa057c1',
-    'scope.php' => 'aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398',
+    'manifest.json' => '929a0b67050c3bab4ab1362f34997651896e07f9c8cd491a6e45fb7d9dca1ff0',
+    'state.php' => 'b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6',
+    'scope.php' => '1aac2c5124f8886cf87f22e26c621906fdd6c569d66c08b908406fd64d67865f',
     'preprocessing.php' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
     'log.php' => '0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56',
     'installation_guard.php' => '082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d',

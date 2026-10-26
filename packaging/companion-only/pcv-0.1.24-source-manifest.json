@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "version": "0.1.24",
+    "tag": "private_conversation-v0.1.24",
+    "commit": "ce0a998773237a9fc91f6914725a327d9e621718"
+  },
+  "stagedSourceDirectory": "pcv-companion/private-conversation-v0.1.24/server",
+  "installDirectory": "ext/private_conversation",
+  "files": [
+    {
+      "path": "installation_guard.php",
+      "baseSha256": "082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d",
+      "postimageSha256": "082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d",
+      "modified": false
+    },
+    {
+      "path": "log.php",
+      "baseSha256": "0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56",
+      "postimageSha256": "0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56",
+      "modified": false
+    },
+    {
+      "path": "manifest.json",
+      "baseSha256": "929a0b67050c3bab4ab1362f34997651896e07f9c8cd491a6e45fb7d9dca1ff0",
+      "postimageSha256": "929a0b67050c3bab4ab1362f34997651896e07f9c8cd491a6e45fb7d9dca1ff0",
+      "modified": false
+    },
+    {
+      "path": "preprocessing.php",
+      "baseSha256": "5a0d46d3b29ba5f1a986f90b1fa7bbc8ce41402dd6b8d30f49a2fcba7783d49c",
+      "postimageSha256": "01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950",
+      "modified": true
+    },
+    {
+      "path": "reflection.php",
+      "baseSha256": "d33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540",
+      "postimageSha256": "d33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540",
+      "modified": false
+    },
+    {
+      "path": "scope.php",
+      "baseSha256": "e21fd73985424c099332dcbb035e3587c72ab78a21e21781669978dc25e39686",
+      "postimageSha256": "1aac2c5124f8886cf87f22e26c621906fdd6c569d66c08b908406fd64d67865f",
+      "modified": true
+    },
+    {
+      "path": "state.php",
+      "baseSha256": "49c2b53466572015e77117653739966377267b5b50ec4514155e53256bca7361",
+      "postimageSha256": "b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6",
+      "modified": true
+    }
+  ]
+}

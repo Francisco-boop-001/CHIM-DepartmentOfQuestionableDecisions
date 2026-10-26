@@ -4,10 +4,10 @@ declare(strict_types=1);
 $implementationRoot = dirname(__DIR__, 3);
 $serverRoot = $implementationRoot . DIRECTORY_SEPARATOR . 'server';
 $ownerRoot = $implementationRoot . DIRECTORY_SEPARATOR . 'pcv-companion' . DIRECTORY_SEPARATOR
-    . 'private-conversation-v0.1.23' . DIRECTORY_SEPARATOR . 'server';
+    . 'private-conversation-v0.1.24' . DIRECTORY_SEPARATOR . 'server';
 $adapterPath = $serverRoot . DIRECTORY_SEPARATOR . 'adapters' . DIRECTORY_SEPARATOR . 'pcv.php';
 $manifestPath = $implementationRoot . DIRECTORY_SEPARATOR . 'packaging' . DIRECTORY_SEPARATOR . 'companion-only'
-    . DIRECTORY_SEPARATOR . 'pcv-0.1.23-source-manifest.json';
+    . DIRECTORY_SEPARATOR . 'pcv-0.1.24-source-manifest.json';
 $checks = [
     'ownerPositiveLoad' => false,
     'tamperedSourceRefused' => false,
@@ -35,11 +35,11 @@ require_once $implementationRoot . DIRECTORY_SEPARATOR . 'pcv-companion' . DIREC
 try {
     $manifest = json_decode((string)file_get_contents($manifestPath), true, 16, JSON_THROW_ON_ERROR);
     if (($manifest['upstream']['version'] ?? null) !== QD_PCV_EXPECTED_VERSION
-        || ($manifest['upstream']['tag'] ?? null) !== 'private_conversation-v0.1.23'
+        || ($manifest['upstream']['tag'] ?? null) !== 'private_conversation-v0.1.24'
         || ($manifest['upstream']['commit'] ?? null) !== PCV_COMPANION_OWNER_UPSTREAM_COMMIT
-        || QD_PCV_EXPECTED_VERSION !== '0.1.23'
+        || QD_PCV_EXPECTED_VERSION !== '0.1.24'
         || PCV_COMPANION_OWNER_VERSION !== QD_PCV_EXPECTED_VERSION
-        || ($manifest['stagedSourceDirectory'] ?? null) !== 'pcv-companion/private-conversation-v0.1.23/server'
+        || ($manifest['stagedSourceDirectory'] ?? null) !== 'pcv-companion/private-conversation-v0.1.24/server'
         || ($manifest['installDirectory'] ?? null) !== 'ext/private_conversation'
         || !is_array($manifest['files'] ?? null)) {
         throw new RuntimeException('owner_manifest_mismatch');
@@ -104,7 +104,10 @@ try {
     $expectedFunctions = [
         'pcv_load_store' => 'state.php',
         'pcv_visible_state' => 'state.php',
+        'pcv_current_identity' => 'state.php',
+        'pcv_read_npc_catalog' => 'state.php',
         'pcvScopeKnownNpcs' => 'scope.php',
+        'pcvScopeLoadNpcCatalog' => 'scope.php',
         'pcvPrepareScopedInput' => 'scope.php',
     ];
     $readerShape = true;
@@ -216,7 +219,7 @@ $receipt = [
     'errorReason' => $errorReason,
     'owner' => [
         'version' => QD_PCV_EXPECTED_VERSION,
-        'tag' => 'private_conversation-v0.1.23',
+        'tag' => 'private_conversation-v0.1.24',
         'commit' => PCV_COMPANION_OWNER_UPSTREAM_COMMIT,
         'selectedClosurePins' => $selectedClosurePins,
     ],

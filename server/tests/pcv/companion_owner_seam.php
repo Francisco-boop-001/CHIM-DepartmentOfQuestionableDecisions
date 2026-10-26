@@ -4,7 +4,7 @@ declare(strict_types=1);
 define('PCV_LOG_TESTING', true);
 $implementationRoot = dirname(__DIR__, 3);
 $pinnedOwnerRoot = $implementationRoot . DIRECTORY_SEPARATOR . 'pcv-companion' . DIRECTORY_SEPARATOR
-    . 'private-conversation-v0.1.23' . DIRECTORY_SEPARATOR . 'server';
+    . 'private-conversation-v0.1.24' . DIRECTORY_SEPARATOR . 'server';
 
 function companion_owner_check(bool $condition, string $message): void
 {
@@ -67,7 +67,7 @@ mkdir($fixtureOwnerRoot, 0700, true);
 $logSource = file_get_contents($pinnedOwnerRoot . DIRECTORY_SEPARATOR . 'log.php');
 companion_owner_check(is_string($logSource)
     && hash_equals('0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56', strtolower(hash('sha256', $logSource))),
-    'the isolated test must start from the exact frozen PCV 0.1.23 logger.');
+    'the isolated test must start from the exact frozen PCV 0.1.24 logger.');
 $uidFunction = <<<'SOURCE'
 function pcv_log_effective_uid(): ?int
 {

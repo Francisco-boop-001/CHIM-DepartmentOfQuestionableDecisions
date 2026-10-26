@@ -4,6 +4,8 @@ Prealpha.19 supports exact Sealed Fates dev.26 through the existing corresponden
 
 Use a disposable MO2 profile, save and separate CHIM server/database. This remains a TEST PRE-ALPHA; package compatibility is not Skyrim acceptance. Other supported owners remain PCV0.1.23, Mind Poisoning0.1.30, Sworn & Scorned0.1.12 and Malpractice Makes Perfect dev.3.
 
+> **Unpublished candidate note:** prealpha.19 remains the installable release. The proposed prealpha.20 Department package, PCV companion `.11`, and owner `.1.24` at commit `ce0a998773237a9fc91f6914725a327d9e621718` must be installed together; do not mix it with companion `.10` or treat the `.23` owner as supporting the new timeout path. The owner 18/18, overlay 6/6 and migration/rollback 15/15 focused runs have passed; final paired receipts, package and release reviews remain pending. Keep the known `.23` backup for the tested rollback path; no manual browser/Linux approval or backup deletion is required. Mind Poisoning `.1.30`, Sworn & Scorned `.1.12`, Sealed Fates dev.26/maps, and Malpractice Makes Perfect dev.3 remain unchanged.
+
 ## Install the mod
 
 1. Quit Skyrim, then install [WorldOfDramaLlama-0.1.0-prealpha.19.zip](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.19/WorldOfDramaLlama-0.1.0-prealpha.19.zip) in MO2 using **Replace**. Disable retained older Department installations. Keep only one visible Department and PCV companion package version. The archive root is already Skyrim's Data layout; do not add another Data directory.

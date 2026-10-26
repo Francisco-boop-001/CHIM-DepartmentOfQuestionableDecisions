@@ -5,12 +5,14 @@ require_once __DIR__ . '/../../adapters/runtime_support.php';
 require_once __DIR__ . '/../../adapters/pcv.php';
 require_once __DIR__ . '/../../lib/protocol.php';
 
-$pcvRoot = dirname(__DIR__, 3) . '/pcv-companion/private-conversation-v0.1.23/server';
+$pcvRoot = dirname(__DIR__, 3) . '/pcv-companion/private-conversation-v0.1.24/server';
+$previousPcvRoot = getenv('QD_PCV_ROOT');
+$previousChimRoot = getenv('QD_CHIM_ROOT');
+$previousLogRoot = getenv('PCV_LOG_DIR');
 putenv('QD_PCV_ROOT=' . $pcvRoot);
-putenv('QD_CHIM_ROOT=' . dirname(__DIR__) . '/pcv/fixtures/installed-dev14-core');
 $manifest = json_decode((string)file_get_contents($pcvRoot . '/manifest.json'), true, 8, JSON_THROW_ON_ERROR);
-if (($manifest['version'] ?? null) !== '0.1.23') {
-    throw new RuntimeException('fixture must use the pinned Private Conversation 0.1.23 source');
+if (($manifest['version'] ?? null) !== '0.1.24') {
+    throw new RuntimeException('fixture must use the pinned Private Conversation 0.1.24 source');
 }
 qd_pcv_load_owner_sources();
 
@@ -34,8 +36,38 @@ if (qd_pcv_owner_key_from_home_state($home) !== $pcvIdentity['key']) {
 $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-pcv-adapter-' . bin2hex(random_bytes(8));
 $stateDirectory = $root . DIRECTORY_SEPARATOR . 'state';
 $logDirectory = $root . DIRECTORY_SEPARATOR . 'logs';
+$coreRoot = $root . DIRECTORY_SEPARATOR . 'core';
 mkdir($stateDirectory, 0700, true);
 mkdir($logDirectory, 0700, true);
+if (!mkdir($coreRoot . DIRECTORY_SEPARATOR . 'lib', 0700, true)
+    || file_put_contents($coreRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'playthrough_preferences.php', "<?php\n") !== 6) {
+    throw new RuntimeException('Could not create the isolated core-root marker.');
+}
+putenv('QD_CHIM_ROOT=' . $coreRoot);
+register_shutdown_function(static function () use ($root, $previousPcvRoot, $previousChimRoot, $previousLogRoot): void {
+    is_string($previousPcvRoot) ? putenv('QD_PCV_ROOT=' . $previousPcvRoot) : putenv('QD_PCV_ROOT');
+    is_string($previousChimRoot) ? putenv('QD_CHIM_ROOT=' . $previousChimRoot) : putenv('QD_CHIM_ROOT');
+    is_string($previousLogRoot) ? putenv('PCV_LOG_DIR=' . $previousLogRoot) : putenv('PCV_LOG_DIR');
+    $resolved = realpath($root);
+    $temporary = realpath(sys_get_temp_dir());
+    if (!is_string($resolved) || !is_string($temporary) || dirname($resolved) !== $temporary
+        || !str_starts_with(basename($resolved), 'qd-pcv-adapter-') || is_link($root)) {
+        return;
+    }
+    $items = new RecursiveIteratorIterator(
+        new RecursiveDirectoryIterator($resolved, FilesystemIterator::SKIP_DOTS),
+        RecursiveIteratorIterator::CHILD_FIRST,
+    );
+    foreach ($items as $item) {
+        $path = $item->getPathname();
+        $removed = $item->isLink() ? @unlink($path)
+            : ($item->isDir() ? @rmdir($path) : @unlink($path));
+        if (!$removed && (file_exists($path) || is_link($path))) {
+            return;
+        }
+    }
+    @rmdir($resolved);
+});
 putenv('PCV_LOG_DIR=' . $logDirectory);
 file_put_contents($stateDirectory . DIRECTORY_SEPARATOR . 'state.lock', '');
 $state = pcv_empty_store($pcvIdentity['key']);

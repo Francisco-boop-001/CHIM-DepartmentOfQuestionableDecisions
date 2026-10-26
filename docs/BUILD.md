@@ -22,6 +22,30 @@ The compatibility receipt is canonical UTF-8 JSON with LF endings and no BOM. It
 
 This is source/package pairing evidence. It does not establish a live CHIM server, HTTP/provider or database behavior, newer dev.26 poll-lock runtime behavior, native startup, or Skyrim acceptance. The owner release's newer poll-lock runtime proof remains unperformed. [Prealpha.19](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.19) is published after those checks; later main changes only record publication. See the [dev.26 compatibility note](DEV26-COMPATIBILITY.md) and [verification record](VERIFICATION.md).
 
+## Candidate paired installable recipe: prealpha.20
+
+The candidate builder starts from the exact published prealpha.19 ZIP (SHA-256 `d7481f55074025650628644df7e914ad78bc1f6cf1762faac3d3fac7a3e55a93`) and replaces only the Department DWPkg and PCV companion DWPkg. The other 20 of 22 installable members must remain byte-identical, including the accepted DLL at SHA-256 `bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef` and all UI/game assets. Canonical entries use 2026-10-26 00:00:06. The candidate pairs Department `0.1.0-prealpha.20`, companion `0.1.0-prealpha.11`, and PCV owner `0.1.24` at source commit `ce0a998773237a9fc91f6914725a327d9e621718` (release tag planned as `private_conversation-v0.1.24`; install or upgrade all three together). It does not support running the new Department timeout path against owner `0.1.23`. Other plugin pins remain Mind Poisoning `0.1.30`, Sworn & Scorned `0.1.12`, Sealed Fates dev.26 with its existing maps, and Malpractice Makes Perfect dev.3. The candidate does not rebuild the DLL or change the native UI or other plugin payloads.
+
+The frozen-source build requires `paired-checks.json`, the exact frozen owner commit and manifest pins, plus five passing checks: `ownerTimeouts`, `overlaidTimeouts`, `overlayMigration`, `pcvSourceContract`, and `otherPlugins`. The canonical raw evidence names are `pcv-owner-timeouts.json`, `pcv-overlay-timeouts.json`, `overlay-migration-results.json`, `pcv-source-contract.json`, and `other-plugin-compatibility.json`. The overlay migration proof separately binds the preserved `.23` backup pins and the `.24` base-to-postimage source manifest. Test evidence stays outside the installable. Build outputs are the regular installable ZIP, source ZIP, `-paired-proof.zip`, and `SHA256SUMS.txt`.
+
+The package and source checks do not imply an HTTP/provider operation, Skyrim acceptance, native build, or whole-request deadline. The focused owner and overlaid timeout checks use an isolated test database. The upgrade preserves the existing verified `.23` backup automatically; no manual backup handling or browser/Linux approval is part of this pairing.
+
+No prealpha.20 build or publication is claimed here. Prealpha.19 remains the latest published release until the final paired receipts, package build, public-byte review, and coordinated releases are complete. See [the PCV 0.1.24 compatibility note](PCV24-COMPATIBILITY.md) and [verification record](VERIFICATION.md).
+
+Run from a clean, committed checkout only after the maintainer freezes the owner commit and the coordinator supplies `paired-checks.json`. The source commit must equal `HEAD`; use a new output directory outside the repository. The baseline path below is the immutable published prealpha.19 archive.
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Root = (Get-Location).Path
+$Commit = (& $Git -c "safe.directory=$Root" rev-parse HEAD).Trim()
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-dev26-20261026\public-downloads\WorldOfDramaLlama-0.1.0-prealpha.19.zip'
+$Checks = 'K:\ActorwrightExchange\artifacts\department-pcv24-20261026\paired-checks.json'
+$Output = 'K:\ActorwrightExchange\artifacts\department-pcv24-20261026\package-prealpha20'
+& $Python -B packaging/build-installable-prealpha20.py build --prealpha19-zip $Baseline --paired-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+& $Python -B packaging/build-installable-prealpha20.py audit --prealpha19-zip $Baseline --paired-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+```
+
 ## Historical published prealpha.18 recipe
 
 The .18 builder reuses the exact published .17 installable ZIP and the unchanged accepted DLL. The installable ZIP entries use deterministic timestamp 2026-10-26 00:00:02, two seconds later than the exact .17 Department/PCV entry timestamps, so CHIM's mtime-only package selection prefers the new version when old and new paths coexist. It updates the Department package to `.18`, the PCV companion package to `.10`, and `app.js`; it requires the other 19 MO2 member payloads to remain byte-identical; their ZIP entry metadata uses the release timestamp. It also requires the canonical maintenance receipt for the frozen source commit. The source ZIP contains only the committed public-source allowlist; the proof ZIP contains the compact receipt and package provenance, not the raw audit fixtures.

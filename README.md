@@ -22,6 +22,14 @@ Prealpha.19 adds the exact Sealed Fates [dev.26](https://github.com/Francisco-bo
 
 Published [prealpha.19](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.19) from immutable source `138f6d19acc5b4751af16c67b276949e6169c02c`; exact source/package, actual archive-consumer and anonymous public-byte checks passed. The dev.26 owner release's newer polling/lock runtime proof remains unperformed; package checks do not establish a database, live CHIM, HTTP/provider or Skyrim result. See the [dev.26 compatibility note](docs/DEV26-COMPATIBILITY.md), [build recipe](docs/BUILD.md) and [verification record](docs/VERIFICATION.md).
 
+## Prealpha.20 paired Private Conversation timeout candidate
+
+The prealpha.20 candidate pairs the Department package `0.1.0-prealpha.20` and PCV companion `0.1.0-prealpha.11` with Private Conversation owner `0.1.24` at source commit `ce0a998773237a9fc91f6914725a327d9e621718` (release tag planned as `private_conversation-v0.1.24`). Install or upgrade the three components together. Its builder starts from the published prealpha.19 installable (SHA-256 `d7481f55074025650628644df7e914ad78bc1f6cf1762faac3d3fac7a3e55a93`) and replaces only those two DWPkgs. The other 20 of 22 installable payloads, including the UI and accepted DLL, must remain byte-identical; ZIP entries use 2026-10-26 00:00:06 so the paired packages sort after prealpha.19 in CHIM's mtime-only selection. Mind Poisoning `0.1.30`, Sworn & Scorned `0.1.12`, Sealed Fates dev.26 and its existing maps, and Malpractice Makes Perfect dev.3 remain unchanged.
+
+The candidate requires bounded identity/catalog timeout evidence against isolated PostgreSQL, the PCV overlay owner-reader regression, the 0.1.23 backup-to-0.1.24 migration/rollback receipt, the PCV source contract and the protected other-plugin checks. Its canonical paired proof records those receipt hashes and source pins; raw evidence stays under `artifacts/department-pcv24-20261026` and is not included in the installable. The upgrade must preserve and verify the existing 0.1.23 backup and the new owner backup. No manual Linux command or browser approval step is part of the paired setup, and no backup should be deleted as a recovery workaround.
+
+Prealpha.20 remains a candidate until the exact owner and Department sources, receipts, package and publication are reviewed. Prealpha.19 remains the latest published release in the meantime. Package and isolated-test evidence does not establish live CHIM behavior or Skyrim acceptance. See the [PCV 0.1.24 compatibility note](docs/PCV24-COMPATIBILITY.md) for the pairing and rollback boundary.
+
 ## Requirements
 
 Skyrim SE/AE, matching SKSE64 and Address Library, PRISMA UI with its V1 API, SkyUI, CHIM, and the supported complete owner plugin releases. VR is not a supported build target. Install the owner plugins' own required game components as well.

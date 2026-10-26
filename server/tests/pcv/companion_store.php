@@ -13,7 +13,7 @@ if ($hadQueryString) {
     $_SERVER['QUERY_STRING'] = $priorQueryString;
 }
 $ownerScopeSource = dirname($implementationRoot) . DIRECTORY_SEPARATOR . 'pcv-companion' . DIRECTORY_SEPARATOR
-    . 'private-conversation-v0.1.23' . DIRECTORY_SEPARATOR . 'server' . DIRECTORY_SEPARATOR . 'scope.php';
+    . 'private-conversation-v0.1.24' . DIRECTORY_SEPARATOR . 'server' . DIRECTORY_SEPARATOR . 'scope.php';
 $ownerScopeHash = PCV_COMPANION_OWNER_SOURCE_HASHES['scope.php'] ?? null;
 if (!is_file($ownerScopeSource) || !is_string($ownerScopeHash)
     || !hash_equals($ownerScopeHash, strtolower((string)hash_file('sha256', $ownerScopeSource)))) {
