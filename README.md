@@ -4,6 +4,12 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.23 candidate scope
+
+Prealpha.23 targets ordinary CHIM mode with Playthrough Saves disabled. That mode keeps CHIM's existing shared host history; it does not provide per-save history. Existing managed profiles retain per-profile isolation. The actual run13 HTTP-SAPI proof passed all five authenticated owner reads and refused unauthenticated and invalid-bearer capabilities. It used a disposable fixture database, captured stock CHIM main.php, frozen SHARMAT, and byte-verified owner exports; it did not touch an existing campaign database. A separate validator passed against the unchanged DLL (47 negative and 11 positive controls), and the current UI passed a headless replay with actual captured catalog and card responses. The run13 receipt SHA-256 is `db167c8f9a9429687b0d2facdf62160ec663a838317872504b03ad9c870b378b`.
+
+Malpractice Makes Perfect dev.4 is published at [owner release 0.1.0-dev.4](https://github.com/Francisco-boop-001/CHIM-MalpracticeMakesPerfect/releases/tag/v0.1.0-dev.4), source commit `e203c0de17df0004e3643a42cafbf6a7e5368d58`; its exact DWPkg hash is `9f1d8221954a293116b5bc7c202f13c4eb2062982d3fdabeb9134dfa0e05cec8`. Root independently verified the anonymous dev.4 download byte-for-byte against the TEST candidate. The canonical Department proof summaries and prealpha.23 package/publication are being finalized. This candidate evidence does not establish host native initialization or restore, provider behavior, game save/load, or Skyrim operation. See [normal CHIM compatibility](docs/NORMAL-CHIM-COMPATIBILITY.md) and [verification](docs/VERIFICATION.md).
+
 The five tabs cover Private Conversation, Mind Poisoning, Sworn & Scorned, Sealed Fates and Malpractice Makes Perfect. Controls depend on the installed owner's supported version, the current perspective and permissions. Unsupported source versions refuse access instead of guessing their contracts.
 
 Private Conversation offers nearby eligible actor selection and its own armed text box through stock CHIM's public Papyrus route. The original Private Conversation input method remains available when the Department is disabled. Detectable duplicate-name ambiguity is refused; the stock router's final body selection is not an atomic identity guarantee.

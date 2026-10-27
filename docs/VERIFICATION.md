@@ -1,5 +1,13 @@
 # PRE-ALPHA verification
 
+## Prealpha.23 candidate evidence — 2026-10-27
+
+The actual run13 HTTP-SAPI proof passed with Playthrough Saves disabled and no active profile. Its authenticated bootstrap reported all five owner capabilities ready; unauthenticated and invalid-bearer bootstraps reported all five false. PCV, MP, SAS, Correspondence, and MMP read operations passed. The run also covered 14 ordinary/managed scope cases, managed A/B transitions and stale-context refusal, file-lock refusal with public `unavailable` plus recovery, a separate bounded PostgreSQL metadata-lock refusal with its expected negative-lock diagnostic, and a manual MMP draft, selective apply, duplicate replay, and undo round trip. The raw TEST receipt is `artifacts/department-normal-chim-20261027/http/runs/normal-five-final-13/normal-http-receipt.json`, SHA-256 `db167c8f9a9429687b0d2facdf62160ec663a838317872504b03ad9c870b378b`.
+
+The run used fixture database data, actual HTTP-SAPI ingress, captured stock CHIM main.php (SHA-256 `374085e7190495e5372d8604f1d8ecbe7bbe7fda8ec76a238eb7b81fd19a08ec`) and frozen SHARMAT commit `d6c6da595eb961f338245d6e4d044fe6e86279f0`. It did not connect to an existing campaign database. A separate run13 validation passed against the unchanged DLL (47 negative and 11 positive controls). A separate headless UI replay used actual captured Brainwash catalog/card responses with the current `ui/app.js` (SHA-256 `468b5a4db3a2ed7901646721f51627453592d1c36ac740e34b9da25d364505b3`); it verified the five ready panels, loaded Brainwash card, no stale setup text on MP/SAS, and only bootstrap/catalog/card reads. The UI replay does not prove Skyrim rendering or input behavior.
+
+Malpractice Makes Perfect dev.4 is published at [owner release 0.1.0-dev.4](https://github.com/Francisco-boop-001/CHIM-MalpracticeMakesPerfect/releases/tag/v0.1.0-dev.4), source commit `e203c0de17df0004e3643a42cafbf6a7e5368d58`, with exact DWPkg SHA-256 `9f1d8221954a293116b5bc7c202f13c4eb2062982d3fdabeb9134dfa0e05cec8`. Root independently verified the anonymous dev.4 download byte-for-byte against the TEST candidate. The canonical package proof summaries, prealpha.23 package build/audit, and Department publication are pending. No host native initialization or profile restore, provider call, game save/load, Skyrim, live server, or installed-core mutation was tested. The current Department release remains prealpha.22.
+
 Current published release: prealpha.22 Sealed Fates dev.27 compatibility. PCV 0.1.24 pairing and the prealpha.21 SHARMAT connection fix are retained. The prealpha.16 DLL is reused unchanged. Skyrim connection remains unverified. Older sections retain their original proof limits.
 
 ## Published prealpha.22: dev.27 source/package verification

@@ -23,6 +23,7 @@ final class QDProfileReadTestConnection
     public array $catalogRows = [];
     public ?string $fault = null;
     public array $transactionSettings = [];
+    public ?array $homeState = null;
 }
 
 final class QDProfileReadTestResult
@@ -242,9 +243,13 @@ function pth_state($connection): array
     if ($connection->fault === 'logical') {
         return ['available' => false, 'active_id' => 0, 'playthroughs' => []];
     }
+    if ($connection->homeState !== null) {
+        return $connection->homeState;
+    }
     return [
         'available' => true,
         'active_id' => 17,
+        'auto_switch' => false,
         'auto_switch_pending' => false,
         'playthroughs' => [[
             'id' => 17,
@@ -257,7 +262,7 @@ function pth_state($connection): array
 
 function ptp_product(): array
 {
-    return ['meta' => 'chim_meta'];
+    return ['meta' => $GLOBALS['qd_profile_read_product_meta'] ?? 'chim_meta'];
 }
 
 function ptp_connect(): QDProfileReadTestConnection
@@ -289,6 +294,108 @@ function qd_profile_read_run_success(QDProfileReadTestConnection $connection, bo
         'Timeout bounds were not installed before the first pth_state read.');
     qd_profile_read_expect($connection->status === ($owned ? PGSQL_TRANSACTION_IDLE : PGSQL_TRANSACTION_INTRANS),
         'The reader changed caller transaction ownership.');
+}
+
+function qd_profile_read_normal_home_state(array $overrides = []): array
+{
+    return array_replace([
+        'available' => true,
+        'active_id' => 0,
+        'auto_switch' => false,
+        'auto_switch_pending' => false,
+        'playthroughs' => [],
+    ], $overrides);
+}
+
+function qd_profile_read_test_normal_unprofiled(): void
+{
+    $connection = new QDProfileReadTestConnection();
+    $connection->homeState = qd_profile_read_normal_home_state();
+    $identity = qd_runtime_active_playthrough($connection);
+    qd_profile_read_expect(($identity['profileId'] ?? null) === 'unprofiled'
+        && ($identity['schemaName'] ?? null) === 'public'
+        && array_key_exists('characterId', $identity) && $identity['characterId'] === null,
+        'A verified PAS-off host without an active managed profile did not resolve to the canonical unprofiled owner.');
+    qd_profile_read_expect(($identity['scopeKey'] ?? null) === hash('sha256', "qd-department-unprofiled-v1\0public"),
+        'The ordinary Department scope key changed or included a per-player identity.');
+    qd_profile_read_expect($connection->commits === 1 && $connection->rollbacks === 0
+        && $connection->status === PGSQL_TRANSACTION_IDLE,
+        'An accepted ordinary host identity did not close its owned bounded read transaction.');
+    qd_profile_read_expect(count($connection->seenLimits) === 1 && $connection->seenLimits[0] === [2000, 3000],
+        'The ordinary host identity was read outside the bounded profile-read transaction.');
+    $inactiveConnection = new QDProfileReadTestConnection();
+    $inactiveConnection->homeState = qd_profile_read_normal_home_state([
+        'playthroughs' => [[
+            'id' => 17,
+            'active' => false,
+            'available' => true,
+            'character_id' => '0123456789abcdef0123456789abcdef',
+        ]],
+    ]);
+    $inactiveIdentity = qd_runtime_active_playthrough($inactiveConnection);
+    qd_profile_read_expect(($inactiveIdentity['profileId'] ?? null) === 'unprofiled'
+        && ($inactiveIdentity['scopeKey'] ?? null) === $identity['scopeKey'],
+        'Inactive managed saves must not replace the host canonical unprofiled identity.');
+    foreach ($connection->events as $event) {
+        qd_profile_read_expect(!is_string($event) || !str_contains(strtolower($event), 'from chim_meta.playthrough_profiles'),
+            'Ordinary unprofiled resolution depended on a managed profile catalog row.');
+    }
+}
+
+function qd_profile_read_test_rejects_home_state(array $homeState, string $label): void
+{
+    $connection = new QDProfileReadTestConnection();
+    $connection->homeState = $homeState;
+    $message = null;
+    try {
+        qd_runtime_active_playthrough($connection);
+    } catch (Throwable $error) {
+        $message = $error->getMessage();
+    }
+    qd_profile_read_expect(is_string($message), 'Invalid home state was accepted: ' . $label);
+    qd_profile_read_expect($connection->status === PGSQL_TRANSACTION_IDLE
+        && $connection->rollbacks === 1 && $connection->commits === 0,
+        'A refused home state did not roll back its owned read transaction: ' . $label);
+}
+
+function qd_profile_read_test_normal_refusals(): void
+{
+    $missingPas = qd_profile_read_normal_home_state();
+    unset($missingPas['auto_switch']);
+    qd_profile_read_test_rejects_home_state($missingPas, 'missing PAS state without a managed active profile');
+    $GLOBALS['qd_profile_read_product_meta'] = 'stobe_meta';
+    try {
+        qd_profile_read_test_rejects_home_state(qd_profile_read_normal_home_state(), 'wrong CHIM product metadata');
+    } finally {
+        unset($GLOBALS['qd_profile_read_product_meta']);
+    }
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state(['auto_switch' => true]),
+        'PAS enabled without a managed active profile');
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state(['auto_switch_pending' => 'false']),
+        'malformed pending state');
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state(['playthroughs' => ['profile' => ['id' => 17, 'active' => false]]]),
+        'non-list profile rows');
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state(['auto_switch_pending' => true]),
+        'pending switch without a managed active profile');
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state(['playthroughs' => [['id' => 17, 'active' => 'false']]]),
+        'malformed profile row');
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state(['playthroughs' => [['id' => 17, 'active' => true]]]),
+        'active row with no matching active id');
+    qd_profile_read_test_rejects_home_state(
+        qd_profile_read_normal_home_state([
+            'active_id' => 17,
+            'playthroughs' => [
+                ['id' => 17, 'active' => true, 'available' => true, 'character_id' => '0123456789abcdef0123456789abcdef'],
+                ['id' => 17, 'active' => true, 'available' => true, 'character_id' => 'fedcba9876543210fedcba9876543210'],
+            ],
+        ]),
+        'multiple active managed rows');
 }
 
 function qd_profile_read_test_owned_defaults(): void
@@ -571,6 +678,8 @@ function qd_profile_read_test_pcv_adapter_first_read(): void
 }
 
 try {
+    qd_profile_read_test_normal_unprofiled();
+    qd_profile_read_test_normal_refusals();
     qd_profile_read_test_owned_defaults();
     qd_profile_read_test_caller_defaults();
     qd_profile_read_test_shorter_caller_bounds();

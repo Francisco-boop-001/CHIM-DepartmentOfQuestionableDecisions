@@ -1,6 +1,19 @@
 <?php
 declare(strict_types=1);
 
+$options = getopt('', ['owner-root:']);
+$ownerRootInput = $options['owner-root'] ?? null;
+if (!is_string($ownerRootInput) || $ownerRootInput === '' || is_link($ownerRootInput)) {
+    fwrite(STDERR, "Usage: php department-contract.php --owner-root=<approved-extracted-brainwash-server-root>\n");
+    exit(2);
+}
+$ownerSourceRoot = realpath($ownerRootInput);
+if (!is_string($ownerSourceRoot) || !is_dir($ownerSourceRoot)) {
+    fwrite(STDERR, "Brainwash owner root is unavailable.\n");
+    exit(2);
+}
+$pinnedSourceRoot = $ownerSourceRoot;
+
 require_once __DIR__ . '/../../lib/protocol.php';
 require_once __DIR__ . '/../../lib/auth.php';
 require_once __DIR__ . '/../../lib/dispatcher.php';
@@ -130,11 +143,9 @@ try {
     @rmdir($unpinnedRoot);
 }
 
-$pinnedSourcePath = '/var/www/html/HerikaServer/ext/brainwash';
-$pinnedSourceRoot = realpath($pinnedSourcePath);
 $pinnedFiles = QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION[QD_BRAINWASH_EXPECTED_VERSION] ?? null;
-if (!is_string($pinnedSourceRoot) || $pinnedSourceRoot !== $pinnedSourcePath || !is_array($pinnedFiles) || $pinnedFiles === []) {
-    throw new RuntimeException('The frozen installed Brainwash source pins are unavailable for drift checks.');
+if (!is_array($pinnedFiles) || $pinnedFiles === []) {
+    throw new RuntimeException('The frozen Brainwash source pins are unavailable for drift checks.');
 }
 $pinFixtureRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-brainwash-pins-' . bin2hex(random_bytes(8));
 if (!mkdir($pinFixtureRoot, 0700)) throw new RuntimeException('Could not create the Brainwash pin fixture.');

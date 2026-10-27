@@ -5,6 +5,8 @@ const QD_PCV_EXPECTED_VERSION = '0.1.24';
 const QD_PCV_CATALOG_MAX_ROWS = 4096;
 const QD_PCV_EXPECTED_CORE_MAIN_SHA256 = '3619049e6d54493a77b19c09f8b70420e3c35427545a8bb6e95e93c6fe57ebac';
 const QD_PCV_EXPECTED_CORE_MAIN_WINDOWS_CRLF_SHA256 = '9686a446bb4a2e2c02def2b59c87190734b30ba4382781bd71ea0df96baf6ff9';
+// The reviewed capture changes only npcspellcast event logging; player input paths remain pinned to upstream.
+const QD_PCV_EXPECTED_CORE_MAIN_DEPARTMENT_CAPTURE_SHA256 = '374085e7190495e5372d8604f1d8ecbe7bbe7fda8ec76a238eb7b81fd19a08ec';
 const QD_PCV_EXPECTED_OWNER_SOURCE_HASHES = [
     'manifest.json' => '929a0b67050c3bab4ab1362f34997651896e07f9c8cd491a6e45fb7d9dca1ff0',
     'state.php' => 'b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6',
@@ -84,13 +86,18 @@ function qd_pcv_load_owner_sources(): string
 }
 
 /** Return the canonical PCV owner key; never substitute the Department auth scope. */
-function qd_pcv_owner_key_from_home_state(array $homeState): ?string
+function qd_pcv_owner_key_from_home_state(array $homeState, ?string $corePlayerName = null): ?string
 {
     qd_pcv_load_owner_sources();
-    $identity = pcv_identity_from_home_state($homeState, true);
+    $identity = pcv_identity_from_home_state($homeState, true, $corePlayerName);
     $key = $identity['key'] ?? null;
     if (!is_string($key) || !pcv_valid_key($key)) {
         return null;
+    }
+    if (pcv_home_state_has_no_active_profile($homeState)) {
+        $pending = $homeState['auto_switch_pending'] ?? false;
+        return ($homeState['auto_switch'] ?? null) === false && is_bool($pending) && !$pending
+            ? $key : null;
     }
     $activeId = filter_var($homeState['active_id'] ?? null, FILTER_VALIDATE_INT);
     $choices = array_values(array_filter($homeState['playthroughs'] ?? [], static fn($profile): bool => is_array($profile) && ($profile['active'] ?? null) === true));
@@ -388,7 +395,7 @@ function qd_pcv_companion_operation_status(stdClass $payload, array $context, bo
     }
 }
 
-/** Accept the pinned upstream LF blob, or its exact known Windows CRLF checkout form. */
+/** Accept pinned upstream LF/CRLF bytes or the exact reviewed Department capture. */
 function qd_pcv_stock_main_matches_pin(string $mainPath): bool
 {
     $rawHash = @hash_file('sha256', $mainPath);
@@ -397,6 +404,9 @@ function qd_pcv_stock_main_matches_pin(string $mainPath): bool
     }
     $rawHash = strtolower($rawHash);
     if (hash_equals(QD_PCV_EXPECTED_CORE_MAIN_SHA256, $rawHash)) {
+        return true;
+    }
+    if (hash_equals(QD_PCV_EXPECTED_CORE_MAIN_DEPARTMENT_CAPTURE_SHA256, $rawHash)) {
         return true;
     }
     if (!hash_equals(QD_PCV_EXPECTED_CORE_MAIN_WINDOWS_CRLF_SHA256, $rawHash)) {
@@ -411,7 +421,7 @@ function qd_pcv_stock_main_matches_pin(string $mainPath): bool
         && hash_equals(QD_PCV_EXPECTED_CORE_MAIN_SHA256, hash('sha256', $lf));
 }
 
-/** Require stock CHIM main plus the extension-owned hooks; no core ingress patch is accepted. */
+/** Require allowlisted CHIM main bytes plus the extension-owned privacy hooks. */
 function qd_pcv_core_guard_ready(): bool
 {
     try {
@@ -773,11 +783,22 @@ function qd_pcv_current_identity_and_catalog(bool $includeCatalog): array
             qd_runtime_apply_profile_read_bounds($connection);
             $homeState = pth_state($connection);
             $active = qd_runtime_active_playthrough($connection);
-            $identity = pcv_identity_from_home_state($homeState, true);
-            $key = qd_pcv_owner_key_from_home_state($homeState);
+            $isUnprofiled = ($active['profileId'] ?? null) === 'unprofiled';
+            $corePlayerName = $isUnprofiled ? pcv_core_player_name($connection) : null;
+            $identity = pcv_identity_from_home_state($homeState, true, $corePlayerName);
+            $key = qd_pcv_owner_key_from_home_state($homeState, $corePlayerName);
             $playerName = $identity['player_name'] ?? null;
             if (!is_string($key) || !is_string($playerName) || trim($playerName) === ''
-                || $active['profileId'] !== filter_var($homeState['active_id'] ?? null, FILTER_VALIDATE_INT)
+                || !is_string($identity['key'] ?? null) || !hash_equals($identity['key'], $key)) {
+                throw new RuntimeException('The active CHIM character identity is unavailable.');
+            }
+            if ($isUnprofiled) {
+                if (!pcv_home_state_has_no_active_profile($homeState)
+                    || ($active['schemaName'] ?? null) !== 'public' || ($active['characterId'] ?? null) !== null) {
+                    throw new RuntimeException('The active CHIM character identity is unavailable.');
+                }
+            } elseif ($active['profileId'] !== filter_var($homeState['active_id'] ?? null, FILTER_VALIDATE_INT)
+                || !is_string($active['characterId'] ?? null)
                 || !hash_equals(hash('sha256', $active['profileId'] . ':' . $active['characterId']), $key)) {
                 throw new RuntimeException('The active CHIM character identity is unavailable.');
             }

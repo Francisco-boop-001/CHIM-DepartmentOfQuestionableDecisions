@@ -557,52 +557,89 @@ function qd_runtime_active_playthrough(mixed $connection): array
         if (($homeState['available'] ?? null) !== true || !is_array($homeState['playthroughs'] ?? null)) {
             throw new RuntimeException('The active CHIM profile is unavailable.');
         }
-        $activeId = filter_var($homeState['active_id'] ?? null, FILTER_VALIDATE_INT);
-        if (!is_int($activeId) || $activeId < 1 || ($homeState['auto_switch_pending'] ?? false) === true) {
-            throw new RuntimeException('There is no settled active CHIM profile.');
-        }
-        $activeChoices = array_values(array_filter($homeState['playthroughs'], static fn($profile): bool => is_array($profile) && ($profile['active'] ?? null) === true));
-        if (count($activeChoices) !== 1 || filter_var($activeChoices[0]['id'] ?? null, FILTER_VALIDATE_INT) !== $activeId) {
-            throw new RuntimeException('The active CHIM profile is ambiguous.');
-        }
-        $choice = $activeChoices[0];
-        if (($choice['available'] ?? null) !== true
-            || !is_string($choice['character_id'] ?? null)
-            || preg_match('/\A[a-f0-9]{32}\z/D', $choice['character_id']) !== 1) {
-            throw new RuntimeException('The active CHIM character identity is unavailable.');
-        }
-
         $meta = function_exists('ptp_product') ? ptp_product()['meta'] ?? null : null;
         if ($meta !== 'chim_meta') {
             throw new RuntimeException('The configured CHIM profile catalog is unavailable.');
         }
-        $result = @pg_query_params($connection,
-            "SELECT p.id,p.schema_name,p.storage_type,p.is_active,(n.oid IS NOT NULL) AS schema_available\n"
-            . "FROM chim_meta.playthrough_profiles p\n"
-            . "LEFT JOIN pg_namespace n ON n.nspname=p.schema_name AND p.storage_type='schema'\n"
-            . 'WHERE p.id=$1 LIMIT 2',
-            [$activeId]);
-        if ($result === false) {
-            throw new RuntimeException('The active CHIM profile metadata is unavailable.');
+        $activeId = filter_var($homeState['active_id'] ?? null, FILTER_VALIDATE_INT);
+        $pending = $homeState['auto_switch_pending'] ?? false;
+        if (!is_int($activeId) || $activeId < 0 || !is_bool($pending) || $pending) {
+            throw new RuntimeException('There is no settled active CHIM profile.');
         }
-        try {
-            if (pg_num_rows($result) !== 1) {
-                throw new RuntimeException('The active CHIM profile metadata is ambiguous.');
+        $playthroughs = $homeState['playthroughs'];
+        if (!array_is_list($playthroughs)) {
+            throw new RuntimeException('The active CHIM profile is ambiguous.');
+        }
+        $activeChoices = [];
+        $seenProfileIds = [];
+        foreach ($playthroughs as $profile) {
+            $profileId = is_array($profile) ? filter_var($profile['id'] ?? null, FILTER_VALIDATE_INT) : false;
+            if (!is_array($profile) || !is_bool($profile['active'] ?? null)
+                || !is_int($profileId) || $profileId < 1 || isset($seenProfileIds[(string)$profileId])) {
+                throw new RuntimeException('The active CHIM profile is ambiguous.');
             }
-            $row = pg_fetch_assoc($result);
-        } finally {
-            @pg_free_result($result);
-        }
-        $schema = is_array($row) ? ($row['schema_name'] ?? null) : null;
-        if (!is_array($row) || (string)($row['id'] ?? '') !== (string)$activeId
-            || !in_array($row['is_active'] ?? null, ['t', true], true)
-            || ($row['storage_type'] ?? null) !== 'schema'
-            || !in_array($row['schema_available'] ?? null, ['t', true], true)
-            || !is_string($schema) || preg_match('/\Achim_profile_[a-z0-9_]{1,50}\z/D', $schema) !== 1) {
-            throw new RuntimeException('The active CHIM profile schema is unavailable.');
+            $seenProfileIds[(string)$profileId] = true;
+            if ($profile['active']) {
+                $activeChoices[] = $profile;
+            }
         }
 
-        $scopeKey = qd_runtime_scope_key_from_home_state($homeState, $schema);
+        if ($activeId === 0) {
+            if (($homeState['auto_switch'] ?? null) !== false || $activeChoices !== []) {
+                throw new RuntimeException('There is no settled active CHIM profile.');
+            }
+            $identity = [
+                'profileId' => 'unprofiled',
+                'schemaName' => 'public',
+                'characterId' => null,
+                'scopeKey' => hash('sha256', "qd-department-unprofiled-v1\0public"),
+            ];
+        } else {
+            if ($activeId < 1 || count($activeChoices) !== 1
+                || filter_var($activeChoices[0]['id'] ?? null, FILTER_VALIDATE_INT) !== $activeId) {
+                throw new RuntimeException('The active CHIM profile is ambiguous.');
+            }
+            $choice = $activeChoices[0];
+            if (($choice['available'] ?? null) !== true
+                || !is_string($choice['character_id'] ?? null)
+                || preg_match('/\A[a-f0-9]{32}\z/D', $choice['character_id']) !== 1) {
+                throw new RuntimeException('The active CHIM character identity is unavailable.');
+            }
+
+            $result = @pg_query_params($connection,
+                "SELECT p.id,p.schema_name,p.storage_type,p.is_active,(n.oid IS NOT NULL) AS schema_available\n"
+                . "FROM chim_meta.playthrough_profiles p\n"
+                . "LEFT JOIN pg_namespace n ON n.nspname=p.schema_name AND p.storage_type='schema'\n"
+                . 'WHERE p.id=$1 LIMIT 2',
+                [$activeId]);
+            if ($result === false) {
+                throw new RuntimeException('The active CHIM profile metadata is unavailable.');
+            }
+            try {
+                if (pg_num_rows($result) !== 1) {
+                    throw new RuntimeException('The active CHIM profile metadata is ambiguous.');
+                }
+                $row = pg_fetch_assoc($result);
+            } finally {
+                @pg_free_result($result);
+            }
+            $schema = is_array($row) ? ($row['schema_name'] ?? null) : null;
+            if (!is_array($row) || (string)($row['id'] ?? '') !== (string)$activeId
+                || !in_array($row['is_active'] ?? null, ['t', true], true)
+                || ($row['storage_type'] ?? null) !== 'schema'
+                || !in_array($row['schema_available'] ?? null, ['t', true], true)
+                || !is_string($schema) || preg_match('/\Achim_profile_[a-z0-9_]{1,50}\z/D', $schema) !== 1) {
+                throw new RuntimeException('The active CHIM profile schema is unavailable.');
+            }
+
+            $identity = [
+                'profileId' => $activeId,
+                'schemaName' => $schema,
+                'characterId' => $choice['character_id'],
+                'scopeKey' => qd_runtime_scope_key_from_home_state($homeState, $schema),
+            ];
+        }
+
         if ($ownsTransaction) {
             if (pg_query($connection, 'COMMIT') === false) {
                 throw new RuntimeException('The active CHIM profile could not be verified.');
@@ -614,12 +651,7 @@ function qd_runtime_active_playthrough(mixed $connection): array
             }
             $callerSavepoint = false;
         }
-        return [
-            'profileId' => $activeId,
-            'schemaName' => $schema,
-            'characterId' => $choice['character_id'],
-            'scopeKey' => $scopeKey,
-        ];
+        return $identity;
     } catch (Throwable $error) {
         if ($ownsTransaction && pg_transaction_status($connection) !== PGSQL_TRANSACTION_IDLE) {
             @pg_query($connection, 'ROLLBACK');

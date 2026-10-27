@@ -1,10 +1,24 @@
-# Department install-and-use guide — prealpha.22
+# Department install-and-use guide — prealpha.23 candidate
+
+## Prealpha.23 candidate status
+
+Prealpha.23 supports ordinary CHIM with Playthrough Saves disabled; users do not need to enable it or create a managed profile for ordinary use. Its history remains in CHIM's shared host scope, not per-save isolation. Existing managed profiles retain their existing per-profile isolation. The actual run13 HTTP test and separate unchanged-DLL validation passed; see [the evidence record](../docs/VERIFICATION.md) and [normal CHIM compatibility](../docs/NORMAL-CHIM-COMPATIBILITY.md). The candidate package name is `WorldOfDramaLlama-0.1.0-prealpha.23.zip`. Malpractice Makes Perfect dev.4 is published at [owner release 0.1.0-dev.4](https://github.com/Francisco-boop-001/CHIM-MalpracticeMakesPerfect/releases/tag/v0.1.0-dev.4), source commit `e203c0de17df0004e3643a42cafbf6a7e5368d58`, with exact DWPkg SHA-256 `9f1d8221954a293116b5bc7c202f13c4eb2062982d3fdabeb9134dfa0e05cec8`. Root independently verified the anonymous dev.4 download byte-for-byte against the TEST candidate. Canonical package summaries, package build, and Department publication remain pending. The current published Department download remains prealpha.22.
+
+The UI now replaces stale Mind Poisoning and Sworn & Scorned setup text with a prompt to select an authorized perspective and refresh when those panels are enabled but have no newer status. The proof used a headless replay; it does not verify Skyrim display, focus, or controller behavior.
+
+## Candidate install after prealpha.23 publication
+
+1. After publication, quit Skyrim and install `WorldOfDramaLlama-0.1.0-prealpha.23.zip` in MO2 using **Replace**. Install the regular ZIP only; source and compatibility-proof ZIPs are review materials.
+2. Use a disposable profile and save with CHIM enabled. Playthrough Saves can remain disabled; let normal CHIM synchronization detect the bundled server packages.
+3. Confirm Department `0.1.0-prealpha.23` in Plugin Manager. Do not install the candidate until it is published.
+
+## Archived instructions: published prealpha.22
 
 Prealpha.22 pairs the Department with Sealed Fates dev.27. Publication, archive-consumer and public-download verification passed. It starts from the exact published prealpha.21 archive and changes only the 30-member Department DWPkg: its two manifests, Correspondence adapter and checksums. The other 21 installable payloads stay byte-identical, including PCV companion 11, Malpractice dev.3, UI and DLL. The supported owners are PCV 0.1.24, MP 0.1.30, SAS 0.1.12, Sealed Fates dev.27 and Malpractice dev.3; Sealed Fates dev.24 and dev.23 remain supported by retained maps. Install the [regular Department ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.22/WorldOfDramaLlama-0.1.0-prealpha.22.zip) manually in MO2; it does not auto-install. For PCV controls, install its complete owner 0.1.24 mod separately.
 
 Use a disposable profile, save and separate CHIM server/database. This remains a TEST PRE-ALPHA; install only the regular ZIP after publication. The dev.27 change updates the owner manifest pin in the existing 19-file runtime closure; its other 18 hashes are retained from dev.26. The `lib/view.php` owner change is outside that closure. Prealpha.21's isolated HTTP/SHARMAT result applies only to its unchanged connection ingress and DLL path; this checkpoint adds no new HTTP, database, provider, owner-operation or Skyrim evidence. Real Skyrim startup remains to be confirmed. See [the dev.27 pairing note](../docs/DEV27-COMPATIBILITY.md) and [verification](../docs/VERIFICATION.md).
 
-## Install the mod
+## Install the published prealpha.22 mod
 
 1. Quit Skyrim, then install `WorldOfDramaLlama-0.1.0-prealpha.22.zip` in MO2 using **Replace** after publication. Disable retained older Department installations. Keep only one visible Department and PCV companion package version. The archive root is already Skyrim's Data layout; do not add another Data directory.
 2. Meet the requirements: Skyrim SE/AE, matching SKSE64 and Address Library, PRISMA UI with its V1 API, SkyUI, CHIM and the supported owner plugins. PCV is optional; VR is unsupported. The masterless ESL-flagged ESP uses one light slot and no full-plugin slot.

@@ -1591,6 +1591,8 @@
       setStatus('mp-state', startup ? startup.message : state.authenticated ? (state.capabilities.mp ? 'Inspector permission or an authorized perspective is unavailable.' : 'Mind Poisoning relationship history is unavailable in this installation.') : 'Authentication is required to inspect relationship history.', startup ? startup.state : 'error');
       $('mp-rows').replaceChildren();
       const row = document.createElement('tr'); const cell = document.createElement('td'); cell.colSpan = 5; cell.className = 'empty-row'; cell.textContent = 'No authorized history is available.'; row.append(cell); $('mp-rows').append(row);
+    } else if ($('mp-state').textContent === CONNECTION_SETUP_COPY) {
+      setStatus('mp-state', 'Select an authorized perspective, then refresh to read relationship history.', 'waiting');
     }
   }
   function renderSasChoices() {
@@ -1604,6 +1606,8 @@
       $('sas-grievances').replaceChildren(); $('sas-promises').replaceChildren();
       const empty1 = document.createElement('p'); empty1.className = 'empty-row'; empty1.textContent = 'No authorized grievances are available.'; $('sas-grievances').append(empty1);
       const empty2 = document.createElement('p'); empty2.className = 'empty-row'; empty2.textContent = 'No authorized promises are available.'; $('sas-promises').append(empty2);
+    } else if ($('sas-state').textContent === CONNECTION_SETUP_COPY) {
+      setStatus('sas-state', 'Select an authorized perspective, then refresh to read Sworn & Scorned issues.', 'waiting');
     }
   }
   function cellWithText(primary, secondary = '') {

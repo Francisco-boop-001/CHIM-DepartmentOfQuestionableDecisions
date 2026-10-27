@@ -44,7 +44,7 @@ $expectedPins = [
     'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
     'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
 ];
-$checks = ['exactSourceReady' => false, 'storeReadAccepted' => false, 'oldVersionRefused' => false, 'unsupportedVersionRefused' => false, 'everyPinDriftRefused' => false];
+$checks = ['exactSourceReady' => false, 'storeReadAccepted' => false, 'unprofiledScopeRead' => false, 'oldVersionRefused' => false, 'unsupportedVersionRefused' => false, 'everyPinDriftRefused' => false];
 $ownerPureReadersLoaded = false;
 $ownerVersion = null;
 $pins = [];
@@ -94,6 +94,19 @@ try {
         $checks['storeReadAccepted'] = $store instanceof \ChimMindPoisoning\StoreDb
             && $store->npcById(7) === $npc && $store->eventById(13, 'utt_12345678') === $event
             && $writeDenied && $updateDenied && $interactions === [] && $limited === false;
+        $normalOwner = ['id' => 7, 'npc_name' => 'Mara', 'plugin_extended_data' => new stdClass()];
+        $normalStore = qd_mp_readonly_inspector_store([7 => $normalOwner], []);
+        $normalCache = [];
+        $normalArrangement = qd_mp_read_current_arrangements(
+            $normalStore,
+            ['profileId' => 'unprofiled', 'playerName' => 'Dragonborn', 'characterId' => null],
+            $normalOwner,
+            [['id' => 7, 'npc_name' => 'Mara']],
+            ['player'],
+            $normalCache,
+        );
+        $checks['unprofiledScopeRead'] = ($normalArrangement['values']['player'] ?? null) === 'none'
+            && ($normalArrangement['limited'] ?? null) === false;
         $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-mp-0130-' . bin2hex(random_bytes(8));
         if (!mkdir($tempRoot, 0700)) throw new RuntimeException('Could not create private source fixtures.');
         $tempOwned = true;

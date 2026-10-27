@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.3';
+const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.4';
 const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
     '0.1.0-dev.3' => [
         'api.php' => ['lf' => 'b26658695d86654d10ab2d8c38df0b4ebbf5e37c0d3d42a5cf64ba489f7ff20c', 'windowsCrlf' => '1bdcd95cc3e9b3305d2aa374fcc64b7329e998e2b537879043bbb7d18e502eae'],
@@ -11,6 +11,15 @@ const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
         'lib/web.php' => ['lf' => '4ec97fc191fa72b4ff488032cec0286141ff94c9bc3545bb01e2043cd40c1073', 'windowsCrlf' => '2701a2825fd2839d035962e18daa37ea4e3d1dff370609b972d48a33e321a1a2'],
         'manifest.json' => ['lf' => '92f18b9ade2ba7758f89fe6a54a5de968487d6670c64b198d80911a310be7c60', 'windowsCrlf' => 'fa92297b15bb3d7b18fe4c63af296c60307e5a813a81719e2eee76be13ddb5ef'],
         'runtime.php' => ['lf' => '6c2fd388b527f52a7899f878c68fbda2c9b5515cd5361849960fad33b44d2c62', 'windowsCrlf' => '88551da2b5a65b46ebc7cbf67eb22231ccf7952d5beda1de5caacc802c230644'],
+    ],
+    '0.1.0-dev.4' => [
+        'api.php' => ['lf' => 'b26658695d86654d10ab2d8c38df0b4ebbf5e37c0d3d42a5cf64ba489f7ff20c', 'windowsCrlf' => '1bdcd95cc3e9b3305d2aa374fcc64b7329e998e2b537879043bbb7d18e502eae'],
+        'context_pre.php' => ['lf' => '67f73134e4818ca513b1269ee1b2365f7696f737793ff6d48ee57b4cebd9120a', 'windowsCrlf' => '2604c771b6c57c0020495f68ed15606a3469b9dedc853f8ebaf163f6d5e75d5f'],
+        'index.php' => ['lf' => '81678c8fe10d67606d50c99cc9755976316ba90b75419e125c9a8c6aa8b65a38', 'windowsCrlf' => '35c784b42f792f0c8e448f50c5c9d35df88df201103f865a75d7b7b9965961c2'],
+        'lib/service.php' => ['lf' => 'ebc53bb181873b27f295d68491205a9a9487fbe217a528f19286063da529a2af', 'windowsCrlf' => '96b19fe0fdf934faa7c085e319eb1bab097c5f40cdfed6f1da3c92dfe6391bae'],
+        'lib/web.php' => ['lf' => '4ec97fc191fa72b4ff488032cec0286141ff94c9bc3545bb01e2043cd40c1073', 'windowsCrlf' => '2701a2825fd2839d035962e18daa37ea4e3d1dff370609b972d48a33e321a1a2'],
+        'manifest.json' => ['lf' => '0205b5a1c401de1650ce9c4fe895e6cc6b9d09c5e311ecef45c9da3be7a55410', 'windowsCrlf' => '936d19bec3a0f56dcca7b5b895a29bd673435cefb0cb56fc0a051ab85f3df7c7'],
+        'runtime.php' => ['lf' => '4cf0692bcc8034d2d9e69da9b6a7e8013e02b71cddfd5f173059397dd8fa34a1', 'windowsCrlf' => '675c6d78947ccba3dc1395a12cc62498a0f2d7b3f18abd362f174fc67d3ff2e7'],
     ],
 ];
 const QD_BRAINWASH_OPERATIONS = [

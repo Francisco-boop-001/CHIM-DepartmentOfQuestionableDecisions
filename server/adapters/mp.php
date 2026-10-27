@@ -691,7 +691,7 @@ function qd_mp_read_current_arrangements(\ChimMindPoisoning\StoreDb $store, arra
     $limited = false;
     $asOf = gmdate('Y-m-d\TH:i:s\Z');
     try {
-        $activeSource = ['id' => (string)$active['profileId'], 'player_name' => (string)($active['playerName'] ?? ''), 'character_id' => $active['characterId']];
+        $activeSource = ['id' => (string)$active['profileId'], 'player_name' => (string)($active['playerName'] ?? '')];
         foreach ($targets as $target) {
             $ownerId = (int)$ownerRow['id'];
             $read = \ChimMindPoisoning\mindPoisoningReadIntimacyFromRow($ownerId, $target, $ownerRow, $activeSource, $identities, $store, $sourceRowCache);

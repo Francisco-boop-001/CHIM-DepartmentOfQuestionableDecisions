@@ -32,6 +32,31 @@ $pcvIdentity = pcv_identity_from_home_state($home, true);
 if (qd_pcv_owner_key_from_home_state($home) !== $pcvIdentity['key']) {
     throw new RuntimeException('PCV adapter must use the owner source canonical state namespace');
 }
+$normalHome = [
+    'available' => true,
+    'active_id' => 0,
+    'auto_switch' => false,
+    'auto_switch_pending' => false,
+    'playthroughs' => [],
+];
+$normalPlayerName = 'Dragonborn';
+$normalIdentity = pcv_identity_from_home_state($normalHome, true, $normalPlayerName);
+$normalKey = qd_pcv_owner_key_from_home_state($normalHome, $normalPlayerName);
+if (($normalIdentity['key'] ?? null) !== hash('sha256', 'unprofiled:dragonborn')
+    || ($normalIdentity['player_name'] ?? null) !== $normalPlayerName
+    || $normalKey !== $normalIdentity['key']
+    || qd_pcv_owner_key_from_home_state($normalHome) !== null) {
+    throw new RuntimeException('PCV adapter must forward the canonical core player name for shared unprofiled history');
+}
+$normalHome['auto_switch'] = true;
+if (qd_pcv_owner_key_from_home_state($normalHome, $normalPlayerName) !== null) {
+    throw new RuntimeException('PCV adapter must refuse unprofiled state while PAS is enabled');
+}
+$normalHome['auto_switch'] = false;
+$normalHome['auto_switch_pending'] = true;
+if (qd_pcv_owner_key_from_home_state($normalHome, $normalPlayerName) !== null) {
+    throw new RuntimeException('PCV adapter must refuse unprofiled state while a profile switch is pending');
+}
 
 $root = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-pcv-adapter-' . bin2hex(random_bytes(8));
 $stateDirectory = $root . DIRECTORY_SEPARATOR . 'state';
