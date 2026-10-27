@@ -1,6 +1,31 @@
 # Portable source build
 
-## Current published paired installable recipe: prealpha.20
+## Prealpha.21 SHARMAT connection repair
+
+Prealpha.21 starts from the exact published prealpha.20 installable ZIP (SHA-256 `2a60c5ac9d012c7ee30d6286b876ec3d117566ea1374ff2e9801bed34416b720`). It changes only the Department DWPkg: its two version manifests, new `server/globals.php`, and regenerated checksum file. That DWPkg has 30 members. The other 21 of 22 top-level MO2 payloads remain byte-identical, including the bundled PCV companion 11, all owner pins, UI/game assets, and the prealpha.16 DLL (`bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef`). Entries use timestamp 2026-10-26 00:00:08, after prealpha.20's 00:00:06. This is a server-only connection-ingress fix; it does not rebuild a DLL or edit CHIM/SHARMAT core or an owner adapter.
+
+The builder is `packaging/build-installable-prealpha21.py`. It requires the canonical `sharmat-checks.json`, `ingress-verification.json`, `compatibility.json`, and `focused-checks.json` in `--checks-dir`. It reads only those four named files, binds their hashes and exact source hashes to the selected immutable source commit, and copies only those receipts plus package provenance into the proof ZIP. Raw fixtures, credentials, logs, and unrelated files in the evidence directory are never traversed or copied.
+
+The aggregate receipt has exactly `schemaVersion`, `status`, `sourceHashes`, `checks`, `limits`, and `fullHostMain`. Its three `checks` rows bind ingress, compatibility and focused evidence by fixed filename and SHA-256; all source hashes must match the selected commit. `limits` has the fixed isolated-test-only HTTP/native-validator values, with Skyrim, provider, native build and live checks false. `fullHostMain` must be true. Each child receipt has a closed field set and passed schema-1 status; its nonempty checks map contains only safe names mapped to `true`, limits contain only booleans, and `rawEvidence` is a nonempty safe-filename-to-SHA-256 map. The ingress receipt also binds `http: true`, `nativeValidator: true`, the accepted DLL hash, `fullHostMain: true`, CHIM host commit `0ec590b42c8087860138bb4e9aab470049ff9a2b`, and SHARMAT commit `d6c6da595eb961f338245d6e4d044fe6e86279f0`. Compatibility evidence requires exactly PCV 0.1.24, MP 0.1.30, SAS 0.1.12, Sealed Fates dev.26 and Malpractice dev.3 all marked ready, plus `protectedSourceCount: 75`. Focused evidence binds the global hook and its regression test. Unknown fields are rejected. These JSON records bind reported results and sources; the separate raw verifier evidence remains the authority for executed checks.
+
+The input receipts bind the accepted private TEST2 main.php/SHARMAT HTTP run, unchanged DLL wire validation, five-owner source contracts and focused regressions. The HTTP fixture uses minimal synthetic schema/profile rows and PHP test mode; all owner capability values are false, so it does not certify owner operations or Skyrim startup. Package and release closure remain pending at this immutable source checkpoint. Do not use placeholder receipts to build a release. The source ZIP follows `packaging/public-source-allowlist.json`; evidence is not an installable payload. The regular ZIP, source ZIP, SHARMAT proof ZIP, and `SHA256SUMS.txt` are separate outputs.
+
+After the frozen source commit and real evidence directory are available, build and audit into a new directory outside the repository:
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Commit = '<frozen-source-commit>'
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-pcv24-20261026\public-downloads\WorldOfDramaLlama-0.1.0-prealpha.20.zip'
+$Checks = 'K:\ActorwrightExchange\artifacts\department-sharmat-connect21-20261026'
+$Output = 'K:\ActorwrightExchange\artifacts\department-sharmat-connect21-20261026\package-prealpha21'
+& $Python -B packaging/build-installable-prealpha21.py build --prealpha20-zip $Baseline --checks-dir $Checks --source-commit $Commit --output-dir $Output --git $Git
+& $Python -B packaging/build-installable-prealpha21.py audit --prealpha20-zip $Baseline --checks-dir $Checks --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The final publication record is maintained in [verification](VERIFICATION.md). See [the install guide](../packaging/COMPANION-ONLY-TEST-PACKAGE.md).
+
+## Last published paired installable recipe: prealpha.20
 
 The published builder starts from the exact published prealpha.19 ZIP (SHA-256 `d7481f55074025650628644df7e914ad78bc1f6cf1762faac3d3fac7a3e55a93`) and replaces only the Department DWPkg and PCV companion DWPkg. The other 20 of 22 installable members must remain byte-identical, including the accepted DLL at SHA-256 `bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef` and all UI/game assets. Canonical entries use 2026-10-26 00:00:06. The release pairs Department `0.1.0-prealpha.20`, companion `0.1.0-prealpha.11`, and PCV owner `0.1.24` at source commit `ce0a998773237a9fc91f6914725a327d9e621718` (release tag `private_conversation-v0.1.24`; companion 11 is bundled, and PCV controls require owner24). It does not support running the new Department timeout path against owner `0.1.23`. Other plugin pins remain Mind Poisoning `0.1.30`, Sworn & Scorned `0.1.12`, Sealed Fates dev.26 with its existing maps, and Malpractice Makes Perfect dev.3. This release does not rebuild the DLL or change the native UI or other plugin payloads.
 
