@@ -1,5 +1,28 @@
 # Portable source build
 
+## Prealpha.22 Sealed Fates dev.27 pairing
+
+Prealpha.22 starts from the exact published prealpha.21 installable ZIP (SHA-256 `53cc3fcf7d625a8e2694a5ab857c39b488854d6060bcf87bf346fdc67a2081d0`). It replaces only the 30-member Department DWPkg. Its two version manifests, `server/adapters/correspondence.php`, and regenerated `checksums.sha256` are the complete DWPkg delta; the Department `server/globals.php` bytes stay unchanged. The other 21 of 22 MO2 members remain byte-identical, including the DLL (`bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef`), UI, PCV companion 11, Brainwash dev.3, and other owner payloads. ZIP entries use 2026-10-26 00:00:10, after prealpha.21's 00:00:08.
+
+The exact Sealed Fates dev.27 owner is commit `d1eaf714a7661a1f785a4d8c2131c3565a6eddee`, with manifest SHA-256 `157610b7d2d79cf68d6203c61fb7768399b3d5b6d4e0bdfc56651d2d0ab3b22d`. The adapter keeps the exact 19-file runtime closure; only the manifest pin changes from dev.26, while the other 18 runtime hashes remain identical. The separate `lib/view.php` change is outside that closure.
+
+`packaging/build-installable-prealpha22.py` accepts one canonical `compatibility-checks.json` file, a full Department source commit that must equal `HEAD`, and the exact baseline ZIP. The receipt has exactly `schemaVersion`, `sourceCommit`, `ownerVersion`, `ownerCommit`, `ownerClosurePins`, `adapterSha256`, `protocolSha256`, `checks`, and `limits`. Its four check rows must be `dev27SourceContract`, `dev26Regression`, `pairingReadiness`, and `protectedPayload`, each with `status: "passed"` and a receipt SHA-256. The owner closure must match the selected adapter's literal 19-file dev.27 map. Limits are fixed to `sourceOnly: true`, `database: false`, `http: false`, and `skyrim: false`. Unknown fields, other source/owner pins and unpassed checks are rejected. The proof ZIP contains only the canonical aggregate receipt and fixed package provenance; raw receipts and artifacts remain outside the installable and source archive.
+
+Build and audit into a new output directory outside the repository:
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Commit = '<frozen-source-commit>'
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-sharmat-connect21-20261026\public-downloads\WorldOfDramaLlama-0.1.0-prealpha.21.zip'
+$Checks = 'K:\ActorwrightExchange\artifacts\department-dev27-20261026\compatibility-checks.json'
+$Output = 'K:\ActorwrightExchange\artifacts\department-dev27-20261026\package-prealpha22'
+& $Python -B packaging/build-installable-prealpha22.py build --prealpha21-zip $Baseline --compatibility-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+& $Python -B packaging/build-installable-prealpha22.py audit --prealpha21-zip $Baseline --compatibility-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The output has the regular installable ZIP, explicit-allowlist source ZIP, compatibility-proof ZIP and GNU-compatible LF `SHA256SUMS.txt`. The source archive is rebuilt from Git blobs at the selected commit. This source/package gate does not rerun HTTP, database, provider or Skyrim behavior; the prior prealpha.21 handshake evidence remains limited to its unchanged ingress and DLL path. Final archive-consumer, clean-source rebuild and public-byte checks are pending.
+
 ## Prealpha.21 SHARMAT connection repair
 
 Prealpha.21 starts from the exact published prealpha.20 installable ZIP (SHA-256 `2a60c5ac9d012c7ee30d6286b876ec3d117566ea1374ff2e9801bed34416b720`). It changes only the Department DWPkg: its two version manifests, new `server/globals.php`, and regenerated checksum file. That DWPkg has 30 members. The other 21 of 22 top-level MO2 payloads remain byte-identical, including the bundled PCV companion 11, all owner pins, UI/game assets, and the prealpha.16 DLL (`bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef`). Entries use timestamp 2026-10-26 00:00:08, after prealpha.20's 00:00:06. This is a server-only connection-ingress fix; it does not rebuild a DLL or edit CHIM/SHARMAT core or an owner adapter.

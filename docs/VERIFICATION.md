@@ -1,6 +1,14 @@
 # PRE-ALPHA verification
 
-Current published release: prealpha.21 SHARMAT automatic connection repair; PCV0.1.24 pairing retained. The prealpha.16 DLL is reused unchanged. Skyrim connection remains unverified. Older sections retain their original proof limits.
+Current published release: prealpha.21 SHARMAT automatic connection repair; PCV 0.1.24 pairing retained. The prealpha.16 DLL is reused unchanged. Prealpha.22 dev.27 source/package verification is underway. Skyrim connection remains unverified. Older sections retain their original proof limits.
+
+## Prealpha.22 dev.27 source checkpoint
+
+Prealpha.22 supports Sealed Fates dev.27 at owner commit `d1eaf714a7661a1f785a4d8c2131c3565a6eddee`, manifest SHA-256 `157610b7d2d79cf68d6203c61fb7768399b3d5b6d4e0bdfc56651d2d0ab3b22d`. The exact 19-file Department runtime closure changes only the manifest pin; its other 18 hashes match dev.26. The owner `lib/view.php` change is outside the closure. Root's focused receipts cover the dev.27 source contract, dev.26 regression, pairing readiness, and 75 protected source files; these receipts are source/readiness evidence.
+
+The package builder starts from the exact prealpha.21 installable (SHA-256 `53cc3fcf7d625a8e2694a5ab857c39b488854d6060bcf87bf346fdc67a2081d0`). It allows only the two version manifests, correspondence adapter and regenerated checksums to change inside the 30-member Department DWPkg. The remaining 21 installable payloads are expected byte-identical, including the prealpha.16 DLL and PCV companion 11. ZIP timestamp advances from 2026-10-26 00:00:08 to 00:00:10. The source archive follows the explicit public allowlist; the compatibility proof carries the aggregate receipt and fixed provenance, not raw evidence.
+
+Focused package-builder checks pass7/7, and root reviewed the owner/adapter/builder against actual published inputs. Exact archive-consumer, frozen clean-source rebuild and public-byte checks remain pending at this source checkpoint. The prealpha.21 HTTP/DLL result is inherited evidence for unchanged connection code only. No new HTTP, PostgreSQL, provider, live CHIM, owner-operation, native build, or Skyrim result is claimed; no DLL is rebuilt. The compatibility receipts remain under `artifacts/department-dev27-20261026/` and are excluded from the installable and source allowlist. See [the dev.27 compatibility note](DEV27-COMPATIBILITY.md) and [build recipe](BUILD.md).
 
 Prealpha.21 repairs the SHARMAT connection collision through the supported Department globals hook. Root independently executed actual CHIM main.php with the frozen unmodified 143-file SHARMAT source in a private TEST2 network namespace and fresh PostgreSQL cluster. Begin returned pending, native ingress returned HTTP200 with the normal close marker, and status returned approved. Normal SHARMAT gaze injection/routing reached the bounded probe unchanged. Final run logs contain no PHP/SQL warnings or errors. All three actual bootstrap bodies (unauthenticated, invalid bearer, authenticated) passed the exact shipped DLL validator, alongside 47 negative and 11 derived positive controls. The DLL was not loaded into Skyrim or rebuilt.
 

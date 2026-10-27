@@ -232,6 +232,11 @@
     { "path": "docs/superpowers/plans/2026-10-26-sharmat-connect21.md" },
     { "path": "packaging/build-installable-prealpha21.py" },
     { "path": "packaging/tests/test_installable_prealpha21.py" },
-    { "path": "server/globals.php" }
+    { "path": "server/globals.php" },
+    { "path": "docs/DEV27-COMPATIBILITY.md" },
+    { "path": "docs/superpowers/plans/2026-10-26-dev27-pairing.md" },
+    { "path": "packaging/build-installable-prealpha22.py" },
+    { "path": "packaging/tests/test_installable_prealpha22.py" },
+    { "path": "server/tests/correspondence/dev27-source-contract.php" }
   ]
 }
