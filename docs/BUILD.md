@@ -13,7 +13,7 @@ Build and audit into a new output directory outside the repository:
 ```powershell
 $Git = 'C:\Program Files\Git\cmd\git.exe'
 $Python = 'C:\Program Files\Python312\python.exe'
-$Commit = '<frozen-source-commit>'
+$Commit = '2e0c5a42e3904a72e5382ff46fbbf90e6680a1cd'
 $Baseline = 'K:\ActorwrightExchange\artifacts\department-sharmat-connect21-20261026\public-downloads\WorldOfDramaLlama-0.1.0-prealpha.21.zip'
 $Checks = 'K:\ActorwrightExchange\artifacts\department-dev27-20261026\compatibility-checks.json'
 $Output = 'K:\ActorwrightExchange\artifacts\department-dev27-20261026\package-prealpha22'
@@ -21,7 +21,7 @@ $Output = 'K:\ActorwrightExchange\artifacts\department-dev27-20261026\package-pr
 & $Python -B packaging/build-installable-prealpha22.py audit --prealpha21-zip $Baseline --compatibility-checks $Checks --source-commit $Commit --output-dir $Output --git $Git
 ```
 
-The output has the regular installable ZIP, explicit-allowlist source ZIP, compatibility-proof ZIP and GNU-compatible LF `SHA256SUMS.txt`. The source archive is rebuilt from Git blobs at the selected commit. This source/package gate does not rerun HTTP, database, provider or Skyrim behavior; the prior prealpha.21 handshake evidence remains limited to its unchanged ingress and DLL path. Final archive-consumer, clean-source rebuild and public-byte checks are pending.
+The output has the regular installable ZIP, explicit-allowlist source ZIP, compatibility-proof ZIP and GNU-compatible LF `SHA256SUMS.txt`. The source archive is rebuilt from Git blobs at the selected commit. This source/package gate does not rerun HTTP, database, provider or Skyrim behavior; the prior prealpha.21 handshake evidence remains limited to its unchanged ingress and DLL path. Final archive-consumer, clean-source rebuild and public-byte checks passed. To reproduce the published assets, check out immutable tag `v0.1.0-prealpha.22` in a clean directory, use its exact source commit shown above, and extract `compatibility-checks.json` from the published compatibility-proof ZIP into the separate checks path. See the final [verification record](VERIFICATION.md).
 
 ## Prealpha.21 SHARMAT connection repair
 
