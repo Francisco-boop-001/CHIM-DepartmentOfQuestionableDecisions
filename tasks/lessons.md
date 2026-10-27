@@ -45,3 +45,7 @@ Preserve UTF-8 and existing per-file line endings during documentation edits. Sc
 - A neutral stock event can already be owned or rewritten by another extension. Verify the actual recursive loader order with the installed coexisting plugin before claiming automatic setup compatibility; intercept only the reserved packet at a supported earlier hook and prove normal events remain unchanged.
 
 - Treat optional host profile management as optional: exercise the default zero-active-profile installation with all real owners. Preserve each owner's canonical shared-history fallback and existing managed-profile isolation; never invent save identity, migrate history or require user setup to repair a connection bug.
+
+- Installer source templates shipped beneath CHIM ext/ participate in recursive hook discovery. Check the packaged installed layout, including leftovers after upgrades, against the host exact-basename loader; a correct intended owner hook does not prove it runs only once.
+- Use actual owner-normalized configurations in consumer fixtures. A hand-built Solo shape that omits a mandatory null actor slot can mask a rejected valid request and accidentally admit an invalid one.
+- A native dependency convenience helper may dereference engine memory incorrectly despite compiling. For a crash, match the emitted DLL instructions to the stack and trace actual inline-array semantics before choosing a narrow replacement; verify every caller, including fresh funds checks.

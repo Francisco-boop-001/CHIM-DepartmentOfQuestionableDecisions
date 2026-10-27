@@ -43,12 +43,20 @@ function overlay_test_copy_files(string $source, string $destination, array $nam
     }
 }
 
-function overlay_test_copy_tree(string $source, string $destination): void
+function overlay_test_copy_tree(string $source, string $destination, array $stageMap): void
 {
     if (!is_dir($source) || is_link($source)) {
         throw new RuntimeException('Pinned fixture source directory is missing.');
     }
-    overlay_test_copy_files($source, $destination, OVERLAY_TEST_FILES);
+    foreach (OVERLAY_TEST_FILES as $name) {
+        $stagedName = $stageMap[$name] ?? null;
+        overlay_test_expect(is_string($stagedName) && $stagedName !== '' && basename($stagedName) === $stagedName,
+            'Pinned stage mapping missing for owner file: ' . $name);
+        $from = $source . DIRECTORY_SEPARATOR . $name;
+        $to = $destination . DIRECTORY_SEPARATOR . $stagedName;
+        overlay_test_mkdir($destination);
+        overlay_test_expect(is_file($from) && !is_link($from) && @copy($from, $to), 'Pinned fixture file missing: ' . $name);
+    }
 }
 
 function overlay_test_remove_tree(string $path): void
@@ -123,6 +131,30 @@ function overlay_test_read_manifest(string $manifestPath): array
         && is_array($manifest['files'] ?? null) && array_is_list($manifest['files']),
         'Staged owner manifest does not identify PCV 0.1.24.');
     return $manifest;
+}
+
+function overlay_test_stage_map(array $manifest): array
+{
+    $expected = [
+        'installation_guard.php' => 'installation_guard.php',
+        'log.php' => 'log.php',
+        'manifest.json' => 'manifest.json',
+        'preprocessing.php' => 'preprocessing.php.template',
+        'reflection.php' => 'reflection.php',
+        'scope.php' => 'scope.php',
+        'state.php' => 'state.php',
+    ];
+    overlay_test_expect(count($manifest['files']) === count($expected), 'Staged source has the wrong owner file count.');
+    $actual = [];
+    foreach ($manifest['files'] as $entry) {
+        overlay_test_expect(is_array($entry) && array_keys($entry) === [
+            'path', 'stagedPath', 'baseSha256', 'postimageSha256', 'modified',
+        ] && is_string($entry['path'] ?? null) && is_string($entry['stagedPath'] ?? null),
+            'Staged source manifest has an invalid transport mapping.');
+        $actual[$entry['path']] = $entry['stagedPath'];
+    }
+    overlay_test_expect($actual === $expected, 'Staged source has an unexpected owner-to-stage mapping.');
+    return $actual;
 }
 
 function overlay_test_owner_manifest(string $ownerRoot): void
@@ -284,6 +316,12 @@ function overlay_test_failure_child(
     $initialOwner = overlay_test_owner_hashes($ownerRoot);
     $activePath = $privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php';
     $archivePath = $privateRoot . DIRECTORY_SEPARATOR . OVERLAY_TEST_ARCHIVE;
+    $legacyHookPath = $fixtureRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'questionable_decisions'
+        . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay' . DIRECTORY_SEPARATOR . 'preprocessing.php';
+    $legacyHookBefore = @file_get_contents($legacyHookPath);
+    overlay_test_expect(is_string($legacyHookBefore)
+        && hash_equals('01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950', hash('sha256', $legacyHookBefore)),
+        'Rollback fixture did not contain the exact known stale active hook.');
     $legacyRaw = overlay_test_legacy_backup($ownerRoot, $legacyOwnerRoot);
     overlay_test_write($activePath, $legacyRaw);
     $activeBefore = @file_get_contents($activePath);
@@ -292,6 +330,9 @@ function overlay_test_failure_child(
     $result = overlay_test_apply($fixtureRoot, $ownerRoot, $privateRoot);
     overlay_test_expect(overlay_test_owner_hashes($ownerRoot) === $initialOwner,
         'Failed migration did not restore the exact pre-attempt owner bytes.');
+    overlay_test_expect(hash_equals($legacyHookBefore,
+        (string)@file_get_contents($legacyHookPath)),
+        'Failed migration did not preserve the exact stale active hook for rollback.');
     if ($failActiveRestore) {
         overlay_test_expect($GLOBALS['overlay_test_active_restore_failed'], 'Active backup restore failure was not injected.');
         overlay_test_expect(is_file($archivePath) && hash_equals($legacyRaw, (string)@file_get_contents($archivePath)),
@@ -309,6 +350,281 @@ function overlay_test_failure_child(
     overlay_test_expect($GLOBALS['overlay_test_injected'] && !$GLOBALS['overlay_test_lock_violation']
         && $GLOBALS['overlay_test_lock_checked'], 'Rollback lock invariant was not observed.');
     overlay_test_expect(overlay_test_lock_is_free($privateRoot), 'Install lock remained held after rollback returned.');
+}
+
+function overlay_test_extract_function(string $source, string $name): string
+{
+    $tokens = token_get_all($source);
+    for ($index = 0; $index < count($tokens); $index++) {
+        if (!is_array($tokens[$index]) || $tokens[$index][0] !== T_FUNCTION) {
+            continue;
+        }
+        $nameIndex = $index + 1;
+        while (isset($tokens[$nameIndex]) && is_array($tokens[$nameIndex])
+            && in_array($tokens[$nameIndex][0], [T_WHITESPACE, T_COMMENT, T_DOC_COMMENT], true)) {
+            $nameIndex++;
+        }
+        if (isset($tokens[$nameIndex]) && is_string($tokens[$nameIndex]) && $tokens[$nameIndex] === '&') {
+            $nameIndex++;
+        }
+        if (!is_array($tokens[$nameIndex] ?? null) || $tokens[$nameIndex][0] !== T_STRING
+            || $tokens[$nameIndex][1] !== $name) {
+            continue;
+        }
+
+        $parts = [];
+        $depth = 0;
+        $started = false;
+        for ($cursor = $index; $cursor < count($tokens); $cursor++) {
+            $token = $tokens[$cursor];
+            $text = is_array($token) ? $token[1] : $token;
+            $parts[] = $text;
+            if (!is_array($token) && $text === '{') {
+                $depth++;
+                $started = true;
+            } elseif (!is_array($token) && $text === '}') {
+                $depth--;
+                if ($started && $depth === 0) {
+                    return implode('', $parts);
+                }
+            }
+        }
+        throw new RuntimeException('Captured core loader function is incomplete.');
+    }
+    throw new RuntimeException('Captured core source does not declare the pinned recursive loader.');
+}
+
+function overlay_test_normalize_path(string $path): string
+{
+    $canonical = realpath($path);
+    return str_replace('\\', '/', is_string($canonical) ? $canonical : $path);
+}
+
+function overlay_test_loader_child(string $fixtureRoot, string $capturedCore, string $tracePath): void
+{
+    overlay_test_expect(hash_file('sha256', $capturedCore) === '1111b724c65b017dbbc7baec6dc32a0cee0277222dc6f3bdb6b7a7414e547552',
+        'Captured core source differs from the pinned offline CHIM file.');
+    $source = @file_get_contents($capturedCore);
+    overlay_test_expect(is_string($source), 'Could not read pinned captured core source.');
+    $loader = overlay_test_extract_function($source, 'requireFilesRecursively');
+    overlay_test_expect(str_contains($loader, 'scandir($dir)') && str_contains($loader, '$file === $name')
+        && str_contains($loader, 'require_once($path)'), 'Extracted core loader does not match the exact-basename recursive contract.');
+
+    if (!function_exists('pcv_current_playthrough_key')) {
+        function pcv_current_playthrough_key(bool $refresh = false): ?string
+        {
+            return 'offline-solo-fixture';
+        }
+    }
+    if (!function_exists('pcv_current_player_name')) {
+        function pcv_current_player_name(): ?string
+        {
+            return 'Dragonborn';
+        }
+    }
+    if (!function_exists('pcv_read')) {
+        function pcv_read(string $key, ?string $stateDirectory = null): array
+        {
+            return $GLOBALS['overlay_test_state'];
+        }
+    }
+    if (!function_exists('pcv_capture_presence_snapshot')) {
+        function pcv_capture_presence_snapshot(?string $key, $raw, ?string $stateDirectory = null, ?int $requestTimestamp = null): array
+        {
+            return ['status' => 'ready', 'actors' => [['name' => 'Aela']]];
+        }
+    }
+    if (!function_exists('pcv_read_npc_catalog')) {
+        function pcv_read_npc_catalog(): array
+        {
+            return [['id' => '303', 'npc_name' => 'Aela', 'profile_id' => '93']];
+        }
+    }
+    if (!function_exists('pcv_read_active_scene_npcs')) {
+        function pcv_read_active_scene_npcs(?string $key, array $catalogRows, ?string $playerName, array $actorIds,
+            ?string $stateDirectory = null, ?int $now = null): array
+        {
+            return ['known_npcs' => ['303' => 'Aela'], 'missing' => [], 'error' => false];
+        }
+    }
+    if (!function_exists('pcv_begin_request')) {
+        function pcv_begin_request(string $key, bool $eligible, ?string $stateDirectory = null, ?array $eligibleNpcMap = null,
+            ?array $activeEligibleNpcMap = null, ?string $activePresenceCheck = null, ?array $freeCandidateOrder = null,
+            bool $allowActiveDrops = true, ?callable $companionPrecommit = null): array
+        {
+            return $GLOBALS['overlay_test_state'];
+        }
+    }
+
+    $scope = [
+        'enabled' => true,
+        'scene_mode' => 'solo',
+        'actor_a' => '303',
+        'actor_b' => null,
+        'exclude_player' => true,
+        'bystander_mode' => 'exclude',
+    ];
+    $GLOBALS['overlay_test_state'] = [
+        'status' => 'active',
+        'config_id' => 'offline-solo-config',
+        'scope' => $scope,
+        'profile_id_a' => 93,
+        'actor_a_id' => '303',
+        'actor_b_id' => null,
+        'profiles' => ['Aela' => 93],
+    ];
+    $GLOBALS['CHIM_EXECUTION_MODE'] = 'STANDARD';
+    $GLOBALS['requestRoutingSnapshot'] = [];
+    $GLOBALS['gameRequest'] = ['inputtext', 'fixture', null, 'Dragonborn: I wait quietly.', ['Aela [RefID: 0000012C]']];
+    http_response_code(200);
+
+    $ownerRoot = $fixtureRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation';
+    ini_set('log_errors', '1');
+    ini_set('error_log', $fixtureRoot . DIRECTORY_SEPARATOR . 'pcv-error.log');
+    require_once $ownerRoot . DIRECTORY_SEPARATOR . 'log.php';
+    register_shutdown_function(static function () use ($tracePath): void {
+        $hookPaths = array_values(array_filter(get_included_files(), static fn(string $path): bool => basename($path) === 'preprocessing.php'));
+        $request = $GLOBALS['gameRequest'] ?? [];
+        $scope = $GLOBALS['PCV_REQUEST_SCOPE'] ?? [];
+        $logRequest = pcv_log_request_context();
+        $trace = [
+            'httpStatus' => http_response_code(),
+            'hookCount' => count($hookPaths),
+            'hookPaths' => array_map('overlay_test_normalize_path', $hookPaths),
+            'requestType' => is_array($request) ? ($request[0] ?? null) : null,
+            'dialogue' => is_array($request) && is_string($request[3] ?? null) ? $request[3] : null,
+            'route' => is_array($scope) ? ($scope['route'] ?? null) : null,
+            'originRequestType' => is_array($scope) ? ($scope['origin_request_type'] ?? null) : null,
+            'originDialogue' => is_array($scope) ? ($scope['origin_dialogue'] ?? null) : null,
+            'terminalReason' => is_array($logRequest['terminal'] ?? null) ? ($logRequest['terminal']['reason'] ?? null) : null,
+        ];
+        file_put_contents($tracePath, json_encode($trace, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+    });
+
+    eval($loader);
+    requireFilesRecursively($fixtureRoot . DIRECTORY_SEPARATOR . 'ext', 'preprocessing.php');
+}
+
+function overlay_test_capture_loader(string $fixtureRoot, string $capturedCore, string $tracePath): array
+{
+    $command = [PHP_BINARY, '-n', __FILE__, '--loader-run', '1', '--fixture-root', $fixtureRoot,
+        '--captured-core', $capturedCore, '--trace-output', $tracePath];
+    $pipes = [];
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, dirname(__DIR__, 3));
+    overlay_test_expect(is_resource($process), 'Could not start isolated captured-loader process.');
+    fclose($pipes[0]);
+    $stdout = stream_get_contents($pipes[1]);
+    $stderr = stream_get_contents($pipes[2]);
+    fclose($pipes[1]);
+    fclose($pipes[2]);
+    $exitCode = proc_close($process);
+    $trace = json_decode((string)@file_get_contents($tracePath), true);
+    overlay_test_expect(is_array($trace), 'Captured loader process did not produce its shutdown trace (exit '
+        . $exitCode . '; stdout: ' . trim((string)$stdout) . '; stderr: ' . trim((string)$stderr) . ').');
+    return ['exitCode' => $exitCode, 'stdout' => $stdout, 'stderr' => $stderr, 'trace' => $trace];
+}
+
+function overlay_test_full_dir_swap(string $fixtureRoot, string $stageSource, string $manifestPath, array $stageMap): void
+{
+    $swapRoot = $fixtureRoot . DIRECTORY_SEPARATOR . 'dwpkg-full-dir-swap';
+    $oldPlugin = $swapRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'questionable_decisions';
+    $newPlugin = $swapRoot . DIRECTORY_SEPARATOR . 'state' . DIRECTORY_SEPARATOR . 'staging' . DIRECTORY_SEPARATOR . 'questionable_decisions';
+    $oldStage = $oldPlugin . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay';
+    $newStage = $newPlugin . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay';
+    $oldBackup = $swapRoot . DIRECTORY_SEPARATOR . 'state' . DIRECTORY_SEPARATOR . 'backups' . DIRECTORY_SEPARATOR . 'questionable_decisions';
+    overlay_test_mkdir($oldStage);
+    overlay_test_mkdir(dirname($newStage));
+    overlay_test_copy_tree($stageSource, $newStage, $stageMap);
+    overlay_test_expect(@copy($manifestPath, $newStage . DIRECTORY_SEPARATOR . 'source-manifest.json'),
+        'Could not stage the full-directory swap manifest.');
+    $stale = $oldStage . DIRECTORY_SEPARATOR . 'preprocessing.php';
+    overlay_test_expect(@copy($stageSource . DIRECTORY_SEPARATOR . 'preprocessing.php', $stale),
+        'Could not create the old package tree for full-directory swap.');
+    overlay_test_expect(!file_exists($newStage . DIRECTORY_SEPARATOR . 'preprocessing.php')
+        && is_file($newStage . DIRECTORY_SEPARATOR . 'preprocessing.php.template'),
+        'New DWPkg candidate did not carry the preprocessing source as an inert template.');
+    overlay_test_mkdir(dirname($oldBackup));
+    overlay_test_expect(@rename($oldPlugin, $oldBackup), 'Could not snapshot old plugin directory for swap.');
+    overlay_test_expect(@rename($newPlugin, $oldPlugin), 'Could not install the staged full plugin directory.');
+    overlay_test_expect(!file_exists($oldStage . DIRECTORY_SEPARATOR . 'preprocessing.php')
+        && !is_link($oldStage . DIRECTORY_SEPARATOR . 'preprocessing.php')
+        && is_file($oldStage . DIRECTORY_SEPARATOR . 'preprocessing.php.template')
+        && is_file($oldBackup . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay' . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+        'Full-directory swap did not replace the stale active hook with the inert staged member.');
+}
+
+function overlay_test_loader_case(string $stageSource, string $ownerBase, string $manifestPath, string $capturedCore): void
+{
+    $repoRoot = dirname(__DIR__, 3);
+    $fixtureRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-overlay-loader-' . bin2hex(random_bytes(8));
+    $pluginRoot = $fixtureRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'questionable_decisions';
+    $ownerRoot = $fixtureRoot . DIRECTORY_SEPARATOR . 'ext' . DIRECTORY_SEPARATOR . 'private_conversation';
+    $privateRoot = $fixtureRoot . DIRECTORY_SEPARATOR . 'data' . DIRECTORY_SEPARATOR . 'questionable_decisions-private';
+    $helperPath = $pluginRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'overlay_setup.php';
+    $stageRoot = $pluginRoot . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay';
+    try {
+        $manifest = overlay_test_read_manifest($manifestPath);
+        $stageMap = overlay_test_stage_map($manifest);
+        $pins = overlay_test_current_pins($manifest);
+        $upstream = $manifest['upstream'];
+        overlay_test_mkdir(dirname($helperPath));
+        overlay_test_mkdir($privateRoot);
+        overlay_test_copy_files($stageSource, $ownerRoot, OVERLAY_TEST_FILES);
+        overlay_test_owner_manifest($ownerRoot);
+        overlay_test_copy_tree($stageSource, $stageRoot, $stageMap);
+        overlay_test_expect(@copy($manifestPath, $stageRoot . DIRECTORY_SEPARATOR . 'source-manifest.json'),
+            'Could not stage the pinned source manifest for the captured-loader fixture.');
+        overlay_test_expect(@copy($stageSource . DIRECTORY_SEPARATOR . 'preprocessing.php',
+            $stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+            'Could not create the captured loader legacy duplicate.');
+        $backupPath = $privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php';
+        overlay_test_write($backupPath, overlay_test_make_backup($ownerRoot, $ownerBase,
+            $upstream['version'], $upstream['commit'], $pins));
+        $productionHelper = $repoRoot . DIRECTORY_SEPARATOR . 'server' . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'overlay_setup.php';
+        overlay_test_expect(@copy($productionHelper, $helperPath), 'Could not copy production helper into loader fixture.');
+        require_once $repoRoot . DIRECTORY_SEPARATOR . 'server' . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'auth.php';
+        require $helperPath;
+
+        $before = overlay_test_capture_loader($fixtureRoot, $capturedCore,
+            $fixtureRoot . DIRECTORY_SEPARATOR . 'before-loader.json');
+        overlay_test_expect($before['exitCode'] === 0, 'Pre-migration captured loader child failed: ' . (string)$before['stderr']);
+        overlay_test_expect(($before['trace']['hookCount'] ?? null) === 2
+            && ($before['trace']['hookPaths'] ?? null) === [
+                overlay_test_normalize_path($ownerRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+                overlay_test_normalize_path($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+            ]
+            && ($before['trace']['httpStatus'] ?? null) === 409
+            && ($before['trace']['requestType'] ?? null) === 'instruction'
+            && ($before['trace']['route'] ?? null) === 'solo_reflection'
+            && ($before['trace']['originRequestType'] ?? null) === 'inputtext'
+            && ($before['trace']['terminalReason'] ?? null) === 'background_paused',
+            'Pinned recursive loader did not reproduce two-hook excluded-player Solo collision: ' . json_encode($before['trace']));
+
+        $result = overlay_test_apply($fixtureRoot, $ownerRoot, $privateRoot);
+        overlay_test_expect($result === ['state' => 'already_enabled', 'reason' => null],
+            'Known stale duplicate could not be removed from an already-enabled owner.');
+        overlay_test_expect(!file_exists($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php')
+            && !is_link($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+            'Overlay migration left the active duplicate at the exact-basename hook path.');
+        $after = overlay_test_capture_loader($fixtureRoot, $capturedCore,
+            $fixtureRoot . DIRECTORY_SEPARATOR . 'after-loader.json');
+        overlay_test_expect($after['exitCode'] === 0, 'Post-migration captured loader child failed: ' . (string)$after['stderr']);
+        overlay_test_expect(($after['trace']['hookCount'] ?? null) === 1
+            && ($after['trace']['hookPaths'] ?? null) === [
+                overlay_test_normalize_path($ownerRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+            ]
+            && ($after['trace']['httpStatus'] ?? null) === 200
+            && ($after['trace']['requestType'] ?? null) === 'instruction'
+            && ($after['trace']['route'] ?? null) === 'solo_reflection'
+            && ($after['trace']['originRequestType'] ?? null) === 'inputtext'
+            && ($after['trace']['originDialogue'] ?? null) === 'Dragonborn: I wait quietly.',
+            'Post-migration exact-basename loader did not process excluded-player Solo once: ' . json_encode($after['trace']));
+        overlay_test_full_dir_swap($fixtureRoot, $stageSource, $manifestPath, $stageMap);
+        echo json_encode(['case' => 'loader-excluded-solo', 'before' => $before['trace'], 'after' => $after['trace'],
+            'fullDirectorySwap' => 'passed', 'passed' => true], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
+    } finally {
+        overlay_test_remove_tree($fixtureRoot);
+    }
 }
 
 function overlay_test_case(
@@ -338,9 +654,10 @@ function overlay_test_case(
         overlay_test_copy_files($ownerBase, $ownerRoot, OVERLAY_TEST_FILES);
         overlay_test_owner_manifest($ownerRoot);
         $manifest = overlay_test_read_manifest($manifestPath);
+        $stageMap = overlay_test_stage_map($manifest);
         $pins = overlay_test_current_pins($manifest);
         $upstream = $manifest['upstream'];
-        if (in_array($case, ['already-postimage', 'postimage-without-backup', 'tampered-archive',
+        if (in_array($case, ['already-postimage', 'already-postimage-stale-hook-cleanup', 'postimage-without-backup', 'tampered-archive',
             'postimage-legacy-backup', 'postimage-tampered-current-backup'], true)) {
             foreach (OVERLAY_TEST_FILES as $name) {
                 overlay_test_expect(@copy($stageSource . DIRECTORY_SEPARATOR . $name, $ownerRoot . DIRECTORY_SEPARATOR . $name),
@@ -349,13 +666,41 @@ function overlay_test_case(
         }
         if ($case !== 'missing-stage') {
             $stageRoot = $pluginRoot . DIRECTORY_SEPARATOR . 'setup' . DIRECTORY_SEPARATOR . 'pcv-overlay';
-            overlay_test_copy_tree($stageSource, $stageRoot);
+            overlay_test_copy_tree($stageSource, $stageRoot, $stageMap);
             overlay_test_expect(@copy($manifestPath, $stageRoot . DIRECTORY_SEPARATOR . 'source-manifest.json'),
                 'Could not stage the pinned source manifest.');
+            if (in_array($case, ['legacy-hook-template-cleanup', 'already-postimage-stale-hook-cleanup',
+                'legacy-upgrade-rollback', 'legacy-upgrade-rollback-active-restore-failure'], true)) {
+                overlay_test_expect(@copy($stageSource . DIRECTORY_SEPARATOR . 'preprocessing.php',
+                    $stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+                    'Could not create the exact legacy active preprocessing fixture.');
+            } elseif ($case === 'legacy-hook-template-unknown') {
+                overlay_test_write($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php', "<?php // unknown stale bytes\n");
+            }
         }
         if ($case === 'owner-drift') {
             overlay_test_expect(@file_put_contents($ownerRoot . DIRECTORY_SEPARATOR . 'scope.php', "\nfixture drift\n", FILE_APPEND) !== false,
                 'Could not create owner drift fixture.');
+        }
+
+        if ($case === 'legacy-hook-template-cleanup') {
+            $legacyHook = $stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php';
+            $legacyHookBytes = @file_get_contents($legacyHook);
+            $expectedHookPost = null;
+            foreach ($manifest['files'] as $entry) {
+                if (($entry['path'] ?? null) === 'preprocessing.php') {
+                    $expectedHookPost = $entry['postimageSha256'] ?? null;
+                    break;
+                }
+            }
+            overlay_test_expect(is_string($legacyHookBytes) && is_string($expectedHookPost)
+                && hash_equals($expectedHookPost, hash('sha256', $legacyHookBytes)),
+                'Legacy active template fixture must be the exact pinned PCV preprocessing source.');
+        }
+        if ($case === 'legacy-hook-template-unknown') {
+            $legacyHook = $stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php';
+            $legacyHookBytes = @file_get_contents($legacyHook);
+            overlay_test_expect(is_string($legacyHookBytes), 'Unknown stale hook fixture is missing.');
         }
 
         $initialOwner = overlay_test_owner_hashes($ownerRoot);
@@ -368,7 +713,7 @@ function overlay_test_case(
 
         require_once $repoRoot . DIRECTORY_SEPARATOR . 'server' . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'auth.php';
         require $helperPath;
-        if ($case === 'already-postimage') {
+        if ($case === 'already-postimage' || $case === 'already-postimage-stale-hook-cleanup') {
             overlay_test_write($backupPath, overlay_test_make_backup($ownerRoot, $ownerBase,
                 $upstream['version'], $upstream['commit'], $pins));
         } elseif ($case === 'legacy-upgrade' || $case === 'legacy-tampered'
@@ -408,6 +753,7 @@ function overlay_test_case(
                 $upstream['version'], $upstream['commit'], $pins));
         }
 
+        $backupBefore = is_file($backupPath) && !is_link($backupPath) ? @file_get_contents($backupPath) : null;
         $result = overlay_test_apply($fixtureRoot, $ownerRoot, $privateRoot);
         $success = ['state' => 'enabled', 'reason' => null];
         $already = ['state' => 'already_enabled', 'reason' => null];
@@ -447,6 +793,44 @@ function overlay_test_case(
                 'All-postimage 0.1.24 owner incorrectly accepted a corrupted current backup.');
             overlay_test_expect(overlay_test_owner_hashes($ownerRoot) === $initialOwner,
                 'Corrupted current-backup refusal changed owner bytes.');
+        } elseif ($case === 'legacy-hook-template-cleanup') {
+            overlay_test_expect($result === $success, 'Known stale PCV hook template prevented overlay setup.');
+            $expectedPost = array_combine(OVERLAY_TEST_FILES, array_map(
+                static fn(string $name): string => hash_file('sha256', $stageSource . DIRECTORY_SEPARATOR . $name),
+                OVERLAY_TEST_FILES,
+            ));
+            overlay_test_expect(is_array($expectedPost) && overlay_test_owner_hashes($ownerRoot) === $expectedPost,
+                'Legacy-template migration changed the exact owner postimages.');
+            overlay_test_expect(!file_exists($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php')
+                && !is_link($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+                'Successful setup left the stale recursive-hook basename active.');
+            $activeState = qd_pcv_overlay_backup_state($backupPath,
+                realpath($fixtureRoot) ?: $fixtureRoot, qd_pcv_overlay_pins());
+            $expectedBackup = [];
+            foreach (qd_pcv_overlay_pins() as $name => $entry) {
+                if (!hash_equals($entry['base'], $entry['post'])) {
+                    $expectedBackup[$name] = @file_get_contents($ownerBase . DIRECTORY_SEPARATOR . $name);
+                }
+            }
+            overlay_test_expect($activeState === $expectedBackup,
+                'Known stale-hook migration did not preserve exact pinned PCV base bytes in the active backup.');
+        } elseif ($case === 'already-postimage-stale-hook-cleanup') {
+            overlay_test_expect($result === $already, 'Valid all-postimage owner was not recognized during stale-hook cleanup.');
+            overlay_test_expect(!file_exists($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php')
+                && !is_link($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php'),
+                'Already-enabled setup left the stale recursive-hook basename active.');
+            overlay_test_expect(is_string($backupBefore) && hash_equals($backupBefore, (string)@file_get_contents($backupPath)),
+                'Already-enabled stale-hook cleanup changed the active backup bytes.');
+        } elseif ($case === 'legacy-hook-template-unknown') {
+            overlay_test_expect($result === ['state' => 'unavailable', 'reason' => 'staged_source_missing'],
+                'Unknown stale hook bytes were not refused as an invalid staged source.');
+            overlay_test_expect(overlay_test_owner_hashes($ownerRoot) === $initialOwner,
+                'Unknown stale hook refusal changed PCV owner bytes.');
+            overlay_test_expect(hash_equals((string)$legacyHookBytes,
+                (string)@file_get_contents($stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php')),
+                'Unknown stale hook refusal changed or removed the active hook.');
+            overlay_test_expect($backupBefore === null && !file_exists($backupPath) && !is_link($backupPath),
+                'Unknown stale hook refusal created or changed a backup.');
         } elseif ($case === 'owner-drift') {
             overlay_test_expect($result === ['state' => 'unavailable', 'reason' => 'owner_incompatible'],
                 'Owner drift was not refused.');
@@ -501,7 +885,8 @@ function overlay_test_parse_args(array $argv): array
     $options = [];
     for ($index = 1; $index < count($argv); $index++) {
         $name = $argv[$index];
-        if (!in_array($name, ['--case', '--stage', '--owner-base', '--manifest', '--legacy-owner-root'], true)
+        if (!in_array($name, ['--case', '--stage', '--owner-base', '--manifest', '--legacy-owner-root', '--captured-core',
+            '--loader-run', '--fixture-root', '--trace-output'], true)
             || !isset($argv[$index + 1])) {
             throw new RuntimeException('Invalid overlay test argument list.');
         }
@@ -521,12 +906,26 @@ function overlay_test_real_path(array $options, string $key, bool $directory): s
 $repoRoot = dirname(__DIR__, 3);
 try {
     $options = overlay_test_parse_args($argv);
+    if (($options['loader-run'] ?? null) === '1') {
+        $fixtureRoot = overlay_test_real_path($options, 'fixture-root', true);
+        $capturedCore = overlay_test_real_path($options, 'captured-core', false);
+        $tracePath = $options['trace-output'] ?? null;
+        overlay_test_expect(is_string($tracePath) && $tracePath !== '' && !str_contains($tracePath, "\0"),
+            'Captured loader trace path is invalid.');
+        overlay_test_loader_child($fixtureRoot, $capturedCore, $tracePath);
+        exit(0);
+    }
     $stageSource = overlay_test_real_path($options, 'stage', true);
     $ownerBase = overlay_test_real_path($options, 'owner-base', true);
     $manifestPath = overlay_test_real_path($options, 'manifest', false);
     $legacyOwnerRoot = overlay_test_real_path($options, 'legacy-owner-root', true);
+    $capturedCore = overlay_test_real_path($options, 'captured-core', false);
     $cases = [
         'clean-repeat',
+        'legacy-hook-template-cleanup',
+        'loader-excluded-solo',
+        'already-postimage-stale-hook-cleanup',
+        'legacy-hook-template-unknown',
         'already-postimage',
         'postimage-without-backup',
         'postimage-legacy-backup',
@@ -544,7 +943,11 @@ try {
     ];
     if (isset($options['case'])) {
         overlay_test_expect(in_array($options['case'], $cases, true), 'Unknown overlay migration case.');
-        overlay_test_case($options['case'], $stageSource, $ownerBase, $manifestPath, $legacyOwnerRoot);
+        if ($options['case'] === 'loader-excluded-solo') {
+            overlay_test_loader_case($stageSource, $ownerBase, $manifestPath, $capturedCore);
+        } else {
+            overlay_test_case($options['case'], $stageSource, $ownerBase, $manifestPath, $legacyOwnerRoot);
+        }
         exit(0);
     }
 
@@ -554,6 +957,7 @@ try {
             PHP_BINARY, '-n', __FILE__, '--case', $case,
             '--stage', $stageSource, '--owner-base', $ownerBase,
             '--manifest', $manifestPath, '--legacy-owner-root', $legacyOwnerRoot,
+            '--captured-core', $capturedCore,
         ];
         $pipes = [];
         $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $repoRoot);

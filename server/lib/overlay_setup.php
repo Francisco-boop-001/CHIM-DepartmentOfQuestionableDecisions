@@ -85,6 +85,19 @@ function qd_pcv_overlay_same_path(string $left, string $right): bool
             : $left === $right);
 }
 
+function qd_pcv_overlay_stage_names(): array
+{
+    return [
+        'installation_guard.php' => 'installation_guard.php',
+        'log.php' => 'log.php',
+        'manifest.json' => 'manifest.json',
+        'preprocessing.php' => 'preprocessing.php.template',
+        'reflection.php' => 'reflection.php',
+        'scope.php' => 'scope.php',
+        'state.php' => 'state.php',
+    ];
+}
+
 function qd_pcv_overlay_require(bool $condition, string $reason): void
 {
     if (!$condition) {
@@ -117,6 +130,7 @@ function qd_pcv_overlay_read_stage(string $stageRoot): array
     $expectedTopKeys = ['schemaVersion', 'upstream', 'stagedSourceDirectory', 'installDirectory', 'files'];
     $upstream = is_array($manifest) ? ($manifest['upstream'] ?? null) : null;
     $expectedFiles = qd_pcv_overlay_pins();
+    $expectedStageNames = qd_pcv_overlay_stage_names();
     $fileEntries = is_array($manifest) ? ($manifest['files'] ?? null) : null;
     qd_pcv_overlay_require(is_array($manifest) && array_keys($manifest) === $expectedTopKeys
         && ($manifest['schemaVersion'] ?? null) === 1
@@ -134,13 +148,14 @@ function qd_pcv_overlay_read_stage(string $stageRoot): array
     foreach ($expectedFiles as $relative => $pins) {
         $entry = $fileEntries[$index] ?? null;
         qd_pcv_overlay_require(is_array($entry)
-            && array_keys($entry) === ['path', 'baseSha256', 'postimageSha256', 'modified']
+            && array_keys($entry) === ['path', 'stagedPath', 'baseSha256', 'postimageSha256', 'modified']
             && ($entry['path'] ?? null) === $relative
+            && ($entry['stagedPath'] ?? null) === $expectedStageNames[$relative]
             && ($entry['baseSha256'] ?? null) === $pins['base']
             && ($entry['postimageSha256'] ?? null) === $pins['post']
             && ($entry['modified'] ?? null) === !hash_equals($pins['base'], $pins['post']),
             'staged_source_missing');
-        $sourcePath = $stageRoot . DIRECTORY_SEPARATOR . $relative;
+        $sourcePath = $stageRoot . DIRECTORY_SEPARATOR . $expectedStageNames[$relative];
         $size = @filesize($sourcePath);
         if (is_link($sourcePath) || !is_file($sourcePath) || !is_int($size) || $size < 1 || $size > QD_PCV_OVERLAY_MAX_SOURCE_BYTES) {
             throw new QDPCVOverlayFailure('staged_source_missing');
@@ -153,6 +168,39 @@ function qd_pcv_overlay_read_stage(string $stageRoot): array
         $index++;
     }
     return ['files' => $sourceBytes, 'pins' => $expectedFiles];
+}
+
+function qd_pcv_overlay_stale_hook_bytes(string $stageRoot, array $pins): ?string
+{
+    $path = $stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php';
+    if (!file_exists($path) && !is_link($path)) {
+        return null;
+    }
+    if (is_link($path) || !is_file($path)) {
+        throw new QDPCVOverlayFailure('staged_source_missing');
+    }
+    $size = @filesize($path);
+    if (!is_int($size) || $size < 1 || $size > QD_PCV_OVERLAY_MAX_SOURCE_BYTES) {
+        throw new QDPCVOverlayFailure('staged_source_missing');
+    }
+    $bytes = @file_get_contents($path);
+    if (!is_string($bytes) || !hash_equals($pins['preprocessing.php']['post'], hash('sha256', $bytes))) {
+        throw new QDPCVOverlayFailure('staged_source_missing');
+    }
+    return $bytes;
+}
+
+function qd_pcv_overlay_remove_stale_hook(string $stageRoot, ?string $expectedBytes): void
+{
+    if ($expectedBytes === null) {
+        return;
+    }
+    $path = $stageRoot . DIRECTORY_SEPARATOR . 'preprocessing.php';
+    $current = !is_link($path) && is_file($path) ? @file_get_contents($path) : false;
+    if (!is_string($current) || !hash_equals($expectedBytes, $current)
+        || !@unlink($path) || file_exists($path) || is_link($path)) {
+        throw new QDPCVOverlayFailure('write_failed');
+    }
 }
 
 function qd_pcv_overlay_read_owner(string $ownerRoot, array $pins): array
@@ -471,6 +519,7 @@ function qd_pcv_overlay_apply(array $settings): array
         qd_pcv_overlay_require(is_string($stageRoot) && qd_pcv_overlay_same_path($stageRoot, $expectedStage), 'unsafe_path');
         $stage = qd_pcv_overlay_read_stage($stageRoot);
         $pins = $stage['pins'];
+        $staleHookBytes = qd_pcv_overlay_stale_hook_bytes($stageRoot, $pins);
         $owner = qd_pcv_overlay_read_owner($ownerRoot, $pins);
         $modifiedNames = array_keys(array_filter($pins, static fn(array $entry): bool => !hash_equals($entry['base'], $entry['post'])));
         $backupPath = $privateRoot . DIRECTORY_SEPARATOR . 'pcv-overlay-backup.php';
@@ -528,6 +577,7 @@ function qd_pcv_overlay_apply(array $settings): array
 
         if ($owner['allPostimage']) {
             qd_pcv_overlay_require($activeKind === 'current', 'owner_incompatible');
+            qd_pcv_overlay_remove_stale_hook($stageRoot, $staleHookBytes);
             return qd_pcv_overlay_result('already_enabled');
         }
 
@@ -597,6 +647,7 @@ function qd_pcv_overlay_apply(array $settings): array
         qd_pcv_overlay_require($verified['allPostimage'], 'write_failed');
         $verifiedBackup = qd_pcv_overlay_backup_state($backupSafe, $chimRoot, $pins);
         qd_pcv_overlay_require($verifiedBackup === $originals, 'write_failed');
+        qd_pcv_overlay_remove_stale_hook($stageRoot, $staleHookBytes);
         return qd_pcv_overlay_result('enabled');
     } catch (Throwable $failure) {
         $failureReason = $failure instanceof QDPCVOverlayFailure ? $failure->reason : 'write_failed';

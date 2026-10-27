@@ -207,7 +207,12 @@ function pcv_companion_project_owner_config(?array $source, array $knownNpcs): ?
     if (array_key_exists('actor_a', $source)) {
         $configuration['actor_a'] = $mapId($source['actor_a']);
     }
-    if (array_key_exists('actor_b', $source)) {
+    if (($configuration['scene_mode'] ?? null) === 'solo') {
+        if (!array_key_exists('actor_b', $source) || $source['actor_b'] !== null) {
+            return null;
+        }
+        $configuration['actor_b'] = null;
+    } elseif (array_key_exists('actor_b', $source)) {
         $configuration['actor_b'] = $mapId($source['actor_b']);
     }
     if (array_key_exists('actor_ids', $source)) {
@@ -220,7 +225,9 @@ function pcv_companion_project_owner_config(?array $source, array $knownNpcs): ?
         $configuration['opener'] = $source['opener'] === 'auto' ? 'auto' : $mapId($source['opener']);
     }
     foreach (['actor_a', 'actor_b'] as $field) {
-        if (array_key_exists($field, $configuration) && !is_string($configuration[$field])) {
+        $soloActorB = $field === 'actor_b' && ($configuration['scene_mode'] ?? null) === 'solo'
+            && array_key_exists($field, $configuration) && $configuration[$field] === null;
+        if (array_key_exists($field, $configuration) && !is_string($configuration[$field]) && !$soloActorB) {
             return null;
         }
     }

@@ -1,5 +1,29 @@
 # Portable source build
 
+## Prealpha.24 offline package candidate
+
+The offline candidate starts from the exact published prealpha.23 installable ZIP (SHA-256 `1d2cc2aaf1472dcfdc7dc6d979ae29d748ff3687bee1f0d05a85f7a390b9cf28`). It replaces the Department DWPkg and PCV companion DWPkg, and adds the newly built native 0.1.17 DLL. The other 19 of the 22 MO2 members must remain byte-identical. The Department package advances to 0.1.0-prealpha.24, pairs PCV companion 0.1.0-prealpha.12 with PCV owner 0.1.24, and adds Sealed Fates dev.28. Its exact DWPkg delta is the two version manifests, correspondence adapter, overlay setup helper, seven-entry overlay source manifest, removal of staged `server/setup/pcv-overlay/preprocessing.php`, addition of `server/setup/pcv-overlay/preprocessing.php.template`, and regenerated checksums. The PCV companion DWPkg delta is limited to its two version manifests, `server/companion.php`, and regenerated checksums. The overlay keeps the owner destination `preprocessing.php` but stages those bytes only as `preprocessing.php.template`; no active staged `preprocessing.php` member is accepted.
+
+`packaging/build-installable-prealpha24.py` reads one canonical `offline-checks.json`, the exact prealpha.23 baseline, the supplied native DLL and its public build receipt, and a full Department source commit equal to `HEAD`. The receipt has exactly `schemaVersion`, `kind`, `sourceCommit`, `checks`, `sourceFiles`, `native`, `receiptHashes`, and `limits`. Its six fixed checks must all be true and each has a SHA-256 receipt binding. `sourceFiles` binds the fixed set of changed runtime/native inputs to Git blobs at the selected commit. `native` binds the supplied DLL, version 0.1.17.0, and public build-receipt hash. The builder independently checks the receipt's 27 native source hashes against the selected Git commit, plus its DLL bytes/version/hash, dependency lock, and green focused regression. All behavior limits are false: server, database, HTTP, provider, Skyrim, installed game, and live. Normal CHIM HTTP proof receipts are not accepted. The proof ZIP contains `offline-checks.json`, the minimal public `native-build-receipt.json`, and generated package provenance; raw test/build logs remain outside the archives.
+
+Build and audit into a new directory outside the repository after the source and evidence are frozen:
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Commit = '<frozen-source-commit>'
+$Artifacts = 'K:\ActorwrightExchange\artifacts\department-offline-repair-20261027'
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-normal-chim-20261027\release\WorldOfDramaLlama-0.1.0-prealpha.23.zip'
+$Checks = Join-Path $Artifacts 'offline-checks.json'
+$NativeDll = Join-Path $Artifacts 'native-output\plugin-output\WorldOfDramaLlama.dll'
+$NativeBuildReceipt = Join-Path $Artifacts 'native-build-public.json'
+$Output = Join-Path $Artifacts 'package-prealpha24'
+& $Python -B packaging/build-installable-prealpha24.py build --prealpha23-zip $Baseline --offline-checks $Checks --native-dll $NativeDll --native-build-receipt $NativeBuildReceipt --source-commit $Commit --output-dir $Output --git $Git
+& $Python -B packaging/build-installable-prealpha24.py audit --prealpha23-zip $Baseline --offline-checks $Checks --native-dll $NativeDll --native-build-receipt $NativeBuildReceipt --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The outputs are the regular installable ZIP, explicit-allowlist source ZIP, offline-proof ZIP, and GNU-compatible `SHA256SUMS.txt`. They are a source/package candidate only; they do not satisfy installed-game, CHIM server, provider, or Skyrim acceptance gates. See the [dev.28 pairing contract](DEV28-COMPATIBILITY.md) and [verification record](VERIFICATION.md).
+
 ## Prealpha.23 normal CHIM release
 
 Prealpha.23 uses the exact published prealpha.22 ZIP (SHA-256 `688c6bd761031902d5017a6593b2ff50e13a191f154d7950708adefdffe94bfd`) as its baseline and keeps the 22-member MO2 layout. The three changed payloads are the Department DWPkg, bundled Malpractice Makes Perfect dev.4 DWPkg (SHA-256 `9f1d8221954a293116b5bc7c202f13c4eb2062982d3fdabeb9134dfa0e05cec8`), and `PrismaUI/views/WorldOfDramaLlama/app.js`. The UI change replaces stale setup copy in the authenticated Mind Poisoning and Sworn & Scorned status panels with a perspective-and-refresh prompt when those panels have no newer status. The other 19 payloads remain byte-for-byte identical, including the unchanged DLL (SHA-256 `bb901e6e423c19f63eb804f8303012dbfd8f759274ad719d31969076218cb6ef`), the other four UI files, and PCV overlay. ZIP entries use 2026-10-27 00:00:12.

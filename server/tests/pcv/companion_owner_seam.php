@@ -208,9 +208,49 @@ try {
         'enabled' => true,
         'scene_mode' => 'solo',
         'actor_a' => '303',
+        'actor_b' => null,
         'exclude_player' => true,
         'bystander_mode' => 'exclude',
     ], $identityKnown);
+    $soloOwnerConfig = [
+        'enabled' => true,
+        'scene_mode' => 'solo',
+        'actor_a' => '303',
+        'actor_b' => null,
+        'exclude_player' => true,
+        'bystander_mode' => 'exclude',
+    ];
+    $projectedSoloConfig = pcv_companion_project_owner_config($soloOwnerConfig, $identityKnown);
+    $soloWithoutActorB = $soloOwnerConfig;
+    unset($soloWithoutActorB['actor_b']);
+    $soloWithActorB = $soloOwnerConfig;
+    $soloWithActorB['actor_b'] = '404';
+    $groupOwnerConfig = [
+        'enabled' => true,
+        'scene_mode' => 'pair',
+        'actor_a' => '404',
+        'actor_b' => '303',
+        'actor_ids' => ['404', '303'],
+        'opener' => 'auto',
+        'exclude_player' => true,
+        'bystander_mode' => 'exclude',
+    ];
+    $projectedGroupConfig = pcv_companion_project_owner_config($groupOwnerConfig, $identityKnown);
+    companion_owner_check(pcv_valid_config($soloOwnerConfig, false)
+        && pcv_valid_config($identityConfig, false)
+        && is_array($projectedSoloConfig)
+        && ($projectedSoloConfig['actor_a'] ?? null) === 'npc:303'
+        && array_key_exists('actor_b', $projectedSoloConfig)
+        && $projectedSoloConfig['actor_b'] === null
+        && pcv_companion_owner_target_is_member($projectedSoloConfig, 'Aela', $identityKnown)
+        && pcv_companion_project_owner_config($soloWithoutActorB, $identityKnown) === null
+        && pcv_companion_project_owner_config($soloWithActorB, $identityKnown) === null
+        && ($projectedIdentityConfig['actor_b'] ?? null) === 'npc:303'
+        && pcv_valid_config($groupOwnerConfig, false)
+        && is_array($projectedGroupConfig)
+        && ($projectedGroupConfig['actor_ids'] ?? null) === ['npc:404', 'npc:303']
+        && ($projectedGroupConfig['opener'] ?? null) === 'auto',
+        'owner projection must preserve canonical solo actor_b=null, reject omitted or non-null solo actor_b, and retain pair/group identity projection.');
     companion_owner_check(!array_key_exists('404', $ambiguousIdentityKnown)
         && !array_key_exists('405', $ambiguousIdentityKnown)
         && pcv_companion_owner_target_identity($rawTargetName, $ambiguousIdentityKnown) === null
@@ -218,7 +258,7 @@ try {
         pcv_companion_project_owner_config($collisionConfig, $ambiguousIdentityKnown) ?? [],
         $rawTargetName,
         $ambiguousIdentityKnown,
-    ) && !pcv_companion_owner_target_is_member(
+    ) && is_array($nonmemberConfig) && !pcv_companion_owner_target_is_member(
         $nonmemberConfig ?? [],
         $rawTargetName,
         $identityKnown,

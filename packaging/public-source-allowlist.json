@@ -241,6 +241,11 @@
     { "path": "docs/NORMAL-CHIM-COMPATIBILITY.md" },
     { "path": "packaging/build-installable-prealpha23.py" },
     { "path": "packaging/tests/test_installable_prealpha23.py" },
-    { "path": "server/tests/pcv/core_main_guard.php" }
+    { "path": "server/tests/pcv/core_main_guard.php" },
+    { "path": "docs/DEV28-COMPATIBILITY.md" },
+    { "path": "native/src/GoldInventory.h" },
+    { "path": "packaging/build-installable-prealpha24.py" },
+    { "path": "packaging/tests/test_installable_prealpha24.py" },
+    { "path": "server/tests/correspondence/dev28-source-contract.php" }
   ]
 }

@@ -1,21 +1,57 @@
 #include "Contract.h"
+#include "GoldInventory.h"
 #include "NativePolicy.h"
 
 #include "PlayerConversationRoutingPolicy.h"
 
 #include <cstdlib>
+#include <cstdint>
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #define CHECK(condition) do { if (!(condition)) throw std::runtime_error("check failed: " #condition); } while (false)
 
 namespace
 {
+	struct InventoryGoldTestForm
+	{
+		std::uint32_t formId;
+
+		bool IsGold() const noexcept { return formId == 0x0000000F; }
+	};
+
+	void TestGoldAmountFromInventory()
+	{
+		const InventoryGoldTestForm vanillaGold{ 0x0000000F };
+		const InventoryGoldTestForm ordinaryItem{ 0x01005678 };
+		using Row = std::pair<const InventoryGoldTestForm*, std::pair<std::int32_t, int>>;
+		const std::vector<Row> inventory{
+			{ &ordinaryItem, { 91, 0 } }, { nullptr, { 23, 0 } }, { &vanillaGold, { 17, 0 } }
+		};
+		CHECK(dql::inventory::GoldAmountFromInventory(inventory) == 17);
+
+		const std::vector<Row> empty;
+		CHECK(dql::inventory::GoldAmountFromInventory(empty) == 0);
+		const std::vector<Row> withoutGold{ { &ordinaryItem, { 91, 0 } }, { nullptr, { 23, 0 } } };
+		CHECK(dql::inventory::GoldAmountFromInventory(withoutGold) == 0);
+
+		const std::vector<Row> zeroGold{ { &vanillaGold, { 0, 0 } }, { &ordinaryItem, { 91, 0 } } };
+		CHECK(dql::inventory::GoldAmountFromInventory(zeroGold) == 0);
+		const std::vector<Row> nonpositive{ { &vanillaGold, { -8, 0 } }, { &ordinaryItem, { 91, 0 } } };
+		CHECK(dql::inventory::GoldAmountFromInventory(nonpositive) == 0);
+
+		const std::vector<Row> maximum{ { &vanillaGold, { (std::numeric_limits<std::int32_t>::max)(), 0 } } };
+		CHECK(dql::inventory::GoldAmountFromInventory(maximum) ==
+			(std::numeric_limits<std::int32_t>::max)());
+	}
+
 	void WriteJson(const char* path, const dql::contract::Json& response)
 	{
 		if (!path || !*path) return;
@@ -97,6 +133,12 @@ namespace
 		const auto sourcePath = std::getenv("DQL_PLUGIN_SOURCE_PATH");
 		CHECK(sourcePath && *sourcePath);
 		const auto source = ReadText(sourcePath);
+		CHECK(source.find("GetGoldAmount") == std::string::npos);
+		CHECK(ContainsBetween(source, "Json BuildInventorySnapshot()", "static bool HasExactProperties",
+			"dql::inventory::GoldAmountFromInventory("));
+		CHECK(ContainsBetween(source, "ComposeResult PrepareComposePayload(", "void LoadOpenKey()",
+			"dql::inventory::GoldAmountFromInventory(player->GetInventory())"));
+		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.17.0\"_v,") != std::string::npos);
 		CHECK(source.find("void RespondPreDispatchError(") != std::string::npos);
 		CHECK(source.find("dql::contract::MakePreDispatchError(request, code, message)") != std::string::npos);
 		CHECK(source.find("dql::contract::MakeError(request, code, message, dispatched)") != std::string::npos);
@@ -259,6 +301,7 @@ int main()
 	try {
 		TestPreDispatchRefusalFixture();
 		TestQueueFullWriteRefusalFixture();
+		TestGoldAmountFromInventory();
 		TestProductionSourceWiring();
 		TestManagedNameNormalization();
 		TestInitializeLifecycle();

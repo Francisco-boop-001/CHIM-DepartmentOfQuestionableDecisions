@@ -1,5 +1,6 @@
 #include "Contract.h"
 #include "ConnectionProtocol.h"
+#include "GoldInventory.h"
 #include "HttpTransport.h"
 #include "NativePolicy.h"
 #include "PcvCompanionPolicy.h"
@@ -1256,6 +1257,7 @@ namespace
 			inventorySelections_.clear();
 			dql::contract::Json items = dql::contract::Json::array();
 			const auto inventory = player->GetInventory();
+			const auto availableGold = dql::inventory::GoldAmountFromInventory(inventory);
 			for (const auto& [form, row] : inventory) {
 				if (!form || row.first <= 0 || form->IsGold() || form->IsDeleted() || form->IsDynamicForm() || !form->IsInventoryObject()) {
 					continue;
@@ -1307,7 +1309,7 @@ namespace
 			return {
 				{ "inventoryRevision", inventoryRevision_ },
 				{ "items", std::move(items) },
-				{ "gold", { { "available", std::max<std::int32_t>(0, player->GetGoldAmount()) } } }
+				{ "gold", { { "available", availableGold } } }
 			};
 		}
 
@@ -1447,7 +1449,7 @@ namespace
 				}
 				formIds.push_back(selection->second.formId);
 			}
-			const auto availableGold = std::max<std::int32_t>(0, player->GetGoldAmount());
+			const auto availableGold = dql::inventory::GoldAmountFromInventory(player->GetInventory());
 			if (!dql::policy::ValidateTransferLines(lines, goldAmount, availableGold)) {
 				return { std::nullopt, "stale_revision", "The requested items or gold are no longer available." };
 			}
@@ -2910,7 +2912,7 @@ extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.16.0"_v,
+SKSEPluginInfo(.Version = "0.1.17.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
@@ -2922,7 +2924,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	SKSE::Init(skse);
 	InitializeNativeLogger();
 	LogEvent("startup", "skse_initialized");
-	LogEvent("startup", "version_0_1_0_16");
+	LogEvent("startup", "version_0_1_0_17");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
 	if (!messaging || !papyrus) {
