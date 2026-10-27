@@ -1,16 +1,16 @@
-# Department install-and-use guide — prealpha.23 candidate
+# Department install-and-use guide — prealpha.23
 
 ## Prealpha.23 candidate status
 
-Prealpha.23 supports ordinary CHIM with Playthrough Saves disabled; users do not need to enable it or create a managed profile for ordinary use. Its history remains in CHIM's shared host scope, not per-save isolation. Existing managed profiles retain their existing per-profile isolation. The actual run13 HTTP test and separate unchanged-DLL validation passed; see [the evidence record](../docs/VERIFICATION.md) and [normal CHIM compatibility](../docs/NORMAL-CHIM-COMPATIBILITY.md). The candidate package name is `WorldOfDramaLlama-0.1.0-prealpha.23.zip`. Malpractice Makes Perfect dev.4 is published at [owner release 0.1.0-dev.4](https://github.com/Francisco-boop-001/CHIM-MalpracticeMakesPerfect/releases/tag/v0.1.0-dev.4), source commit `e203c0de17df0004e3643a42cafbf6a7e5368d58`, with exact DWPkg SHA-256 `9f1d8221954a293116b5bc7c202f13c4eb2062982d3fdabeb9134dfa0e05cec8`. Root independently verified the anonymous dev.4 download byte-for-byte against the TEST candidate. Canonical package summaries, package build, and Department publication remain pending. The current published Department download remains prealpha.22.
+Prealpha.23 supports ordinary CHIM with Playthrough Saves disabled; users do not need to enable it or create a managed profile for ordinary use. Its history remains in CHIM's shared host scope, not per-save isolation. Existing managed profiles retain their existing per-profile isolation. The actual run13 HTTP test and separate unchanged-DLL validation passed; see [the evidence record](../docs/VERIFICATION.md) and [normal CHIM compatibility](../docs/NORMAL-CHIM-COMPATIBILITY.md). The installable package name is `WorldOfDramaLlama-0.1.0-prealpha.23.zip`. Malpractice Makes Perfect dev.4 is published at [owner release 0.1.0-dev.4](https://github.com/Francisco-boop-001/CHIM-MalpracticeMakesPerfect/releases/tag/v0.1.0-dev.4), source commit `e203c0de17df0004e3643a42cafbf6a7e5368d58`, with exact DWPkg SHA-256 `9f1d8221954a293116b5bc7c202f13c4eb2062982d3fdabeb9134dfa0e05cec8`. Root independently verified the anonymous dev.4 download byte-for-byte against the TEST candidate. Canonical package summaries, package build, and Department publication are complete. The current download is the [regular prealpha.23 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.23/WorldOfDramaLlama-0.1.0-prealpha.23.zip).
 
 The UI now replaces stale Mind Poisoning and Sworn & Scorned setup text with a prompt to select an authorized perspective and refresh when those panels are enabled but have no newer status. The proof used a headless replay; it does not verify Skyrim display, focus, or controller behavior.
 
-## Candidate install after prealpha.23 publication
+## Install published prealpha.23
 
-1. After publication, quit Skyrim and install `WorldOfDramaLlama-0.1.0-prealpha.23.zip` in MO2 using **Replace**. Install the regular ZIP only; source and compatibility-proof ZIPs are review materials.
+1. Quit Skyrim and install `WorldOfDramaLlama-0.1.0-prealpha.23.zip` in MO2 using **Replace**. Install the regular ZIP only; source and proof ZIPs are review materials.
 2. Use a disposable profile and save with CHIM enabled. Playthrough Saves can remain disabled; let normal CHIM synchronization detect the bundled server packages.
-3. Confirm Department `0.1.0-prealpha.23` in Plugin Manager. Do not install the candidate until it is published.
+3. Confirm Department `0.1.0-prealpha.23` in Plugin Manager.
 
 ## Archived instructions: published prealpha.22
 
