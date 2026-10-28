@@ -476,3 +476,40 @@ Review checkpoint: root independently reviewed Solo/null projection and exact de
 Offline final review: all19 overlay cases,18 package guards, native RED/GREEN and emitted-binary audits, historical-wire pure-DLL replay, and five owner source-readiness gates passed at their stated scope. New native header is included in the explicit public-source/native27-input bindings. Final review PASS; unused provenance constant removed. No server/database/HTTP/provider/installed-game/live/Skyrim test or change. MMP mutation fixture remains64/76 on Windows, identical to23baseline; directory-fsync protections unchanged. Frozen build/public-byte verification follows.
 
 Published [prealpha.24](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/tag/v0.1.0-prealpha.24) at 2026-10-27T23:16:13Z from immutable source `5b0fa12db93000a866493548b913cf6d6e16a7fd`. The installable is 620772 bytes, SHA-256 `3d4a8cfbf8c27b7b655865c5191c8a5d45e6d3fb4f9c999184098786b9c5e237`. Root verified all 245 source members against Git, 19 unchanged installable payloads, both new DWPkgs through the unmodified official archive validator without activation, and a clean-checkout byte-identical rebuild of all four assets. Draft and anonymous public downloads match local bytes, GitHub sizes/digests and GNU checksums; all 22 prior releases, 127 assets and 44 tag refs are unchanged. Native 0.1.17.0 is source-bound to 27 inputs, has independently reviewed gold callsites, and passes the focused native regression plus historical-wire pure-validator replay. All 19 overlay and 18 package cases and all five owner source-readiness gates pass. Server/bootstrap/database/provider/physical-transfer and Skyrim 1.5.97 acceptance remain unperformed; the MMP mutation fixture is 64/76 on Windows with 12 identical prealpha.23 baseline failures, not counted as passing. No live/core/installed-game change or distro access occurred during this repair. This completion note does not alter the immutable tag or assets.
+
+
+## Focused MMP Windows debug run - 2026-10-28
+- [x] Reproduce all12 assertions; current failures match retained prealpha.23 output exactly.
+- [x] File fsync succeeds on both drives; Windows PHP directory opening fails on both.
+- [x] Observed10 actual journal failure stacks before owner callbacks; no guard bypass or product fix.
+Constraints: offline fixtures only; no distro/server/database/HTTP/provider/installed-game access, code rebuild or publication.
+Review: pending.
+
+Review: fresh debug confirms one Windows PHP directory-handle prerequisite blocks10 synthetic mutation attempts and causes12 assertion failures. Actual journal failure precedes the callback; current production/fixture files match23baseline. Keep durability intact; run that integration gate on authorized Linux TEST, not the game client OS. Evidence artifacts/department-mmp-debug-20261028/DEBUG-REPORT.md. No runtime/server/game access, rebuild or publication.
+
+
+## Sealed Fates dev.29 compatibility preflight - 2026-10-28
+- [x] Inspect both production CorrespondenceStore implementations, snapshot lifetime and shared test fixture.
+- [ ] Await frozen dev.29 source closure before pinning, packaging or release.
+Review: read-only preflight sent to owner; mandatory memo method would affect both commit-boundary and read-only snapshot adapters, not just the read adapter. No signature guessed, source guard loosened, code/test/build or runtime/publication action. Evidence artifacts/department-sf29-preflight-20261028/ADAPTER-PREFLIGHT.md.
+
+
+## Sealed Fates transaction memo interface preparation - 2026-10-28
+- [x] Reproduce missing read-adapter method with the frozen28 interface fixture before implementing.
+- [x] LUNA/max implements exact delegation and per-callback memo scope, including falsey/exception/overlapping-instance tests.
+- [x] Root independently verifies memo tests, syntax, unchanged28/27 source pairing, no SQL/commit additions and scoped cleanup.
+- [x] Immutable dev.29 freeze received and all20 pins/public owner bytes independently verified.
+Constraints: workspace-only tests; no distro/server/DB/HTTP/provider/game access, native rebuild, speculative pins or release. Existing task-note edits preserved.
+Review: owner clarified that direct read-adapter calls must rebuild; only adapter-owned transaction/readTransaction callbacks may reuse memo. No SQL/global cache or inferred object-lifetime scope.
+
+Memo preparation review: root focused regression PASS,3 PHP lints and whitespace PASS; real source-pairing probes for28 and27 PASS. Wrapper delegates without commit; direct reads do not retain values; callback cache is per-instance, nested safely, exception-safe and cleared on outer completion. No source pins/versions/native/UI changes, commit, package or publication. Actual29 service/interface/source acceptance awaits immutable freeze, including the new006 migration closure.
+
+
+## Sealed Fates dev.29 source pairing and offline release - 2026-10-28
+- [x] Export immutable owner29 source and verify all20 declared pins, including migration006.
+- [x] LUNA/max updates exact20 pins; root actual29 service/interface and retained28/27 contracts pass.
+- [x] LUNA/max prepares25 builder/docs; root14 guards and actual21-of22 unchanged assembly pass.
+- [x] Root reviews actual frozen contract, runs focused offline checks and bug hunt; migration lock limitation documented.
+- [ ] Freeze, official archive validate, clean rebuild; publish after owner public bytes verified.
+Constraints: no distro/server/DB/HTTP-to-CHIM/provider/installed-game/live access, no native rebuild; source/offline compatibility wording only. Preserve uncommitted debug/memo preparation.
+Review: root bughunt reviewed the owner-source migration limit: `lock_timeout='3s'` bounds acquisition waits only; ordinary `CREATE INDEX` holds `SHARE ROW EXCLUSIVE` on `public.eventlog` through commit and can block writers for the full build on large histories. Frozen `writerTransaction` sets no `statement_timeout`, so no three-second build bound is claimed. This is operational risk from source, not a measured delay or runtime failure. Publication gate remains unchecked.

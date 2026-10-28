@@ -4,6 +4,8 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+The prealpha.25 builder contract describes a Department-only offline candidate paired with Sealed Fates dev.29. It pins the exact prealpha.24 ZIP, updates only the Department DWPkg, and preserves the other 21 MO2 payloads. Its compatibility receipt is limited to source checks; server, database, HTTP, provider, Skyrim, installed-game, and live claims remain false. Build, release, installation, and runtime acceptance remain separate.
+
 ## Prealpha.24 offline repair candidate
 
 The versioned prealpha.24 package includes the PCV Solo projection fix, a template-only PCV preprocessing overlay stage, and native 0.1.17 gold inventory counts. Its source pairing retains PCV 0.1.24, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Sealed Fates dev.28, and Malpractice Makes Perfect dev.4. The offline proof covers committed sources, focused local checks, native build inputs, and binary/package inspection. Server, database, HTTP, provider, installed-game, live, and Skyrim behavior are outside its proof. See the [dev.28 compatibility note](docs/DEV28-COMPATIBILITY.md), [versioned installable build contract](docs/BUILD.md), and [verification record](docs/VERIFICATION.md).

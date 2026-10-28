@@ -246,6 +246,11 @@
     { "path": "native/src/GoldInventory.h" },
     { "path": "packaging/build-installable-prealpha24.py" },
     { "path": "packaging/tests/test_installable_prealpha24.py" },
-    { "path": "server/tests/correspondence/dev28-source-contract.php" }
+    { "path": "server/tests/correspondence/dev28-source-contract.php" },
+    { "path": "docs/DEV29-COMPATIBILITY.md" },
+    { "path": "packaging/build-installable-prealpha25.py" },
+    { "path": "packaging/tests/test_installable_prealpha25.py" },
+    { "path": "server/tests/correspondence/dev29-source-contract.php" },
+    { "path": "server/tests/correspondence/dev29-transaction-memo.php" }
   ]
 }

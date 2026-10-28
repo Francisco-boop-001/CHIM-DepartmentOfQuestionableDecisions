@@ -1,5 +1,27 @@
 # Portable source build
 
+## Prealpha.25 offline compatibility candidate
+
+The prealpha.25 contract starts from the exact published prealpha.24 installable ZIP (SHA-256 `3d4a8cfbf8c27b7b655865c5191c8a5d45e6d3fb4f9c999184098786b9c5e237`) and replaces only its Department DWPkg. The output retains the 22-member MO2 layout and 21 byte-identical payloads, including the PCV companion 0.1.12, MMP dev.4, and native 0.1.17 DLL (`5b55122b8916629c1130260a24781b709e0192a34049211a67f91e337177df6a`). The new Department package changes only `manifest.json`, `server/manifest.json`, `server/adapters/correspondence.php`, and `checksums.sha256`. ZIP entries use the fixed timestamp 2026-10-28 00:00:00.
+
+The Department adapter pins Sealed Fates dev.29 at commit `dd128bb7568e0095423c49e02c0e70a395208a18`, tag `correspondence-v0.1.0-dev.29`, using the exact 20-file owner closure. The offline compatibility input is one canonical `offline-compatibility.json` with the selected source commit, owner version/commit/20 pins, hashes for the changed Department manifest, adapter, shared source contract, dev.29 wrapper, and memo test, six fixed source-only checks plus their SHA-256 receipt hashes, and false limits for server, database, HTTP, provider, Skyrim, installed game, and live. The builder rejects any tracked `native/` or `ui/` blob change from immutable prealpha.24 source `5b0fa12db93000a866493548b913cf6d6e16a7fd`. The proof ZIP contains only that compatibility summary and generated package provenance; raw test logs and owner source exports remain outside it.
+
+After the source and canonical compatibility input are frozen, build and audit in a new directory outside the checkout:
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Commit = '<frozen-source-commit>'
+$Artifacts = 'K:\ActorwrightExchange\artifacts\department-sf29-20261028'
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-offline-repair-20261027\release\WorldOfDramaLlama-0.1.0-prealpha.24.zip'
+$Compatibility = Join-Path $Artifacts 'offline-compatibility.json'
+$Output = Join-Path $Artifacts 'package-prealpha25'
+& $Python -X utf8 -B packaging/build-installable-prealpha25.py build --prealpha24-zip $Baseline --offline-compatibility $Compatibility --source-commit $Commit --output-dir $Output --git $Git
+& $Python -X utf8 -B packaging/build-installable-prealpha25.py audit --prealpha24-zip $Baseline --offline-compatibility $Compatibility --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The outputs are the installable ZIP, explicit-allowlist source ZIP, offline-proof ZIP, and `SHA256SUMS.txt`. This source/package contract does not establish current Linux/CHIM runtime, database, HTTP/provider, installed-game, live, or Skyrim behavior. The existing 12 Windows MMP journal fixture failures are unchanged from prealpha.23 and remain unpassed. See the [dev.29 compatibility note](DEV29-COMPATIBILITY.md).
+
 ## Prealpha.24 offline package candidate
 
 The offline candidate starts from the exact published prealpha.23 installable ZIP (SHA-256 `1d2cc2aaf1472dcfdc7dc6d979ae29d748ff3687bee1f0d05a85f7a390b9cf28`). It replaces the Department DWPkg and PCV companion DWPkg, and adds the newly built native 0.1.17 DLL. The other 19 of the 22 MO2 members must remain byte-identical. The Department package advances to 0.1.0-prealpha.24, pairs PCV companion 0.1.0-prealpha.12 with PCV owner 0.1.24, and adds Sealed Fates dev.28. Its exact DWPkg delta is the two version manifests, correspondence adapter, overlay setup helper, seven-entry overlay source manifest, removal of staged `server/setup/pcv-overlay/preprocessing.php`, addition of `server/setup/pcv-overlay/preprocessing.php.template`, and regenerated checksums. The PCV companion DWPkg delta is limited to its two version manifests, `server/companion.php`, and regenerated checksums. The overlay keeps the owner destination `preprocessing.php` but stages those bytes only as `preprocessing.php.template`; no active staged `preprocessing.php` member is accepted.

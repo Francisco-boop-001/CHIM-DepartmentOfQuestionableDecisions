@@ -222,6 +222,28 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
         'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
     ],
+    '0.1.0-dev.29' => [
+        'manifest.json' => '40a837fad35a830b2f39cb210ddc04900b10f2c7d02b3134dcb806cba7cfcb26',
+        'lib/runtime.php' => '346418d189df83b2c26f504873a0fc6a842fcea7f67b044ca942e429d4a22d93',
+        'lib/store.php' => '5f846b73c330183980c9e8c1655cf32b57dbe0f2added7d69fc35cd8dac08f9c',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => '4cf8e693705ad78a8fdd5420ea682060f8712088b1a3b03a1b84510b4672f151',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => 'c163243334c8a558c800fd946d27564acf2f49d8df51ddf914899d784809a795',
+        'lib/autonomy_host.php' => 'b0ce613ebc7d02d6b3dc539b003022981a07e808208070554a68a105f42fcf12',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => '26f9f9a31844bfb433d7d6bf2c996e8ad6e0c9f6c15c5a054d96cb3630e0f439',
+        'lib/offscreen_host.php' => '7ae21d2db282d9de0f1d37ca27a43624343fefd5e371b671a5f543177e1a2155',
+        'lib/companion.php' => '6d9b7f5599aa7097e9193a819f0e0b9e8f2744ebbce9c74353601f8a0090be6f',
+        'lib/companion_policy.php' => 'b245767ef4764e82e4fd945f0ab0508993b4095b3bba6012ebeb3a1f09754be5',
+        'lib/companion_host.php' => 'b632693d26720fa063b7bbcd771cbce4997039aadff1c6755cb361c0239d1203',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/002_autonomy.sql' => '20e0ba2901f9ff352311e00a706c976c793e1e1185c224afcb599f426acb63d3',
+        'migrations/003_offscreen.sql' => '245ae41800da5d9d291cf25df9e4766059677710241a086c15ca6999d7500855',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+        'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
+        'migrations/006_history_indexes.sql' => '9691b8ae97f60981e4baca883aecd8d2d615ddbb77c0b90ea1f6efd6c1f58a66',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -326,7 +348,7 @@ function qd_correspondence_loaded_source_version(): string
 
 function qd_correspondence_version_uses_restore_fence(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28'], true);
+    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true);
 }
 
 function qd_correspondence_uses_restore_fence(): bool
@@ -336,17 +358,17 @@ function qd_correspondence_uses_restore_fence(): bool
 
 function qd_correspondence_version_supports_signed_unknown(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28'], true);
+    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true);
 }
 
 function qd_correspondence_version_supports_operator_close(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28'], true);
+    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true);
 }
 
 function qd_correspondence_version_supports_companion_scheduler(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28'], true);
+    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true);
 }
 
 function qd_correspondence_runtime_ready(): bool
@@ -761,6 +783,7 @@ function qd_correspondence_commit_boundary_store(object $baseStore, callable $be
 
         public function transaction(callable $work): mixed { return $this->baseStore->transaction($work); }
         public function readTransaction(callable $work): mixed { return $this->baseStore->readTransaction($work); }
+        public function transactionMemo(string $key, callable $build): mixed { return $this->baseStore->transactionMemo($key, $build); }
         public function scope(): array { return $this->baseStore->scope(); }
         public function actors(): array { return $this->baseStore->actors(); }
         public function player(): string { return $this->baseStore->player(); }
@@ -1771,6 +1794,8 @@ function qd_correspondence_read_store(mixed $connection, array $active, array $d
         private ?array $actorRows = null;
         private ?string $playerName = null;
         private bool $actorLimited = false;
+        private int $transactionMemoDepth = 0;
+        private array $transactionMemoValues = [];
         private string $scopeId;
         public function __construct(private mixed $connection, private array $active, private array $documents, private array $operations, private array $events, private ?array $companionDecisions)
         {
@@ -1780,9 +1805,25 @@ function qd_correspondence_read_store(mixed $connection, array $active, array $d
         {
             return $this->companionDecisions === null ? null : ($this->companionDecisions[$documentId] ?? []);
         }
-        public function transaction(callable $work): mixed { return $work(); }
+        private function inTransactionMemoScope(callable $work): mixed
+        {
+            if ($this->transactionMemoDepth === 0) $this->transactionMemoValues = [];
+            $this->transactionMemoDepth++;
+            try {
+                return $work();
+            } finally {
+                if (--$this->transactionMemoDepth === 0) $this->transactionMemoValues = [];
+            }
+        }
+        public function transaction(callable $work): mixed { return $this->inTransactionMemoScope($work); }
         // The caller already owns the repeatable-read, read-only snapshot.
-        public function readTransaction(callable $work): mixed { return $work(); }
+        public function readTransaction(callable $work): mixed { return $this->inTransactionMemoScope($work); }
+        public function transactionMemo(string $key, callable $build): mixed
+        {
+            if ($this->transactionMemoDepth === 0) return $build();
+            if (array_key_exists($key, $this->transactionMemoValues)) return $this->transactionMemoValues[$key];
+            return $this->transactionMemoValues[$key] = $build();
+        }
         public function scope(): array
         {
             $clock = $this->query('SELECT ts,gamets FROM public.eventlog ORDER BY rowid DESC LIMIT 1');
