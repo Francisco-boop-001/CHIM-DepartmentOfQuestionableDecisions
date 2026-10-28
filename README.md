@@ -4,7 +4,7 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
-The prealpha.25 builder contract describes a Department-only offline candidate paired with Sealed Fates dev.29. It pins the exact prealpha.24 ZIP, updates only the Department DWPkg, and preserves the other 21 MO2 payloads. Its compatibility receipt is limited to source checks; server, database, HTTP, provider, Skyrim, installed-game, and live claims remain false. Build, release, installation, and runtime acceptance remain separate.
+[Download prealpha.25](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.25/WorldOfDramaLlama-0.1.0-prealpha.25.zip) for Sealed Fates dev.29 source compatibility. Only the Department DWPkg changes; the DLL, UI and other 21 payloads match prealpha.24. See the [dev.29 compatibility and first-upgrade maintenance note](docs/DEV29-COMPATIBILITY.md). This release has offline source/package proof; current server, database, HTTP, provider and Skyrim acceptance remain unperformed.
 
 ## Prealpha.24 offline repair candidate
 
