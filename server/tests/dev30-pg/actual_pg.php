@@ -297,6 +297,33 @@ function dev30_count_snapshot(mixed $admin): array
     return $out;
 }
 
+function dev30_fixture_error_handler(int $errno, string $errstr, string $errfile, int $errline): bool
+{
+    if (!empty($GLOBALS['pgr_operation']) && str_contains($errstr, 'pg_')) $GLOBALS['pgr_sql_failed'] = true;
+    return false;
+}
+
+function dev30_install_fixture_logger(string $coreRoot, string $expectedHash): string
+{
+    $loggerPath = dev30_require_file($coreRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'logger.php', $coreRoot);
+    if (!hash_equals($expectedHash, strtolower((string)hash_file('sha256', $loggerPath)))) throw new RuntimeException('captured_logger_pin_mismatch');
+    $logDirectory = $coreRoot . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'playthrough_runtime';
+    if (is_link($coreRoot . DIRECTORY_SEPARATOR . 'log') || is_link($logDirectory)
+        || !is_dir($logDirectory) || realpath($logDirectory) !== $logDirectory) throw new RuntimeException('fixture_logger_directory_invalid');
+    $logPath = $logDirectory . DIRECTORY_SEPARATOR . 'fixture-chim.log';
+    if (is_link($logPath) || file_exists($logPath)) throw new RuntimeException('fixture_logger_file_not_fresh');
+    $handle = @fopen($logPath, 'x+b');
+    if (!is_resource($handle)) throw new RuntimeException('fixture_logger_create_failed');
+    fclose($handle);
+    if (posix_geteuid() === 0 && (!@chown($logPath, 'www-data') || !@chgrp($logPath, 'www-data'))) throw new RuntimeException('fixture_logger_owner_failed');
+    if (!@chmod($logPath, 0660) || !is_writable($logPath)) throw new RuntimeException('fixture_logger_permissions_failed');
+    require_once $loggerPath;
+    if (!class_exists('Logger', false) || !is_callable(['Logger', 'setCustomLog'])) throw new RuntimeException('captured_logger_unavailable');
+    Logger::setCustomLog($logPath);
+    set_error_handler('dev30_fixture_error_handler');
+    return $logPath;
+}
+
 function dev30_document(mixed $admin, string $requestId): array
 {
     $rows = dev30_pg($admin,
@@ -381,6 +408,27 @@ if (!is_array($marker) || !is_string($networkNamespace) || $networkNamespace !==
     || !is_string($expectedIpv6Hash) || !hash_equals($expectedIpv6Hash, hash('sha256', $ipv6Routes))) {
     throw new RuntimeException('child_network_boundary_invalid');
 }
+$coreRoot = getenv('QD_CHIM_ROOT');
+$expectedLoggerHash = getenv('QD_DEV30_LOGGER_SHA256');
+$loggerPath = is_string($coreRoot) ? $coreRoot . '/lib/logger.php' : '';
+$customLogPath = getenv('QD_DEV30_CUSTOM_LOG');
+$expectedCustomLog = is_string($coreRoot) ? $coreRoot . '/log/playthrough_runtime/fixture-chim.log' : '';
+$actualLoggerHash = $loggerPath !== '' && !is_link($loggerPath) && is_file($loggerPath) ? @hash_file('sha256', $loggerPath) : false;
+if (!is_string($coreRoot) || $coreRoot === '' || realpath($coreRoot) !== $coreRoot
+    || !is_string($expectedLoggerHash) || preg_match('/\A[a-f0-9]{64}\z/D', $expectedLoggerHash) !== 1
+    || !is_string($actualLoggerHash) || !hash_equals($expectedLoggerHash, strtolower($actualLoggerHash))
+    || realpath($loggerPath) !== $loggerPath
+    || !is_string($customLogPath) || $customLogPath !== $expectedCustomLog || is_link($customLogPath) || !is_file($customLogPath)
+    || !is_writable($customLogPath) || realpath(dirname($customLogPath)) !== dirname($customLogPath)) {
+    throw new RuntimeException('child_logger_boundary_invalid');
+}
+require_once $loggerPath;
+if (!class_exists('Logger', false) || !is_callable(['Logger', 'setCustomLog'])) throw new RuntimeException('child_logger_unavailable');
+Logger::setCustomLog($customLogPath);
+set_error_handler(static function (int $errno, string $errstr, string $errfile, int $errline): bool {
+    if (!empty($GLOBALS['pgr_operation']) && str_contains($errstr, 'pg_')) $GLOBALS['pgr_sql_failed'] = true;
+    return false;
+});
 PHP;
     if (!is_file($path) && file_put_contents($path, $source . "\n", LOCK_EX) === false) throw new RuntimeException('trace_helper_write_failed');
     if (!is_file($path) || !@chmod($path, 0644)) throw new RuntimeException('trace_helper_mode_failed');
@@ -398,6 +446,7 @@ function dev30_child_php_args(string $php, string $traceHelper): array
     foreach (['posix', 'ctype', 'tokenizer', 'mbstring', 'pgsql', 'gd'] as $extension) {
         array_push($args, '-d', 'extension=' . $extension);
     }
+    array_push($args, '-d', 'display_errors=stderr');
     array_push($args, '-d', 'auto_prepend_file=' . $traceHelper);
     return $args;
 }
@@ -415,6 +464,8 @@ function dev30_run_child(array &$ctx, string $caseId, string $script, array $scr
         'QD_DEV30_NETNS_ID' => $ctx['networkEvidence']['networkNamespace'],
         'QD_DEV30_IPV4_ROUTE_SHA256' => $ctx['networkEvidence']['ipv4RouteSha256'],
         'QD_DEV30_IPV6_ROUTE_SHA256' => $ctx['networkEvidence']['ipv6RouteSha256'],
+        'QD_DEV30_LOGGER_SHA256' => $ctx['corePins']['lib/logger.php'],
+        'QD_DEV30_CUSTOM_LOG' => $ctx['fixtureLogPath'],
         'QD_SOURCE_TRACE_FILE' => $traceFile, 'PGAPPNAME' => $app,
     ];
     $runuser = $ctx['runuser'];
@@ -843,9 +894,16 @@ try {
         'lib/playthrough_preferences.php' => 'fc9562fad12b867a5593d06bc0b0b8167120b0270088c343ae3db074e4b3f475',
         'lib/playthrough_runtime.php' => 'd480af9d658c8e754b78d1e4ca6056544d21942facbafd94b23ab1da4cb1cd9c',
         'lib/playthrough_home.php' => 'e28ced10ee4410f0926f9366fca7bb80199b2f423c80afb1c960d074564b88b6',
+        'lib/playthrough_retention.php' => '3a6c8323bf5a2b49b80d891bab94d7b39fce5a9aa5b1402a8f955e86920f2b7b',
+        'lib/playthrough_schema.php' => 'b59d122b3212031bb147c3f386ca98f80b26eba5050f26e80dd51d31826918a8',
+        'lib/logger.php' => '63b9f6ff8d99335f6c92991120030f89038641435d5f39408721fde1fa988f54',
+        'lib/playthrough_policy.php' => '4cb62bcccafa9401b7c2577ba9ddf9653c8ab3b16a0b4dd038e13db3352204f7',
+        'lib/playthrough_categories.php' => '700615a77aa664c470d62bb61e80cdcaf2b1a59b54cc7ce924bc460ce5af5883',
+        'lib/utils_game_timestamp.php' => '73e7aa40f608984a5ecb82fd446764b6286b019d5380f21f9e8ba54281da4b4c',
         'data/fonts/GloriaHallelujah-Regular.ttf' => '4206cbda828ccde275f6d8b406ad80a29d2f5d9bc1a39a86e56a1c9c7691ed8c',
         'data/textures/chim.png' => '820c235caa44a8f7a798e91d8091a633954963761de6e1377c70d8c8247d0342',
     ];
+    $ctx['corePins'] = $corePins;
     foreach ($corePins as $relative => $expected) {
         $path = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
         dev30_require_file($path, $ctx['coreRoot']);
@@ -870,6 +928,7 @@ try {
         if (!is_dir($path) && !@mkdir($path, 0770, true) && !is_dir($path)) throw new RuntimeException('core_output_path_create_failed');
         if (!@chown($path, 'www-data') || !@chgrp($path, 'www-data') || !@chmod($path, 02770)) throw new RuntimeException('core_output_permissions_failed');
     }
+    $ctx['fixtureLogPath'] = dev30_install_fixture_logger($ctx['coreRoot'], $corePins['lib/logger.php']);
 
     $socket = $ctx['pgSocket'];
     $quote = static fn(string $value): string => "'" . str_replace(["\\", "'"], ["\\\\", "\\'"], $value) . "'";
@@ -892,6 +951,15 @@ try {
         'dataDirectory' => $dataDirectory, 'role' => (string)$appIdentity[0]['role'],
         'socketDirectory' => $socket, 'port' => 5432, 'listenAddresses' => '127.0.0.1',
     ];
+    $ownershipRows = dev30_pg($admin,
+        "SELECT c.relname AS name,pg_get_userbyid(c.relowner) AS owner FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relname IN ('eventlog','eventlog_rowid_seq') ORDER BY c.relname");
+    $ownership = [];
+    foreach ($ownershipRows as $row) {
+        if (!is_string($row['name'] ?? null) || !is_string($row['owner'] ?? null)) throw new RuntimeException('database_object_owner_shape_invalid');
+        $ownership[$row['name']] = $row['owner'];
+    }
+    if ($ownership !== ['eventlog' => 'dwemer', 'eventlog_rowid_seq' => 'dwemer']) throw new RuntimeException('database_object_owner_invalid');
+    $ctx['fixtureSetup'] = ['appRole' => $identity['role'], 'objectOwners' => $ownership];
 
     require_once $ctx['serverRoot'] . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'dev23-pg' . DIRECTORY_SEPARATOR . 'companion_cases.php';
     dev30_run_child($ctx, 'fixture_owner_initialize', $ctx['legacyTestRoot'] . DIRECTORY_SEPARATOR . 'owner_fixture.php',
@@ -1077,6 +1145,15 @@ try {
             'sourceHashes' => $sourceHashes, 'mainIncludedFiles' => array_values(get_included_files()),
             'processes' => $ctx['processes'] ?? [], 'ownerClosurePins' => $ownerBinding['ownerClosurePins'] ?? [],
             'coreInputs' => $corePins ?? [], 'traceHelperSha256' => $ctx['trace']['sha256'] ?? null,
+            'coreProvenance' => ['hostCommit' => '0ec590b42c8087860138bb4e9aab470049ff9a2b', 'hostTree' => 'ab97c6dd3947501b8a76bf9b9c6ad74b30be3975'],
+            'fixtureSetup' => $ctx['fixtureSetup'] ?? null,
+            'fixtureInstrumentation' => [
+                'loggerSha256' => $corePins['lib/logger.php'] ?? null,
+                'customLogPath' => $ctx['fixtureLogPath'] ?? null,
+                'errorHandlerOverride' => 'dev30_fixture_error_handler',
+                'preservesPgrSqlFailed' => true,
+                'warnings' => 'stderr',
+            ],
             'networkEvidence' => $ctx['networkEvidence'] ?? null,
             'traceScope' => 'captured PHP includes and pinned non-PHP source bundles only; no live or installed roots are permitted',
         ];
