@@ -891,15 +891,15 @@ try {
     if (is_link($ctx['coreRoot'] . '/lib/playthrough_preferences.php') || is_link($ctx['coreRoot'] . '/lib/playthrough_runtime.php')
         || is_link($ctx['coreRoot'] . '/lib/playthrough_home.php')) throw new RuntimeException('core_source_redirected');
     $corePins = [
-        'lib/playthrough_preferences.php' => 'fc9562fad12b867a5593d06bc0b0b8167120b0270088c343ae3db074e4b3f475',
-        'lib/playthrough_runtime.php' => 'd480af9d658c8e754b78d1e4ca6056544d21942facbafd94b23ab1da4cb1cd9c',
-        'lib/playthrough_home.php' => 'e28ced10ee4410f0926f9366fca7bb80199b2f423c80afb1c960d074564b88b6',
-        'lib/playthrough_retention.php' => '3a6c8323bf5a2b49b80d891bab94d7b39fce5a9aa5b1402a8f955e86920f2b7b',
-        'lib/playthrough_schema.php' => 'b59d122b3212031bb147c3f386ca98f80b26eba5050f26e80dd51d31826918a8',
-        'lib/logger.php' => '63b9f6ff8d99335f6c92991120030f89038641435d5f39408721fde1fa988f54',
-        'lib/playthrough_policy.php' => '4cb62bcccafa9401b7c2577ba9ddf9653c8ab3b16a0b4dd038e13db3352204f7',
-        'lib/playthrough_categories.php' => '700615a77aa664c470d62bb61e80cdcaf2b1a59b54cc7ce924bc460ce5af5883',
-        'lib/utils_game_timestamp.php' => '73e7aa40f608984a5ecb82fd446764b6286b019d5380f21f9e8ba54281da4b4c',
+        'lib/playthrough_preferences.php' => '02ec005e7109af689056783bf54d9b3080fcfa16194c5dfda0526c5add4eaf41',
+        'lib/playthrough_runtime.php' => 'ec29467c61873f255d3bc13962466ab04f12b3bc2bd6d29276e53878088a1d7e',
+        'lib/playthrough_home.php' => 'ac55d75bea4ab30828390cba4bfc50ecb3db91e43c72080705c00abbac1ef18b',
+        'lib/playthrough_retention.php' => '6e67953516e43e61d948c324204a43a80437251618822dbbbe58a639c286d8ce',
+        'lib/playthrough_schema.php' => '9ea8e03cc870fe813916593104d7cb82c0302235925cee302d0f37a3bd023814',
+        'lib/logger.php' => '7a58436e6fed0343f70c086157eff3f501fb3d7a0c51ab50d7d2315ec5b2270a',
+        'lib/playthrough_policy.php' => '6568ea2cb04a7c0ee7b72871d4d3cedf3244d6a6a95cf4e9800fbb312f0e98eb',
+        'lib/playthrough_categories.php' => 'bd7d8ac41c92870b119e956c200cede1ad83ded39e5e6219f3f64d9a298358c0',
+        'lib/utils_game_timestamp.php' => '5a017ff8e3b4ec9f099b76829f44d136d1d5a0432e4e05b9e2af6f6b205e63b4',
         'data/fonts/GloriaHallelujah-Regular.ttf' => '4206cbda828ccde275f6d8b406ad80a29d2f5d9bc1a39a86e56a1c9c7691ed8c',
         'data/textures/chim.png' => '820c235caa44a8f7a798e91d8091a633954963761de6e1377c70d8c8247d0342',
     ];
