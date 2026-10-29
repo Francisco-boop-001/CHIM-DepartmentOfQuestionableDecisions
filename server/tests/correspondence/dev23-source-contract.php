@@ -15,13 +15,13 @@ for ($i = 1; $i < $argc; $i++) {
     } elseif ($argv[$i] === '--adapter' && isset($argv[$i + 1])) {
         $adapterPath = $argv[++$i];
     } else {
-        fwrite(STDERR, "usage: php -n dev23-source-contract.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.23|0.1.0-dev.24|0.1.0-dev.25|0.1.0-dev.26|0.1.0-dev.27|0.1.0-dev.28|0.1.0-dev.29] [--legacy-owner-root LEGACY_SERVER_DIR] [--adapter PATH]\n");
+        fwrite(STDERR, "usage: php -n dev23-source-contract.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.23|0.1.0-dev.24|0.1.0-dev.25|0.1.0-dev.26|0.1.0-dev.27|0.1.0-dev.28|0.1.0-dev.29|0.1.0-dev.30] [--legacy-owner-root LEGACY_SERVER_DIR] [--adapter PATH]\n");
         exit(2);
     }
 }
-if (!in_array($ownerVersion, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true)
-    || (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true) && $legacyOwnerRoot === '')) {
-    fwrite(STDERR, "usage: dev23-source-contract.php supports dev.23 through dev.29; dev.24-dev.27 require dev.23, dev.28 requires dev.27, and dev.29 requires dev.28 as --legacy-owner-root\n");
+if (!in_array($ownerVersion, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true)
+    || (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true) && $legacyOwnerRoot === '')) {
+    fwrite(STDERR, "usage: dev23-source-contract.php supports dev.23 through dev.30; dev.24-dev.27 require dev.23, dev.28 requires dev.27, dev.29 requires dev.28, and dev.30 requires dev.29 as --legacy-owner-root\n");
     exit(2);
 }
 
@@ -257,6 +257,7 @@ dev23Expect(is_string($ownerReal) && is_dir($ownerReal), 'Pass the immutable Sea
 if (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27'], true)) dev23Expect(is_string($legacyOwnerReal) && is_dir($legacyOwnerReal), 'Pass the immutable Sealed Fates dev.23 server source directory for manifest replacement.');
 if ($ownerVersion === '0.1.0-dev.28') dev23Expect(is_string($legacyOwnerReal) && is_dir($legacyOwnerReal), 'Pass the immutable Sealed Fates dev.27 server source directory for manifest replacement.');
 if ($ownerVersion === '0.1.0-dev.29') dev23Expect(is_string($legacyOwnerReal) && is_dir($legacyOwnerReal), 'Pass the immutable Sealed Fates dev.28 server source directory for manifest replacement.');
+if ($ownerVersion === '0.1.0-dev.30') dev23Expect(is_string($legacyOwnerReal) && is_dir($legacyOwnerReal), 'Pass the immutable Sealed Fates dev.29 server source directory for manifest replacement.');
 dev23Expect(is_string($adapterReal) && is_file($adapterReal), 'The candidate Department adapter is unavailable.');
 $manifest = json_decode((string)@file_get_contents($ownerReal . DIRECTORY_SEPARATOR . 'manifest.json'), true);
 dev23Expect(is_array($manifest) && ($manifest['name'] ?? null) === 'correspondence' && ($manifest['version'] ?? null) === $ownerVersion, 'Owner root is not the requested exact Sealed Fates source.');
@@ -301,6 +302,10 @@ $dev29ExpectedHashes['lib/runtime.php'] = '346418d189df83b2c26f504873a0fc6a842fc
 $dev29ExpectedHashes['lib/store.php'] = '5f846b73c330183980c9e8c1655cf32b57dbe0f2added7d69fc35cd8dac08f9c';
 $dev29ExpectedHashes['lib/autonomy_host.php'] = 'b0ce613ebc7d02d6b3dc539b003022981a07e808208070554a68a105f42fcf12';
 $dev29ExpectedHashes['migrations/006_history_indexes.sql'] = '9691b8ae97f60981e4baca883aecd8d2d615ddbb77c0b90ea1f6efd6c1f58a66';
+$dev30ExpectedHashes = $dev29ExpectedHashes;
+$dev30ExpectedHashes['manifest.json'] = 'f72c181f2a3c7d893d205a9b6e648ac5e4ca03e81fa1423d43ceb7db084d772f';
+$dev30ExpectedHashes['lib/runtime.php'] = 'ffb9a97a4f2549bfd7251389d65fd916beb01a734f557ece794f81efbde45153';
+$dev30ExpectedHashes['lib/companion.php'] = 'ce3c2c0c40c10f23d60e1604dafc38901832be8ef528b53b515269d42ce82e32';
 $expectedHashes = match ($ownerVersion) {
     '0.1.0-dev.24' => $dev24ExpectedHashes,
     '0.1.0-dev.25' => $dev25ExpectedHashes,
@@ -308,6 +313,7 @@ $expectedHashes = match ($ownerVersion) {
     '0.1.0-dev.27' => $dev27ExpectedHashes,
     '0.1.0-dev.28' => $dev28ExpectedHashes,
     '0.1.0-dev.29' => $dev29ExpectedHashes,
+    '0.1.0-dev.30' => $dev30ExpectedHashes,
     default => $dev23ExpectedHashes,
 };
 $dev25ChangesFromDev23 = [];
@@ -316,6 +322,7 @@ $dev26ChangesFromDev25 = [];
 $dev27ChangesFromDev26 = [];
 $dev28ChangesFromDev27 = [];
 $dev29ChangesFromDev28 = [];
+$dev30ChangesFromDev29 = [];
 foreach ($dev23ExpectedHashes as $relative => $hash) {
     if ($dev25ExpectedHashes[$relative] !== $hash) $dev25ChangesFromDev23[] = $relative;
     if ($dev25ExpectedHashes[$relative] !== $dev24ExpectedHashes[$relative]) $dev25ChangesFromDev24[] = $relative;
@@ -323,6 +330,7 @@ foreach ($dev23ExpectedHashes as $relative => $hash) {
     if ($dev27ExpectedHashes[$relative] !== $dev26ExpectedHashes[$relative]) $dev27ChangesFromDev26[] = $relative;
     if ($dev28ExpectedHashes[$relative] !== $dev27ExpectedHashes[$relative]) $dev28ChangesFromDev27[] = $relative;
     if ($dev29ExpectedHashes[$relative] !== $dev28ExpectedHashes[$relative]) $dev29ChangesFromDev28[] = $relative;
+    if ($dev30ExpectedHashes[$relative] !== $dev29ExpectedHashes[$relative]) $dev30ChangesFromDev29[] = $relative;
 }
 dev23Expect($dev25ChangesFromDev23 === ['manifest.json', 'lib/runtime.php']
     && $dev25ChangesFromDev24 === ['manifest.json'], 'The dev.25 pinned closure changed beyond the verified manifest/runtime transition.');
@@ -333,6 +341,10 @@ dev23Expect($dev29ChangesFromDev28 === ['manifest.json', 'lib/runtime.php', 'lib
     && array_values(array_diff(array_keys($dev29ExpectedHashes), array_keys($dev28ExpectedHashes))) === ['migrations/006_history_indexes.sql']
     && count($dev28ExpectedHashes) === 19 && count($dev29ExpectedHashes) === 20,
     'The dev.29 closure delta must be exactly four retained-file updates plus migrations/006_history_indexes.sql.');
+dev23Expect($dev30ChangesFromDev29 === ['manifest.json', 'lib/runtime.php', 'lib/companion.php']
+    && array_keys($dev30ExpectedHashes) === array_keys($dev29ExpectedHashes)
+    && count($dev30ExpectedHashes) === 20,
+    'The dev.30 closure delta must be exactly the manifest, runtime, and companion updates in the retained 20-file closure.');
 
 require_once dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'protocol.php';
 $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-correspondence-dev23-' . bin2hex(random_bytes(8));
@@ -343,6 +355,9 @@ $GLOBALS['DEV23_TEST_CORE_ROOT'] = $coreRoot;
 
 try {
     require $adapterReal;
+    $preflightIdentity = qd_correspondence_current_source_identity($ownerReal);
+    dev23Expect(is_array($preflightIdentity) && ($preflightIdentity['version'] ?? null) === $ownerVersion,
+        'The exact ' . $ownerVersion . ' source identity is unsupported.');
     dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.23'] ?? null) === $dev23ExpectedHashes, 'The existing dev.23 owner pin map changed.');
     dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.24'] ?? null) === $dev24ExpectedHashes, 'The existing dev.24 owner pin map changed.');
     dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.25'] ?? null) === $dev25ExpectedHashes, 'The dev.25 owner pin map differs from the exact 19-file closure.');
@@ -350,6 +365,7 @@ try {
     dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.27'] ?? null) === $dev27ExpectedHashes && count($dev27ExpectedHashes) === 19, 'The dev.27 owner pin map differs from the exact 19-file closure.');
     dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.28'] ?? null) === $dev28ExpectedHashes && count($dev28ExpectedHashes) === 19, 'The dev.28 owner pin map differs from the exact 19-file closure.');
     dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.29'] ?? null) === $dev29ExpectedHashes && count($dev29ExpectedHashes) === 20, 'The dev.29 owner pin map differs from the exact 20-file closure.');
+    dev23Expect((QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.30'] ?? null) === $dev30ExpectedHashes && count($dev30ExpectedHashes) === 20, 'The dev.30 owner pin map differs from the exact 20-file closure.');
     $adapterHashes = QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$ownerVersion] ?? null;
     dev23Expect(is_array($adapterHashes) && $adapterHashes === $expectedHashes, 'The adapter owner pin map differs from the exact transitive closure.');
     $sourceFiles = qd_correspondence_source_files($ownerReal);
@@ -368,7 +384,7 @@ try {
         if (!@copy($sourceReal, $target)) throw new RuntimeException('Could not stage owner file: ' . $relative);
     }
     dev23Expect(qd_correspondence_runtime_ready(), 'Runtime readiness did not accept the exact staged owner closure.');
-    $driftFiles = in_array($ownerVersion, ['0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true)
+    $driftFiles = in_array($ownerVersion, ['0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true)
         ? array_keys($expectedHashes)
         : ['manifest.json', 'lib/runtime.php', 'lib/companion.php', 'lib/companion_policy.php', 'lib/companion_host.php', 'migrations/002_autonomy.sql', 'migrations/003_offscreen.sql', 'migrations/005_companion.sql'];
     foreach ($driftFiles as $relative) {
@@ -381,22 +397,24 @@ try {
         dev23Expect(qd_correspondence_runtime_ready(), 'Runtime readiness did not recover after restoring ' . $relative . '.');
     }
 
-    if (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'], true)) {
+    if (in_array($ownerVersion, ['0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true)) {
         $legacyVersion = match ($ownerVersion) {
             '0.1.0-dev.28' => '0.1.0-dev.27',
             '0.1.0-dev.29' => '0.1.0-dev.28',
+            '0.1.0-dev.30' => '0.1.0-dev.29',
             default => '0.1.0-dev.23',
         };
         $legacyExpectedHashes = match ($ownerVersion) {
             '0.1.0-dev.28' => $dev27ExpectedHashes,
             '0.1.0-dev.29' => $dev28ExpectedHashes,
+            '0.1.0-dev.30' => $dev29ExpectedHashes,
             default => $dev23ExpectedHashes,
         };
         $legacyManifestBytes = @file_get_contents($legacyOwnerReal . DIRECTORY_SEPARATOR . 'manifest.json');
         $legacyManifest = is_string($legacyManifestBytes) ? json_decode($legacyManifestBytes, true) : null;
         dev23Expect(is_array($legacyManifest) && ($legacyManifest['version'] ?? null) === $legacyVersion
             && hash_equals($legacyExpectedHashes['manifest.json'], hash('sha256', $legacyManifestBytes))
-            && dev23ExactSourceHashes($legacyOwnerReal) === $legacyExpectedHashes, 'The legacy source fixture is not the exact 19-file ' . $legacyVersion . ' closure.');
+            && dev23ExactSourceHashes($legacyOwnerReal) === $legacyExpectedHashes, 'The legacy source fixture is not the exact ' . count($legacyExpectedHashes) . '-file ' . $legacyVersion . ' closure.');
         $stagedManifest = $stagedOwnerRoot . DIRECTORY_SEPARATOR . 'manifest.json';
         $ownerManifestBytes = @file_get_contents($stagedManifest);
         dev23Expect(is_string($ownerManifestBytes), 'Could not read the staged owner manifest.');
@@ -406,11 +424,16 @@ try {
         if ($ownerVersion === '0.1.0-dev.29') {
             dev23Expect(qd_correspondence_loaded_source_version() === $ownerVersion, 'The exact dev.29 source did not load before testing the retained dev.28 map.');
         }
+        if ($ownerVersion === '0.1.0-dev.30') {
+            dev23Expect(qd_correspondence_loaded_source_version() === $ownerVersion, 'The exact dev.30 source did not load before testing the retained dev.29 map.');
+        }
         if (@file_put_contents($stagedManifest, $legacyManifestBytes, LOCK_EX) !== strlen($legacyManifestBytes)) throw new RuntimeException('Could not stage the dev.23 manifest replacement fixture.');
         if ($ownerVersion === '0.1.0-dev.28') {
             dev23Expect(qd_correspondence_manifest_ready($stagedOwnerRoot) && !qd_correspondence_runtime_ready(), 'The retained dev.27 closure must remain source-ready while a loaded dev.28 identity refuses the downgraded manifest.');
         } elseif ($ownerVersion === '0.1.0-dev.29') {
             dev23Expect(!qd_correspondence_manifest_ready($stagedOwnerRoot) && !qd_correspondence_runtime_ready(), 'A dev.28 manifest replacement over changed dev.29 runtime bytes must be refused.');
+        } elseif ($ownerVersion === '0.1.0-dev.30') {
+            dev23Expect(!qd_correspondence_manifest_ready($stagedOwnerRoot) && !qd_correspondence_runtime_ready(), 'A dev.29 manifest replacement over changed dev.30 source bytes must be refused.');
         } else {
             dev23Expect(!qd_correspondence_manifest_ready($stagedOwnerRoot) && !qd_correspondence_runtime_ready(), 'A legacy manifest replacement was accepted over newer runtime bytes.');
         }
@@ -418,32 +441,32 @@ try {
         dev23Expect(qd_correspondence_runtime_ready(), 'The exact owner source did not recover after the dev.23 manifest replacement fixture was restored.');
     }
 
-    foreach (['0.1.0-dev.14', '0.1.0-dev.15', '0.1.0-dev.16', '0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'] as $version) {
+    foreach (['0.1.0-dev.14', '0.1.0-dev.15', '0.1.0-dev.16', '0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
         dev23Expect(isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$version]), 'An existing pinned owner version was removed: ' . $version);
     }
     dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.19']), 'The intentionally unsupported dev.19 pin was added.');
-    dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.30']), 'An unsupported owner version was added.');
-    foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'] as $version) {
+    dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.31']), 'An unsupported owner version was added.');
+    foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
         dev23Expect(qd_correspondence_version_uses_restore_fence($version), 'The restore fence is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.19'), 'The unsupported dev.19 source was enabled.');
-    dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.30'), 'An unsupported owner restore fence was enabled.');
-    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'] as $version) {
+    dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.31'), 'An unsupported owner restore fence was enabled.');
+    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
         dev23Expect(qd_correspondence_version_supports_signed_unknown($version), 'Signed-unknown support is missing for ' . $version . '.');
     }
-    dev23Expect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19') && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.30'), 'An unsupported owner signed-unknown capability was enabled.');
-    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'] as $version) {
+    dev23Expect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19') && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.31'), 'An unsupported owner signed-unknown capability was enabled.');
+    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
         dev23Expect(qd_correspondence_version_supports_operator_close($version), 'Operator-close support is missing for ' . $version . '.');
     }
     foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.19'] as $version) {
         dev23Expect(!qd_correspondence_version_supports_operator_close($version), 'Operator-close support was broadened to ' . $version . '.');
     }
-    dev23Expect(!qd_correspondence_version_supports_operator_close('0.1.0-dev.19') && !qd_correspondence_version_supports_operator_close('0.1.0-dev.30'), 'An unsupported owner operator-close capability was enabled.');
-    foreach (['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29'] as $version) {
+    dev23Expect(!qd_correspondence_version_supports_operator_close('0.1.0-dev.19') && !qd_correspondence_version_supports_operator_close('0.1.0-dev.31'), 'An unsupported owner operator-close capability was enabled.');
+    foreach (['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
         dev23Expect(qd_correspondence_version_supports_companion_scheduler($version), 'Companion scheduler support is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.22'), 'Companion scheduler support was broadened before dev.23.');
-    dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.30'), 'The unpinned dev.30 companion scheduler was enabled.');
+    dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.31'), 'The unpinned dev.31 companion scheduler was enabled.');
 
     $unsupportedRoot = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev19';
     if (!@mkdir($unsupportedRoot, 0700, true)
@@ -452,12 +475,12 @@ try {
     }
     dev23Expect(qd_correspondence_source_files($unsupportedRoot) === [] && !qd_correspondence_manifest_ready($unsupportedRoot), 'An unpinned dev.19 source was accepted.');
 
-    $unsupported30Root = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev30';
-    if (!@mkdir($unsupported30Root, 0700, true)
-        || @file_put_contents($unsupported30Root . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.30"}', LOCK_EX) === false) {
+    $unsupported31Root = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev31';
+    if (!@mkdir($unsupported31Root, 0700, true)
+        || @file_put_contents($unsupported31Root . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.31"}', LOCK_EX) === false) {
         throw new RuntimeException('Could not create the unsupported-version fixture.');
     }
-    dev23Expect(qd_correspondence_source_files($unsupported30Root) === [] && !qd_correspondence_manifest_ready($unsupported30Root), 'An unpinned dev.30 source was accepted.');
+    dev23Expect(qd_correspondence_source_files($unsupported31Root) === [] && !qd_correspondence_manifest_ready($unsupported31Root), 'An unpinned dev.31 source was accepted.');
 
     dev23Expect(qd_correspondence_loaded_source_version() === $ownerVersion, 'The exact staged owner source did not load.');
     $revisionDocA = '11111111-1111-4111-8111-111111111111';
