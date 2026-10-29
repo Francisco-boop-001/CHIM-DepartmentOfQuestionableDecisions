@@ -143,24 +143,87 @@ function dev30_ipv6_route_regression(): int
     return $checks;
 }
 
+function dev30_loopback_interface_evidence(mixed $interfaces): ?array
+{
+    if (!is_array($interfaces)) return null;
+    $names = array_keys($interfaces);
+    sort($names, SORT_STRING);
+    if ($names !== ['lo'] || !is_array($interfaces['lo'] ?? null)
+        || ($interfaces['lo']['up'] ?? null) !== true || !is_array($interfaces['lo']['unicast'] ?? null)
+        || !array_is_list($interfaces['lo']['unicast']) || count($interfaces['lo']['unicast']) !== 3) return null;
+    $byFamily = [];
+    foreach ($interfaces['lo']['unicast'] as $entry) {
+        if (!is_array($entry) || !is_int($entry['family'] ?? null) || !is_int($entry['flags'] ?? null)
+            || ($entry['flags'] & 0x9) !== 0x9 || isset($byFamily[$entry['family']])) return null;
+        $family = $entry['family'];
+        if ($family === 17) {
+            if (array_key_exists('address', $entry)) return null;
+        } elseif ($family === 2) {
+            if (($entry['address'] ?? null) !== '127.0.0.1') return null;
+        } elseif ($family === 10) {
+            if (($entry['address'] ?? null) !== '::1') return null;
+        } else return null;
+        $byFamily[$family] = $entry['flags'];
+    }
+    $families = array_keys($byFamily);
+    sort($families, SORT_NUMERIC);
+    if ($families !== [2, 10, 17]) return null;
+    $commonFlags = $byFamily[2] & $byFamily[10] & $byFamily[17];
+    return ['interfaces' => ['lo'], 'loopbackFlags' => sprintf('0x%x', $commonFlags)];
+}
+
+function dev30_loopback_interface_regression(): int
+{
+    $flags = 65609;
+    $captured = ['lo' => [
+        'unicast' => [
+            ['flags' => $flags, 'family' => 17],
+            ['flags' => $flags, 'family' => 2, 'address' => '127.0.0.1', 'netmask' => '255.0.0.0'],
+            ['flags' => $flags, 'family' => 10, 'address' => '::1', 'netmask' => 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff'],
+        ],
+        'up' => true,
+    ]];
+    $positive = dev30_loopback_interface_evidence($captured);
+    if ($positive !== ['interfaces' => ['lo'], 'loopbackFlags' => '0x10049']) throw new RuntimeException('loopback_interface_positive_regression_failed');
+    $checks = 1;
+    $extraInterface = $captured; $extraInterface['eth0'] = ['unicast' => [], 'up' => true];
+    $extraUnicast = $captured; $extraUnicast['lo']['unicast'][] = ['flags' => $flags, 'family' => 99, 'address' => '2001:db8::1'];
+    $nonLoopbackAddress = $captured; $nonLoopbackAddress['lo']['unicast'][1]['address'] = '127.0.0.2';
+    $down = $captured; $down['lo']['up'] = false;
+    $missingAddress = $captured; unset($missingAddress['lo']['unicast'][2]['address']);
+    $missingFamily = $captured; array_pop($missingFamily['lo']['unicast']);
+    $badFlags = $captured; $badFlags['lo']['unicast'][0]['flags'] = 65601;
+    $packetAddress = $captured; $packetAddress['lo']['unicast'][0]['address'] = '127.0.0.1';
+    foreach ([
+        'loopback_extra_interface_regression_failed' => $extraInterface,
+        'loopback_extra_unicast_regression_failed' => $extraUnicast,
+        'loopback_nonloopback_address_regression_failed' => $nonLoopbackAddress,
+        'loopback_down_regression_failed' => $down,
+        'loopback_missing_address_regression_failed' => $missingAddress,
+        'loopback_missing_family_regression_failed' => $missingFamily,
+        'loopback_flags_regression_failed' => $badFlags,
+        'loopback_packet_address_regression_failed' => $packetAddress,
+    ] as $failure => $negative) {
+        if (dev30_loopback_interface_evidence($negative) !== null) throw new RuntimeException($failure);
+        $checks++;
+    }
+    return $checks;
+}
+
 function dev30_loopback_preflight(array $fixtureIdentity): array
 {
     dev30_ipv6_route_regression();
+    dev30_loopback_interface_regression();
     $networkNamespace = @readlink('/proc/self/ns/net');
     if (!is_string($networkNamespace) || $networkNamespace === ''
         || $networkNamespace !== ($fixtureIdentity['networkNamespace'] ?? null)
         || $networkNamespace === ($fixtureIdentity['initialNetworkNamespace'] ?? null)) {
         throw new RuntimeException('loopback_namespace_mismatch');
     }
-    $interfaces = array_map('basename', glob('/sys/class/net/*') ?: []);
-    sort($interfaces, SORT_STRING);
-    if ($interfaces !== ['lo']) throw new RuntimeException('loopback_interface_set_invalid');
-    $flagsRaw = @file_get_contents('/sys/class/net/lo/flags');
-    if (!is_string($flagsRaw) || preg_match('/\A0x([a-f0-9]+)\s*\z/iD', trim($flagsRaw), $flagMatch) !== 1) {
-        throw new RuntimeException('loopback_flags_unreadable');
-    }
-    $flags = (int)hexdec($flagMatch[1]);
-    if (($flags & 0x9) !== 0x9) throw new RuntimeException('loopback_not_up');
+    if (!function_exists('net_get_interfaces')) throw new RuntimeException('network_interface_api_unavailable');
+    $interfaceEvidence = dev30_loopback_interface_evidence(net_get_interfaces());
+    if (!is_array($interfaceEvidence)) throw new RuntimeException('loopback_interface_topology_invalid');
+    $interfaces = $interfaceEvidence['interfaces'];
 
     $ipv4Raw = @file_get_contents('/proc/net/route');
     if (!is_string($ipv4Raw)) throw new RuntimeException('ipv4_routes_unreadable');
@@ -202,7 +265,7 @@ function dev30_loopback_preflight(array $fixtureIdentity): array
         'markerNetworkNamespace' => $fixtureIdentity['networkNamespace'],
         'initialNetworkNamespace' => $fixtureIdentity['initialNetworkNamespace'],
         'interfaces' => $interfaces,
-        'loopbackFlags' => sprintf('0x%x', $flags),
+        'loopbackFlags' => $interfaceEvidence['loopbackFlags'],
         'ipv4Routes' => $ipv4Raw,
         'ipv4RouteSha256' => hash('sha256', $ipv4Raw),
         'ipv6Routes' => $ipv6Raw,
@@ -256,10 +319,36 @@ $markerPath = getenv('QD_DEV20_FIXTURE_MARKER');
 $markerRaw = is_string($markerPath) && $markerPath !== '' ? @file_get_contents($markerPath) : false;
 $marker = is_string($markerRaw) ? json_decode($markerRaw, true, 8) : null;
 $networkNamespace = @readlink('/proc/self/ns/net');
-$interfaces = array_map('basename', glob('/sys/class/net/*') ?: []);
-sort($interfaces, SORT_STRING);
-$flagsRaw = @file_get_contents('/sys/class/net/lo/flags');
-$flags = is_string($flagsRaw) && preg_match('/\A0x([a-f0-9]+)\s*\z/iD', trim($flagsRaw), $flagMatch) === 1 ? (int)hexdec($flagMatch[1]) : 0;
+$netInterfaces = function_exists('net_get_interfaces') ? net_get_interfaces() : false;
+$interfaceEvidence = null;
+if (is_array($netInterfaces)) {
+    $interfaceNames = array_keys($netInterfaces);
+    sort($interfaceNames, SORT_STRING);
+    $loopback = $netInterfaces['lo'] ?? null;
+    if ($interfaceNames === ['lo'] && is_array($loopback) && ($loopback['up'] ?? null) === true
+        && is_array($loopback['unicast'] ?? null) && array_is_list($loopback['unicast']) && count($loopback['unicast']) === 3) {
+        $familyFlags = []; $commonFlags = null; $validInterface = true;
+        foreach ($loopback['unicast'] as $entry) {
+            if (!is_array($entry) || !is_int($entry['family'] ?? null) || !is_int($entry['flags'] ?? null)
+                || ($entry['flags'] & 0x9) !== 0x9 || isset($familyFlags[$entry['family']])) { $validInterface = false; break; }
+            $family = $entry['family'];
+            if ($family === 17) {
+                if (array_key_exists('address', $entry)) { $validInterface = false; break; }
+            } elseif ($family === 2) {
+                if (($entry['address'] ?? null) !== '127.0.0.1') { $validInterface = false; break; }
+            } elseif ($family === 10) {
+                if (($entry['address'] ?? null) !== '::1') { $validInterface = false; break; }
+            } else { $validInterface = false; break; }
+            $familyFlags[$family] = $entry['flags'];
+            $commonFlags = $commonFlags === null ? $entry['flags'] : ($commonFlags & $entry['flags']);
+        }
+        $familyNumbers = array_keys($familyFlags);
+        sort($familyNumbers, SORT_NUMERIC);
+        if ($validInterface && $familyNumbers === [2, 10, 17] && is_int($commonFlags)) {
+            $interfaceEvidence = ['interfaces' => $interfaceNames, 'loopbackFlags' => sprintf('0x%x', $commonFlags)];
+        }
+    }
+}
 $ipv4Routes = @file_get_contents('/proc/net/route');
 $ipv6Routes = @file_get_contents('/proc/net/ipv6_route');
 $expectedIpv4Hash = getenv('QD_DEV30_IPV4_ROUTE_SHA256');
@@ -269,8 +358,9 @@ $networkEvidence = [
     'markerNetworkNamespace' => is_array($marker) ? ($marker['networkNamespace'] ?? null) : null,
     'initialNetworkNamespace' => is_array($marker) ? ($marker['initialNetworkNamespace'] ?? null) : null,
     'namespaceMatchesMarker' => is_array($marker) && is_string($networkNamespace) && $networkNamespace === ($marker['networkNamespace'] ?? null),
-    'interfaces' => $interfaces,
-    'loopbackFlags' => sprintf('0x%x', $flags),
+    'interfaces' => is_array($interfaceEvidence) ? $interfaceEvidence['interfaces'] : [],
+    'loopbackFlags' => is_array($interfaceEvidence) ? $interfaceEvidence['loopbackFlags'] : null,
+    'interfaceEvidenceValid' => is_array($interfaceEvidence),
     'ipv4RouteSha256' => is_string($ipv4Routes) ? hash('sha256', $ipv4Routes) : null,
     'ipv6RouteSha256' => is_string($ipv6Routes) ? hash('sha256', $ipv6Routes) : null,
 ];
@@ -283,7 +373,9 @@ if (is_string($trace) && $trace !== '') {
 }
 if (!is_array($marker) || !is_string($networkNamespace) || $networkNamespace !== ($marker['networkNamespace'] ?? null)
     || $networkNamespace !== getenv('QD_DEV30_NETNS_ID') || $networkNamespace === ($marker['initialNetworkNamespace'] ?? null)
-    || $interfaces !== ['lo'] || ($flags & 0x9) !== 0x9
+    || !is_array($interfaceEvidence) || $interfaceEvidence['interfaces'] !== ['lo']
+    || preg_match('/\A0x([a-f0-9]+)\z/iD', $interfaceEvidence['loopbackFlags'], $interfaceFlagMatch) !== 1
+    || (((int)hexdec($interfaceFlagMatch[1])) & 0x9) !== 0x9
     || !is_string($ipv4Routes) || !is_string($ipv6Routes)
     || !is_string($expectedIpv4Hash) || !hash_equals($expectedIpv4Hash, hash('sha256', $ipv4Routes))
     || !is_string($expectedIpv6Hash) || !hash_equals($expectedIpv6Hash, hash('sha256', $ipv6Routes))) {
@@ -390,7 +482,9 @@ function dev30_run_child(array &$ctx, string $caseId, string $script, array $scr
         || ($childNetwork['networkNamespace'] ?? null) !== $ctx['networkEvidence']['networkNamespace']
         || ($childNetwork['markerNetworkNamespace'] ?? null) !== $ctx['networkEvidence']['networkNamespace']
         || ($childNetwork['initialNetworkNamespace'] ?? null) !== $ctx['networkEvidence']['initialNetworkNamespace']
+        || ($childNetwork['interfaceEvidenceValid'] ?? null) !== true
         || ($childNetwork['interfaces'] ?? null) !== ['lo'] || ($childFlags & 0x9) !== 0x9
+        || ($childNetwork['loopbackFlags'] ?? null) !== $ctx['networkEvidence']['loopbackFlags']
         || ($childNetwork['ipv4RouteSha256'] ?? null) !== $ctx['networkEvidence']['ipv4RouteSha256']
         || ($childNetwork['ipv6RouteSha256'] ?? null) !== $ctx['networkEvidence']['ipv6RouteSha256']) {
         throw new Dev30PgFailure('child_network_evidence_invalid');
@@ -639,7 +733,7 @@ function dev30_seed_case_clock(mixed $admin): void
 }
 
 if (($argv[1] ?? null) === '--topology-guard-self-test') {
-    $checks = dev30_ipv6_route_regression();
+    $checks = dev30_ipv6_route_regression() + dev30_loopback_interface_regression();
     fwrite(STDOUT, 'topology_guard_assertions=' . $checks . "\n");
     exit(0);
 }
