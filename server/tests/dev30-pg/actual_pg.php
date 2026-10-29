@@ -666,12 +666,12 @@ function dev30_seed_companion(array &$ctx, string $body, bool $dueNow): array
     });
 }
 
-function dev30_owner_case(array &$ctx, mixed $admin, string $caseId, string $variant): void
+function dev30_owner_case(array &$ctx, mixed $admin, string $caseId, string $variant, array $baseline): void
 {
     $originalEpoch = (string)dev30_scalar($admin, 'SELECT epoch::text FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
     $seed = dev30_seed_companion($ctx, 'I am waiting for you. Please write when you can.', true);
     try {
-    dev23_companion_with_owner_runtime($ctx, static function ($store, $service, $companion) use ($admin, $seed, $variant, $originalEpoch): array {
+    dev23_companion_with_owner_runtime($ctx, static function ($store, $service, $companion) use (&$ctx, $admin, $seed, $variant, $originalEpoch, $baseline): array {
         $restoreRows = dev30_pg($admin, 'SELECT epoch::text AS epoch,pending FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
         if (count($restoreRows) !== 1 || ($restoreRows[0]['pending'] ?? null) !== 'f' || ($restoreRows[0]['epoch'] ?? null) !== $originalEpoch) throw new RuntimeException('restore_state_not_ready');
         if ($variant === 'restore_changed') {
@@ -706,8 +706,62 @@ function dev30_owner_case(array &$ctx, mixed $admin, string $caseId, string $var
         $cancelled = in_array($variant, ['player_changed', 'actor_changed', 'form_changed', 'optout', 'dead', 'episode_changed'], true);
         if ($cancelled) {
             dev30_assert($decision[0]['status'] === 'stale' && $operations === 0 && $commands === 0, 'confirmed_identity_change_not_cancelled');
-            $closed = dev30_scalar($admin, 'SELECT payload ? \'operator_close\' FROM plugins.correspondence_documents WHERE document_id=$1::uuid', [$seed['documentId']]);
-            dev30_assert(in_array($closed, ['t', true], true), 'cancelled_companion_document_not_closed');
+            if (in_array($variant, ['player_changed', 'actor_changed'], true)) {
+                dev30_reset_fixture_inputs($admin, $baseline);
+                dev30_enable_owner_actor($admin, $baseline);
+                $presenceRaw = base64_encode(json_encode([
+                    'source' => 'plugin_player_routing_v2',
+                    'present_actors' => [[
+                        'form_id' => hexdec('000A2C94'), 'name' => 'Lydia', 'managed' => true, 'creature' => false, 'distance' => 0,
+                    ]],
+                ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                $store->transaction(static function () use ($store, $presenceRaw): void { $store->observeManaged($presenceRaw); });
+                dev30_assert($store->observedExecutor() === 'Lydia', 'valid_presence_not_restored_after_identity_change');
+                $store->transaction(static function () use ($store, $seed): void {
+                    $store->query('UPDATE plugins.correspondence_companion_episode SET sample_gamets=$1::numeric WHERE episode_id=$2::uuid', [(string)$seed['gamets'], $seed['episodeId']]);
+                });
+                $companion->tick(null);
+                $companion->tick(null);
+                $stillStale = dev30_pg($admin, 'SELECT status FROM plugins.correspondence_companion_decision WHERE document_id=$1::uuid', [$seed['documentId']]);
+                $stillNoOperations = (int)dev30_scalar($admin, 'SELECT count(*)::text FROM plugins.correspondence_operations WHERE document_id=$1::uuid', [$seed['documentId']]);
+                $stillNoCommands = (int)dev30_scalar($admin, "SELECT count(*)::text FROM public.responselog WHERE action='command' AND text LIKE '%ExtCmdCHIMCorrespondenceBridge_Deliver@%' AND text LIKE $1", ['%' . $seed['documentId'] . '%']);
+                dev30_assert(count($stillStale) === 1 && $stillStale[0]['status'] === 'stale' && $stillNoOperations === 0 && $stillNoCommands === 0,
+                    'fresh_identity_sample_reactivated_cancelled_decision');
+                try {
+                    $service->dispatch($seed['documentId']);
+                    throw new Dev30PgFailure('manual_cancelled_scheduler_dispatch_allowed');
+                } catch (DomainException $error) {
+                    dev30_assert($error->getMessage() === 'companion_scheduler_owned', 'manual_cancelled_scheduler_dispatch_wrong_refusal');
+                }
+                $ownerManualOperations = (int)dev30_scalar($admin, 'SELECT count(*)::text FROM plugins.correspondence_operations WHERE document_id=$1::uuid', [$seed['documentId']]);
+                $ownerManualCommands = (int)dev30_scalar($admin, "SELECT count(*)::text FROM public.responselog WHERE action='command' AND text LIKE '%ExtCmdCHIMCorrespondenceBridge_Deliver@%' AND text LIKE $1", ['%' . $seed['documentId'] . '%']);
+                dev30_assert($ownerManualOperations === 0 && $ownerManualCommands === 0, 'manual_cancelled_scheduler_dispatch_created_delivery');
+                $reconciled = dev30_api($ctx, 'sf30_cancel_read_' . $variant, 'correspondence.reconcile', ['operationId' => $seed['requestId']], ['authScopes' => ['compose']]);
+                $projection = dev30_response($reconciled);
+                dev30_assert_fence($reconciled['readFence'], false);
+                $reconcileOperations = (int)dev30_scalar($admin, 'SELECT count(*)::text FROM plugins.correspondence_operations WHERE document_id=$1::uuid', [$seed['documentId']]);
+                $reconcileCommands = (int)dev30_scalar($admin, "SELECT count(*)::text FROM public.responselog WHERE action='command' AND text LIKE '%ExtCmdCHIMCorrespondenceBridge_Deliver@%' AND text LIKE $1", ['%' . $seed['documentId'] . '%']);
+                dev30_assert(($projection['ok'] ?? null) === true && ($projection['data']['state'] ?? null) === 'queued'
+                    && ($projection['data']['companionSchedulerOwned'] ?? null) === true
+                    && $reconcileOperations === 0 && $reconcileCommands === 0, 'cancelled_document_lost_scheduler_ownership_or_reconcile_dispatched');
+
+                $beforeManual = dev30_count_snapshot($admin);
+                $manual = dev30_api($ctx, 'sf30_cancel_manual_' . $variant, 'correspondence.compose', [
+                    'operationId' => $seed['requestId'], 'writerActorKey' => 'npc:900003', 'signatureActorKey' => 'npc:900003',
+                    'recipientActorKey' => 'player', 'body' => 'A manual retry probe after identity cancellation.',
+                    'inventoryRevision' => 'dev30-cancelled-manual-probe', 'attachments' => [], 'goldAmount' => 0,
+                ], ['operationRequestId' => $seed['requestId'], 'authScopes' => ['compose']]);
+                $manualResponse = dev30_response($manual);
+                $afterManual = dev30_count_snapshot($admin);
+                $manualOperations = (int)dev30_scalar($admin, 'SELECT count(*)::text FROM plugins.correspondence_operations WHERE document_id=$1::uuid', [$seed['documentId']]);
+                $manualCommands = (int)dev30_scalar($admin, "SELECT count(*)::text FROM public.responselog WHERE action='command' AND text LIKE '%ExtCmdCHIMCorrespondenceBridge_Deliver@%' AND text LIKE $1", ['%' . $seed['documentId'] . '%']);
+                dev30_assert(($manualResponse['ok'] ?? null) === false && ($manualResponse['errorCode'] ?? null) === 'conflict'
+                    && $beforeManual === $afterManual && $manualOperations === 0 && $manualCommands === 0,
+                    'same_request_manual_compose_reopened_cancelled_document');
+            } else {
+                $closed = dev30_scalar($admin, 'SELECT payload ? \'operator_close\' FROM plugins.correspondence_documents WHERE document_id=$1::uuid', [$seed['documentId']]);
+                dev30_assert(in_array($closed, ['t', true], true), 'cancelled_companion_document_not_closed');
+            }
             return ['transient' => false, 'originalEpoch' => $originalEpoch];
         }
         dev30_assert($decision[0]['status'] === 'queued' && $operations === 0 && $commands === 0, 'temporary_unavailability_did_not_defer');
@@ -1127,7 +1181,7 @@ try {
         dev30_case($cases, $caseId, static function () use (&$ctx, $admin, $baseline, $caseId, $variant): void {
             dev30_reset_fixture_inputs($admin, $baseline); dev30_seed_case_clock($admin);
             dev30_enable_owner_actor($admin, $baseline);
-            try { dev30_owner_case($ctx, $admin, $caseId, $variant); }
+            try { dev30_owner_case($ctx, $admin, $caseId, $variant, $baseline); }
             finally { dev30_reset_fixture_inputs($admin, $baseline); }
         });
     }
