@@ -715,6 +715,11 @@ function dev30_owner_case(array &$ctx, mixed $admin, string $caseId, string $var
                         'form_id' => hexdec('000A2C94'), 'name' => 'Lydia', 'managed' => true, 'creature' => false, 'distance' => 0,
                     ]],
                 ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                $presenceClock = $store->query('SELECT ts::text AS ts,gamets::text AS gamets FROM public.eventlog ORDER BY rowid DESC LIMIT 1');
+                if (count($presenceClock) !== 1 || !is_string($presenceClock[0]['ts'] ?? null) || !is_string($presenceClock[0]['gamets'] ?? null)) {
+                    throw new RuntimeException('owner_fixture_request_clock_unavailable');
+                }
+                $store->bindRequestClock([0 => 'inputtext', 1 => $presenceClock[0]['ts'], 2 => $presenceClock[0]['gamets']]);
                 $store->transaction(static function () use ($store, $presenceRaw): void { $store->observeManaged($presenceRaw); });
                 dev30_assert($store->observedExecutor() === 'Lydia', 'valid_presence_not_restored_after_identity_change');
                 $store->transaction(static function () use ($store, $seed): void {
