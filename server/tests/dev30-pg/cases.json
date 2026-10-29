@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "department-dev30-actual-pg-cases",
+  "ownerVersion": "0.1.0-dev.30",
+  "ownerCommit": "1eb58d999698002f8aeaa05b21464f7608717794",
+  "ownerClosureFiles": 20,
+  "cases": [
+    {"id":"adapter.unavailable_player_read_recovery","authority":"department-api","behavior":"An actual reconcile read with an unavailable player rolls back and releases its shared restore lock; restoring the same player lets the same scheduler-owned document read successfully."},
+    {"id":"adapter.manual_compose_scheduler_no_dispatch","authority":"department-api+owner-service","behavior":"An actual compose using the scheduler-owned request identity cannot create or dispatch a second document or operation."},
+    {"id":"adapter.request_id_repeat_no_resend","authority":"department-api","behavior":"Repeating the same actual compose request leaves one document, one operation, and one physical command."},
+    {"id":"adapter.unknown_partial_reconcile_no_resend","authority":"department-api+owner-service","behavior":"An unknown partial receipt stays unconfirmed, exposes no delivery details, and does not trigger a resend."},
+    {"id":"adapter.forwarded_utf8_detail_roundtrip","authority":"department-api+owner-service","behavior":"A seeded forwarded body with multibyte UTF-8 survives actual compose, receipt, and detail read byte-for-byte beyond a preview-sized body."},
+    {"id":"adapter.restore_pending_refusal_recovery","authority":"department-api","behavior":"A pending restore state refuses the actual read; clearing the same pending state permits the same document to read."},
+    {"id":"owner.bgl_unreadable_defer_recover","authority":"owner-service","behavior":"Unreadable Background Life participation evidence defers a queued letter and fresh same-episode evidence dispatches it once."},
+    {"id":"owner.player_unavailable_defer_recover","authority":"owner-service","behavior":"A temporarily unavailable player defers a queued letter and fresh same-episode evidence dispatches it once."},
+    {"id":"owner.form_identity_unavailable_defer_recover","authority":"owner-service","behavior":"A temporarily unavailable physical form mapping defers a queued letter and fresh same-episode evidence dispatches it once."},
+    {"id":"owner.player_identity_mismatch_cancel","authority":"owner-service","behavior":"A confirmed player identity change cancels the queued episode without dispatch."},
+    {"id":"owner.actor_identity_mismatch_cancel","authority":"owner-service","behavior":"A confirmed actor identity change cancels the queued episode without dispatch."},
+    {"id":"owner.form_identity_mismatch_cancel","authority":"owner-service","behavior":"A confirmed physical form identity change cancels the queued episode without dispatch."},
+    {"id":"owner.explicit_optout_cancel","authority":"owner-service","behavior":"Explicit Background Life opt-out cancels the queued episode without dispatch."},
+    {"id":"owner.confirmed_dead_cancel","authority":"owner-service","behavior":"Confirmed death cancels the queued episode without dispatch."},
+    {"id":"owner.episode_change_cancel","authority":"owner-service","behavior":"A changed episode identity cancels the queued document without dispatch."},
+    {"id":"owner.restore_epoch_change_reject","authority":"owner-service","behavior":"A changed restore epoch rejects the stale service call and does not dispatch the queued document."}
+  ],
+  "sourceFiles": [
+    "server/adapters/correspondence.php",
+    "server/adapters/runtime_support.php",
+    "server/adapters/pcv.php",
+    "server/adapters/mp.php",
+    "server/adapters/sas.php",
+    "server/adapters/brainwash.php",
+    "server/api.php",
+    "server/runtime.php",
+    "server/lib/auth.php",
+    "server/lib/dispatcher.php",
+    "server/lib/protocol.php",
+    "server/lib/journal.php",
+    "server/lib/overlay_setup.php",
+    "server/tests/dev30-pg/actual_pg.php",
+    "server/tests/dev30-pg/cases.json",
+    "server/tests/dev23-pg/api_driver.php",
+    "server/tests/dev23-pg/base.sql",
+    "server/tests/dev23-pg/companion_cases.php",
+    "server/tests/dev23-pg/fixture_guard.php",
+    "server/tests/dev23-pg/owner_fixture.php",
+    "server/tests/dev23-pg/seed_unknown_receipt.php"
+  ],
+  "retainedSourceOnlyControls": [
+    "restore_init_marker_repair_and_overlap",
+    "negative_and_overshoot",
+    "signed_unknown_partial_receipt"
+  ]
+}

@@ -1,5 +1,28 @@
 # Portable source build
 
+## Prealpha.26 Sealed Fates dev.30 TEST2-proof candidate
+
+Prealpha.26 starts from the exact public prealpha.25 installable ZIP (SHA-256 `52569ac52dfcf1814edcabfa1e86f2c730fb83b0cec359e86a5811408348f666`, 621286 bytes). It replaces only the Department DWPkg; the other 21 MO2 payloads remain byte-identical, including native 0.1.17.0 (`5b55122b8916629c1130260a24781b709e0192a34049211a67f91e337177df6a`), PCV companion 0.1.0-prealpha.12, and its Sealed Fates-independent PCV 0.1.24 closure. PCV 0.1.25 is not included in this pairing and requires a separate compatibility update. The DWPkg delta is limited to `manifest.json`, `server/manifest.json`, `server/adapters/correspondence.php`, and regenerated `checksums.sha256`. ZIP entries use 2026-10-28 00:00:02.
+
+The adapter pins the exact Sealed Fates dev.30 owner commit `1eb58d999698002f8aeaa05b21464f7608717794` and its 20-file closure. Against dev.29, only `manifest.json`, `lib/runtime.php`, and `lib/companion.php` change; the other 17 hashes remain fixed. The release builder also requires a source-bound PostgreSQL 15 TEST2 result and shutdown receipt. Both receipts must bind the exact selected source commit, adapter, tests, owner pins, and same database identity. TEST2 uses TCP at `127.0.0.1:5432` inside a private Linux network namespace with only loopback enabled and no external/default route; the pinned core adapter connects to localhost TCP. The result records `socketOnly: false`, `privateLoopbackOnly: true`, and `listenAddresses: 127.0.0.1`. Its lowercase `networkEvidenceSha256` binds the private `source-load-trace.json` bytes, which include parent/child namespace IDs and captured route data; only the hash enters the public proof. The builder checks the exact run-scoped data/socket path shape, while the fixture verifies canonical paths and rejects links. The test proof archive contains a generated safe `test-proof.json` and package provenance; the raw receipts, trace, logs, database files, and user data are not copied into it.
+
+After the candidate source commit is frozen and the root-owned TEST2 run has produced `actual-pg-result.json` and `actual-pg-shutdown.json`, build and audit into a new directory outside the checkout:
+
+```powershell
+$Git = 'C:\Program Files\Git\cmd\git.exe'
+$Python = 'C:\Program Files\Python312\python.exe'
+$Commit = '<frozen-source-commit>'
+$Artifacts = 'K:\ActorwrightExchange\artifacts\department-sf30-20261028'
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-sf29-20261028\public-download\WorldOfDramaLlama-0.1.0-prealpha.25.zip'
+$PgResult = Join-Path $Artifacts 'actual-pg-result.json'
+$PgShutdown = Join-Path $Artifacts 'actual-pg-shutdown.json'
+$Output = Join-Path $Artifacts 'package-prealpha26'
+& $Python -X utf8 -B packaging/build-installable-prealpha26.py build --prealpha25-zip $Baseline --actual-pg-result $PgResult --actual-pg-shutdown $PgShutdown --source-commit $Commit --output-dir $Output --git $Git
+& $Python -X utf8 -B packaging/build-installable-prealpha26.py audit --prealpha25-zip $Baseline --actual-pg-result $PgResult --actual-pg-shutdown $PgShutdown --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The outputs are the installable ZIP, explicit-allowlist source ZIP, TEST2 proof ZIP, and `SHA256SUMS.txt`. The builder rejects missing, failed, stale, differently sourced, non-loopback-only, non-PostgreSQL-15, wrongly located, or uncleanly shut down receipts. A successful proof is limited to direct Department adapter/service checks against PostgreSQL in isolated TEST2 over private TCP loopback. It does not establish HTTP bootstrap, provider, native delivery, installed-game, live-server, or Skyrim behavior. See the [dev.30 compatibility note](DEV30-COMPATIBILITY.md).
+
 ## Prealpha.25 offline compatibility candidate
 
 The prealpha.25 contract starts from the exact published prealpha.24 installable ZIP (SHA-256 `3d4a8cfbf8c27b7b655865c5191c8a5d45e6d3fb4f9c999184098786b9c5e237`) and replaces only its Department DWPkg. The output retains the 22-member MO2 layout and 21 byte-identical payloads, including the PCV companion 0.1.12, MMP dev.4, and native 0.1.17 DLL (`5b55122b8916629c1130260a24781b709e0192a34049211a67f91e337177df6a`). The new Department package changes only `manifest.json`, `server/manifest.json`, `server/adapters/correspondence.php`, and `checksums.sha256`. ZIP entries use the fixed timestamp 2026-10-28 00:00:00.

@@ -16,6 +16,7 @@
     { "path": "docs/DEV24-COMPATIBILITY.md" },
     { "path": "docs/DEV25-COMPATIBILITY.md" },
     { "path": "docs/DEV26-COMPATIBILITY.md" },
+    { "path": "docs/DEV30-COMPATIBILITY.md" },
     { "path": "docs/PAIRING-CHECK.md" },
     { "path": "docs/STATE-RECOVERY-POLICY.md" },
     { "path": "docs/TEST-PROFILE-SETUP.md" },
@@ -27,6 +28,7 @@
     { "path": "docs/superpowers/plans/2026-10-25-startup-handshake.md" },
     { "path": "docs/superpowers/plans/2026-10-26-maintainer-fixes.md" },
     { "path": "docs/superpowers/plans/2026-10-26-dev26-pairing.md" },
+    { "path": "docs/superpowers/plans/2026-10-28-sealed-fates-dev30.md" },
     { "path": "docs/superpowers/specs/2026-10-23-install-and-use-design.md" },
     { "path": "native/CMakeLists.txt" },
     { "path": "native/build.ps1" },
@@ -250,7 +252,13 @@
     { "path": "docs/DEV29-COMPATIBILITY.md" },
     { "path": "packaging/build-installable-prealpha25.py" },
     { "path": "packaging/tests/test_installable_prealpha25.py" },
+    { "path": "packaging/build-installable-prealpha26.py" },
+    { "path": "packaging/tests/test_installable_prealpha26.py" },
     { "path": "server/tests/correspondence/dev29-source-contract.php" },
-    { "path": "server/tests/correspondence/dev29-transaction-memo.php" }
+    { "path": "server/tests/correspondence/dev29-transaction-memo.php" },
+    { "path": "server/tests/correspondence/dev30-source-contract.php" },
+    { "path": "server/tests/correspondence/dev30-adapter-interface.php" },
+    { "path": "server/tests/dev30-pg/cases.json" },
+    { "path": "server/tests/dev30-pg/actual_pg.php" }
   ]
 }
