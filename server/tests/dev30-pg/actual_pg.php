@@ -672,7 +672,7 @@ function dev30_owner_case(array &$ctx, mixed $admin, string $caseId, string $var
     $seed = dev30_seed_companion($ctx, 'I am waiting for you. Please write when you can.', true);
     try {
     dev23_companion_with_owner_runtime($ctx, static function ($store, $service, $companion) use ($admin, $seed, $variant, $originalEpoch): array {
-        $restoreRows = dev30_pg($admin, 'SELECT epoch::text AS epoch,pending::text AS pending FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
+        $restoreRows = dev30_pg($admin, 'SELECT epoch::text AS epoch,pending FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
         if (count($restoreRows) !== 1 || ($restoreRows[0]['pending'] ?? null) !== 'f' || ($restoreRows[0]['epoch'] ?? null) !== $originalEpoch) throw new RuntimeException('restore_state_not_ready');
         if ($variant === 'restore_changed') {
             dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET epoch=$1::uuid WHERE singleton IS TRUE', [dev30_uuid()]);
@@ -1098,7 +1098,7 @@ try {
             dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=TRUE WHERE singleton IS TRUE');
             $refused = dev30_api($ctx, 'sf30_restore_pending', 'correspondence.reconcile', ['operationId' => $seed['requestId']], ['authScopes' => ['compose']]);
             $response = dev30_response($refused);
-            dev30_assert(($response['ok'] ?? null) === false && ($response['errorCode'] ?? null) === 'unavailable', 'pending_restore_read_not_refused');
+            dev30_assert(($response['ok'] ?? null) === false && ($response['errorCode'] ?? null) === 'stale_context', 'pending_restore_read_not_refused');
             dev30_assert_fence($refused['readFence'], true);
             dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=FALSE WHERE singleton IS TRUE');
             $recovered = dev30_api($ctx, 'sf30_restore_recovery', 'correspondence.reconcile', ['operationId' => $seed['requestId']], ['authScopes' => ['compose']]);
