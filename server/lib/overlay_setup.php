@@ -1,12 +1,15 @@
 <?php
 declare(strict_types=1);
 
-const QD_PCV_OVERLAY_VERSION = '0.1.24';
-const QD_PCV_OVERLAY_TAG = 'private_conversation-v0.1.24';
-const QD_PCV_OVERLAY_COMMIT = 'ce0a998773237a9fc91f6914725a327d9e621718';
+const QD_PCV_OVERLAY_VERSION = '0.1.25';
+const QD_PCV_OVERLAY_TAG = 'private_conversation-v0.1.25';
+const QD_PCV_OVERLAY_COMMIT = '886a54967db7c6c08725c8bec8854ea3919ea532';
 const QD_PCV_OVERLAY_LEGACY_VERSION = '0.1.23';
 const QD_PCV_OVERLAY_LEGACY_COMMIT = '77265202d7f4a47b88e1eb88131b21f4b0752020';
 const QD_PCV_OVERLAY_LEGACY_ARCHIVE = 'pcv-overlay-backup-v0.1.23.php';
+const QD_PCV_OVERLAY_PREVIOUS_VERSION = '0.1.24';
+const QD_PCV_OVERLAY_PREVIOUS_COMMIT = 'ce0a998773237a9fc91f6914725a327d9e621718';
+const QD_PCV_OVERLAY_PREVIOUS_ARCHIVE = 'pcv-overlay-backup-v0.1.24.php';
 const QD_PCV_OVERLAY_BACKUP_SCHEMA = 1;
 const QD_PCV_OVERLAY_MAX_SOURCE_BYTES = 524288;
 const QD_PCV_OVERLAY_MAX_BACKUP_BYTES = 1048576;
@@ -20,6 +23,58 @@ final class QDPCVOverlayFailure extends RuntimeException
 }
 
 function qd_pcv_overlay_pins(): array
+{
+    return [
+        'installation_guard.php' => [
+            'base' => '082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d',
+            'post' => '082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d',
+        ],
+        'log.php' => [
+            'base' => '5ce07e9b834dba51ea5552d923c3a83f97dd3fa5dce7131db773d16813612a8c',
+            'post' => '5ce07e9b834dba51ea5552d923c3a83f97dd3fa5dce7131db773d16813612a8c',
+        ],
+        'manifest.json' => [
+            'base' => '198a242e4e85cd418aca588fd7583e1643437ffe069c3eaa6070b53d2eff4a3c',
+            'post' => '198a242e4e85cd418aca588fd7583e1643437ffe069c3eaa6070b53d2eff4a3c',
+        ],
+        'preprocessing.php' => [
+            'base' => '5a0d46d3b29ba5f1a986f90b1fa7bbc8ce41402dd6b8d30f49a2fcba7783d49c',
+            'post' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
+        ],
+        'reflection.php' => [
+            'base' => 'd33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540',
+            'post' => 'd33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540',
+        ],
+        'scope.php' => [
+            'base' => '75a2d61d9f223bae2d5bef32d1d2bbd88cf15dc4764f8759f8d763c236c1af2f',
+            'post' => '6eaa8d09d423a7364dfd26934b56794fa2cb51cacd26950e753f499989181e33',
+        ],
+        'state.php' => [
+            'base' => '49c2b53466572015e77117653739966377267b5b50ec4514155e53256bca7361',
+            'post' => 'b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6',
+        ],
+    ];
+}
+
+function qd_pcv_overlay_legacy_pins(): array
+{
+    return [
+        'preprocessing.php' => [
+            'base' => '5a0d46d3b29ba5f1a986f90b1fa7bbc8ce41402dd6b8d30f49a2fcba7783d49c',
+            'post' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
+        ],
+        'scope.php' => [
+            'base' => '763ff62b129086f7c3d91fbccbb80e8db0ec71b04d11fc150c4881420bbe6992',
+            'post' => 'aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398',
+        ],
+        'state.php' => [
+            'base' => '142f5a026740dfb629af925005c7e931396aa3dcde0d534002fb42b545c5664d',
+            'post' => '3fbc48a0f25178011f0b838cc01d3664932822695d7d39c35d49cbc11fa057c1',
+        ],
+    ];
+}
+
+function qd_pcv_overlay_previous_pins(): array
 {
     return [
         'installation_guard.php' => [
@@ -49,24 +104,6 @@ function qd_pcv_overlay_pins(): array
         'state.php' => [
             'base' => '49c2b53466572015e77117653739966377267b5b50ec4514155e53256bca7361',
             'post' => 'b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6',
-        ],
-    ];
-}
-
-function qd_pcv_overlay_legacy_pins(): array
-{
-    return [
-        'preprocessing.php' => [
-            'base' => '5a0d46d3b29ba5f1a986f90b1fa7bbc8ce41402dd6b8d30f49a2fcba7783d49c',
-            'post' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
-        ],
-        'scope.php' => [
-            'base' => '763ff62b129086f7c3d91fbccbb80e8db0ec71b04d11fc150c4881420bbe6992',
-            'post' => 'aa800deb4a34e0a77663e938b80a11d748978fc1b420a708c1c9125fce9bf398',
-        ],
-        'state.php' => [
-            'base' => '142f5a026740dfb629af925005c7e931396aa3dcde0d534002fb42b545c5664d',
-            'post' => '3fbc48a0f25178011f0b838cc01d3664932822695d7d39c35d49cbc11fa057c1',
         ],
     ];
 }
@@ -138,7 +175,7 @@ function qd_pcv_overlay_read_stage(string $stageRoot): array
         && ($upstream['version'] ?? null) === QD_PCV_OVERLAY_VERSION
         && ($upstream['tag'] ?? null) === QD_PCV_OVERLAY_TAG
         && ($upstream['commit'] ?? null) === QD_PCV_OVERLAY_COMMIT
-        && ($manifest['stagedSourceDirectory'] ?? null) === 'pcv-companion/private-conversation-v0.1.24/server'
+        && ($manifest['stagedSourceDirectory'] ?? null) === 'pcv-companion/private-conversation-v0.1.25/server'
         && ($manifest['installDirectory'] ?? null) === 'ext/private_conversation'
         && is_array($fileEntries) && array_is_list($fileEntries) && count($fileEntries) === count($expectedFiles),
         'staged_source_missing');
@@ -330,6 +367,16 @@ function qd_pcv_overlay_legacy_backup_state(string $raw, string $chimRoot, strin
     return qd_pcv_overlay_validate_backup_state($state, $chimRoot, $ownerRoot,
         QD_PCV_OVERLAY_LEGACY_VERSION, QD_PCV_OVERLAY_LEGACY_COMMIT,
         $pins, array_keys($pins));
+}
+
+function qd_pcv_overlay_previous_backup_state(string $raw, string $chimRoot, string $ownerRoot): array
+{
+    $state = qd_pcv_overlay_decode_backup($raw);
+    $pins = qd_pcv_overlay_previous_pins();
+    $modifiedNames = array_keys(array_filter($pins,
+        static fn(array $entry): bool => !hash_equals($entry['base'], $entry['post'])));
+    return qd_pcv_overlay_validate_backup_state($state, $chimRoot, $ownerRoot,
+        QD_PCV_OVERLAY_PREVIOUS_VERSION, QD_PCV_OVERLAY_PREVIOUS_COMMIT, $pins, $modifiedNames);
 }
 
 function qd_pcv_overlay_backup_state(string $backupPath, string $chimRoot, array $pins): ?array
@@ -528,12 +575,17 @@ function qd_pcv_overlay_apply(array $settings): array
         $archivePath = $privateRoot . DIRECTORY_SEPARATOR . QD_PCV_OVERLAY_LEGACY_ARCHIVE;
         $archiveSafe = qd_managed_file_path($archivePath, $privateRoot, false);
         qd_pcv_overlay_require(is_string($archiveSafe) && !is_link($archivePath), 'unsafe_path');
+        $previousArchivePath = $privateRoot . DIRECTORY_SEPARATOR . QD_PCV_OVERLAY_PREVIOUS_ARCHIVE;
+        $previousArchiveSafe = qd_managed_file_path($previousArchivePath, $privateRoot, false);
+        qd_pcv_overlay_require(is_string($previousArchiveSafe) && !is_link($previousArchivePath), 'unsafe_path');
         $backupSnapshots = [
             $backupSafe => qd_pcv_overlay_snapshot_backup_path($backupSafe),
             $archiveSafe => qd_pcv_overlay_snapshot_backup_path($archiveSafe),
+            $previousArchiveSafe => qd_pcv_overlay_snapshot_backup_path($previousArchiveSafe),
         ];
         $activeRaw = $backupSnapshots[$backupSafe]['raw'];
         $archiveRaw = $backupSnapshots[$archiveSafe]['raw'];
+        $previousArchiveRaw = $backupSnapshots[$previousArchiveSafe]['raw'];
 
         $allBase = true;
         foreach ($pins as $relative => $entry) {
@@ -544,8 +596,11 @@ function qd_pcv_overlay_apply(array $settings): array
         if (is_string($archiveRaw)) {
             $archiveOriginals = qd_pcv_overlay_legacy_backup_state($archiveRaw, $chimRoot, $ownerRoot);
         }
+        $previousArchiveOriginals = null;
+        if (is_string($previousArchiveRaw)) {
+            $previousArchiveOriginals = qd_pcv_overlay_previous_backup_state($previousArchiveRaw, $chimRoot, $ownerRoot);
+        }
         $activeKind = null;
-        $activeLegacyOriginals = null;
         if (is_string($activeRaw)) {
             $activeState = qd_pcv_overlay_decode_backup($activeRaw);
             try {
@@ -560,19 +615,30 @@ function qd_pcv_overlay_apply(array $settings): array
                 );
                 $activeKind = 'current';
             } catch (QDPCVOverlayFailure) {
-                $activeLegacyOriginals = qd_pcv_overlay_legacy_backup_state($activeRaw, $chimRoot, $ownerRoot);
-                $activeKind = 'legacy';
+                try {
+                    $originals = qd_pcv_overlay_previous_backup_state($activeRaw, $chimRoot, $ownerRoot);
+                    $activeKind = 'previous';
+                } catch (QDPCVOverlayFailure) {
+                    qd_pcv_overlay_legacy_backup_state($activeRaw, $chimRoot, $ownerRoot);
+                    $activeKind = 'legacy';
+                }
             }
         }
 
-        if ($archiveOriginals !== null && $activeKind !== 'current') {
-            qd_pcv_overlay_require($activeKind === 'legacy' && is_string($activeRaw)
-                && is_string($archiveRaw) && hash_equals($activeRaw, $archiveRaw), 'write_failed');
+        if ($previousArchiveOriginals !== null) {
+            qd_pcv_overlay_require($activeKind === 'current'
+                || ($activeKind === 'previous' && is_string($activeRaw) && is_string($previousArchiveRaw)
+                    && hash_equals($activeRaw, $previousArchiveRaw)), 'write_failed');
         }
-        if ($activeKind === 'legacy') {
+        if ($archiveOriginals !== null) {
+            qd_pcv_overlay_require($activeKind === 'current' || $activeKind === 'previous'
+                || ($activeKind === 'legacy' && is_string($activeRaw) && is_string($archiveRaw)
+                    && hash_equals($activeRaw, $archiveRaw)), 'write_failed');
+        }
+        if ($activeKind === 'previous' || $activeKind === 'legacy') {
             qd_pcv_overlay_require($allBase, 'owner_incompatible');
         } elseif ($activeKind === null) {
-            qd_pcv_overlay_require($archiveRaw === null && $allBase, 'owner_incompatible');
+            qd_pcv_overlay_require($archiveRaw === null && $previousArchiveRaw === null && $allBase, 'owner_incompatible');
         }
 
         if ($owner['allPostimage']) {
@@ -581,7 +647,7 @@ function qd_pcv_overlay_apply(array $settings): array
             return qd_pcv_overlay_result('already_enabled');
         }
 
-        if ($activeKind === 'legacy' || $activeKind === null) {
+        if ($activeKind === 'previous' || $activeKind === 'legacy' || $activeKind === null) {
             $originals = [];
             foreach ($modifiedNames as $relative) {
                 qd_pcv_overlay_require(hash_equals($pins[$relative]['base'], $owner['current'][$relative]['hash']), 'owner_incompatible');
@@ -608,17 +674,25 @@ function qd_pcv_overlay_apply(array $settings): array
         if (strlen($currentBackupRaw) > QD_PCV_OVERLAY_MAX_BACKUP_BYTES) {
             throw new QDPCVOverlayFailure('capacity');
         }
+        if ($activeKind === 'previous' && $previousArchiveRaw === null) {
+            $backupAttempted[$previousArchiveSafe] = $activeRaw;
+            qd_atomic_write($previousArchiveSafe, $activeRaw, false);
+        }
         if ($activeKind === 'legacy' && $archiveRaw === null) {
             $backupAttempted[$archiveSafe] = $activeRaw;
             qd_atomic_write($archiveSafe, $activeRaw, false);
         }
-        if ($activeKind === 'legacy' || $activeKind === null) {
+        if ($activeKind === 'previous' || $activeKind === 'legacy' || $activeKind === null) {
             $backupAttempted[$backupSafe] = $currentBackupRaw;
             qd_atomic_write($backupSafe, $backupJson, true);
         }
         $verifiedBackup = qd_pcv_overlay_backup_state($backupSafe, $chimRoot, $pins);
         qd_pcv_overlay_require($verifiedBackup === $originals, 'write_failed');
-        if ($activeKind === 'legacy') {
+        if ($activeKind === 'previous') {
+            $verifiedArchive = qd_pcv_overlay_read_backup_raw($previousArchiveSafe);
+            qd_pcv_overlay_require(is_string($verifiedArchive) && hash_equals($activeRaw, $verifiedArchive), 'write_failed');
+            qd_pcv_overlay_previous_backup_state($verifiedArchive, $chimRoot, $ownerRoot);
+        } elseif ($activeKind === 'legacy') {
             $verifiedArchive = qd_pcv_overlay_read_backup_raw($archiveSafe);
             qd_pcv_overlay_require(is_string($verifiedArchive) && hash_equals($activeRaw, $verifiedArchive), 'write_failed');
             qd_pcv_overlay_legacy_backup_state($verifiedArchive, $chimRoot, $ownerRoot);

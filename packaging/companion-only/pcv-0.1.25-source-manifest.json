@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "upstream": {
+    "version": "0.1.25",
+    "tag": "private_conversation-v0.1.25",
+    "commit": "886a54967db7c6c08725c8bec8854ea3919ea532"
+  },
+  "stagedSourceDirectory": "pcv-companion/private-conversation-v0.1.25/server",
+  "installDirectory": "ext/private_conversation",
+  "files": [
+    {
+      "path": "installation_guard.php",
+      "stagedPath": "installation_guard.php",
+      "baseSha256": "082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d",
+      "postimageSha256": "082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d",
+      "modified": false
+    },
+    {
+      "path": "log.php",
+      "stagedPath": "log.php",
+      "baseSha256": "5ce07e9b834dba51ea5552d923c3a83f97dd3fa5dce7131db773d16813612a8c",
+      "postimageSha256": "5ce07e9b834dba51ea5552d923c3a83f97dd3fa5dce7131db773d16813612a8c",
+      "modified": false
+    },
+    {
+      "path": "manifest.json",
+      "stagedPath": "manifest.json",
+      "baseSha256": "198a242e4e85cd418aca588fd7583e1643437ffe069c3eaa6070b53d2eff4a3c",
+      "postimageSha256": "198a242e4e85cd418aca588fd7583e1643437ffe069c3eaa6070b53d2eff4a3c",
+      "modified": false
+    },
+    {
+      "path": "preprocessing.php",
+      "stagedPath": "preprocessing.php.template",
+      "baseSha256": "5a0d46d3b29ba5f1a986f90b1fa7bbc8ce41402dd6b8d30f49a2fcba7783d49c",
+      "postimageSha256": "01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950",
+      "modified": true
+    },
+    {
+      "path": "reflection.php",
+      "stagedPath": "reflection.php",
+      "baseSha256": "d33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540",
+      "postimageSha256": "d33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540",
+      "modified": false
+    },
+    {
+      "path": "scope.php",
+      "stagedPath": "scope.php",
+      "baseSha256": "75a2d61d9f223bae2d5bef32d1d2bbd88cf15dc4764f8759f8d763c236c1af2f",
+      "postimageSha256": "6eaa8d09d423a7364dfd26934b56794fa2cb51cacd26950e753f499989181e33",
+      "modified": true
+    },
+    {
+      "path": "state.php",
+      "stagedPath": "state.php",
+      "baseSha256": "49c2b53466572015e77117653739966377267b5b50ec4514155e53256bca7361",
+      "postimageSha256": "b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6",
+      "modified": true
+    }
+  ]
+}

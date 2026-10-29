@@ -1,18 +1,18 @@
 <?php
 declare(strict_types=1);
 
-const QD_PCV_EXPECTED_VERSION = '0.1.24';
+const QD_PCV_EXPECTED_VERSION = '0.1.25';
 const QD_PCV_CATALOG_MAX_ROWS = 4096;
 const QD_PCV_EXPECTED_CORE_MAIN_SHA256 = '3619049e6d54493a77b19c09f8b70420e3c35427545a8bb6e95e93c6fe57ebac';
 const QD_PCV_EXPECTED_CORE_MAIN_WINDOWS_CRLF_SHA256 = '9686a446bb4a2e2c02def2b59c87190734b30ba4382781bd71ea0df96baf6ff9';
 // The reviewed capture changes only npcspellcast event logging; player input paths remain pinned to upstream.
 const QD_PCV_EXPECTED_CORE_MAIN_DEPARTMENT_CAPTURE_SHA256 = '374085e7190495e5372d8604f1d8ecbe7bbe7fda8ec76a238eb7b81fd19a08ec';
 const QD_PCV_EXPECTED_OWNER_SOURCE_HASHES = [
-    'manifest.json' => '929a0b67050c3bab4ab1362f34997651896e07f9c8cd491a6e45fb7d9dca1ff0',
+    'manifest.json' => '198a242e4e85cd418aca588fd7583e1643437ffe069c3eaa6070b53d2eff4a3c',
     'state.php' => 'b64277236a520b5464a26becc9c7d15dce233fdf2e3f4c99201c568da22e16d6',
-    'scope.php' => '1aac2c5124f8886cf87f22e26c621906fdd6c569d66c08b908406fd64d67865f',
+    'scope.php' => '6eaa8d09d423a7364dfd26934b56794fa2cb51cacd26950e753f499989181e33',
     'preprocessing.php' => '01134dea7cd1adc6a2467f26297f14d26e70398f50b1c1963ea02c9af1936950',
-    'log.php' => '0a3a0684211bcb7e3e2a380ddf0d0173dfe838471b557d0b6ab1a1ec8a3fef56',
+    'log.php' => '5ce07e9b834dba51ea5552d923c3a83f97dd3fa5dce7131db773d16813612a8c',
     'installation_guard.php' => '082cb9534bb3c8570faa384c5050d5193f2fbe19a58534381bb7f1b47e2a607d',
     'reflection.php' => 'd33a41331638be653d7c94119043672d7142e73ac752f8adb7b7cfc090670540',
 ];

@@ -259,6 +259,27 @@
     { "path": "server/tests/correspondence/dev30-source-contract.php" },
     { "path": "server/tests/correspondence/dev30-adapter-interface.php" },
     { "path": "server/tests/dev30-pg/cases.json" },
-    { "path": "server/tests/dev30-pg/actual_pg.php" }
+    { "path": "server/tests/dev30-pg/actual_pg.php" },
+    { "path": "docs/PCV25-OFFLINE-CANDIDATE.md" },
+    { "path": "docs/superpowers/plans/2026-10-29-pcv25-offline.md" },
+    { "path": "packaging/build-pcv25-offline-candidate.py" },
+    { "path": "packaging/companion-only/PCV25-PROVENANCE.md" },
+    { "path": "packaging/companion-only/pcv-0.1.25-source-manifest.json" },
+    { "path": "packaging/tests/test_pcv25_offline_candidate.py" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/installation_guard.php" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/log.php" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/manifest.json" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/preprocessing.php" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/reflection.php" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/scope.php" },
+    { "path": "pcv-companion/private-conversation-v0.1.25/server/state.php" },
+    { "path": "server/tests/pcv25/overlay_upgrade.php" },
+    { "path": "server/tests/pcv25/source_contract.php" },
+    { "path": "server/tests/pcv25/owner_loaders.php" },
+    { "path": "server/tests/pcv25/recursive_loader_orders.php" },
+    { "path": "docs/PCV25-RELEASE.md" },
+    { "path": "docs/superpowers/plans/2026-10-29-pcv25-release.md" },
+    { "path": "packaging/build-installable-prealpha27.py" },
+    { "path": "packaging/tests/test_installable_prealpha27.py" }
   ]
 }
