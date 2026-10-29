@@ -879,7 +879,7 @@ try {
     $app = @pg_connect('host=localhost port=5432 dbname=dwemer user=dwemer connect_timeout=3', PGSQL_CONNECT_FORCE_NEW);
     if ($app === false || $app === null) throw new RuntimeException('app_connection_failed');
     $server = dev30_pg($admin, "SELECT current_setting('server_version_num')::int AS version,current_setting('data_directory') AS directory,current_setting('port')::int AS port,current_setting('listen_addresses') AS listeners,current_setting('unix_socket_directories') AS sockets,system_identifier::text AS system_id FROM pg_control_system()");
-    $appIdentity = dev30_pg($app, 'SELECT current_database() AS database,current_user AS role,inet_client_addr()::text AS client_address,inet_server_addr()::text AS server_address');
+    $appIdentity = dev30_pg($app, 'SELECT current_database() AS database,current_user AS role,host(inet_client_addr()) AS client_address,host(inet_server_addr()) AS server_address');
     pg_close($app);
     if (count($server) !== 1 || count($appIdentity) !== 1 || (int)$server[0]['version'] < 150000 || (int)$server[0]['version'] >= 160000
         || ($server[0]['listeners'] ?? null) !== '127.0.0.1' || (int)($server[0]['port'] ?? 0) !== 5432
