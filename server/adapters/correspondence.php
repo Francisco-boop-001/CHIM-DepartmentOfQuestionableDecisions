@@ -1307,6 +1307,9 @@ function qd_correspondence_resume(stdClass $payload, array $context): array
     }
     $authority = qd_correspondence_dev18_authority($context);
     $scopeKey = qd_correspondence_scope_key($context);
+    qd_correspondence_dev18_fenced_snapshot($scopeKey, $authority, static function ($connection, array $active): bool {
+        return true;
+    });
     $originalToken = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null;
     if (!is_string($originalToken) || $originalToken === '') throw new QDServerFault('stale_context');
 

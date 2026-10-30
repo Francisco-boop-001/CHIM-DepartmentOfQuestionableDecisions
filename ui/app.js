@@ -2038,10 +2038,12 @@
     text('letter-pending-status', pendingReadCopy);
     text('letter-recovery-result', state.mail.recoveryNotice);
     $('letter-reconcile').hidden = !selected;
-    $('letter-reconcile').disabled = !selected || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume');
+    $('letter-reconcile').disabled = !selected || state.mail.composePending
+      || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume');
     const resumeEligible = canResumeLetter(selected);
     $('letter-resume').hidden = !resumeEligible;
-    $('letter-resume').disabled = !resumeEligible || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
+    $('letter-resume').disabled = !resumeEligible || state.mail.composePending
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
     $('letter-pending-refresh').hidden = false;
     $('letter-pending-refresh').disabled = state.inFlight.has('correspondence.pending.read') || state.mail.composePending
       || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
@@ -2499,6 +2501,7 @@
     }
   }
   async function reconcileLetter() {
+    if (state.mail.composePending) return;
     const selected = selectedUnresolvedOperation();
     if (!selected || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume')) return;
     const operationId = selected.operationId;
@@ -2533,6 +2536,7 @@
     });
   }
   async function resumeLetter() {
+    if (state.mail.composePending) return;
     const selected = selectedUnresolvedOperation();
     if (!canResumeLetter(selected) || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile')) return;
     const operationId = selected.operationId;

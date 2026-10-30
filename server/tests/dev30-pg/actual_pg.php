@@ -532,13 +532,33 @@ function dev30_finish_child(array &$ctx, array $child): array
     file_put_contents($caseDir . DIRECTORY_SEPARATOR . 'stderr.raw', $stderr, LOCK_EX);
     @chmod($caseDir . DIRECTORY_SEPARATOR . 'stdout.raw', 0600);
     @chmod($caseDir . DIRECTORY_SEPARATOR . 'stderr.raw', 0600);
-    $traceRaw = is_file($traceFile) && !is_link($traceFile) ? file_get_contents($traceFile) : false;
+    $traceExists = file_exists($traceFile) || is_link($traceFile);
+    if (!$traceExists) throw new Dev30PgFailure('child_source_trace_missing');
+    if (is_link($traceFile) || !is_file($traceFile)) throw new Dev30PgFailure('child_source_trace_invalid');
+    $traceRaw = file_get_contents($traceFile);
+    if (!is_string($traceRaw)) throw new Dev30PgFailure('child_source_trace_read_failed');
+    $preservedTracePath = null;
+    $traceSha256 = null;
+    if (is_string($traceRaw)) {
+        $preservedTracePath = $caseDir . DIRECTORY_SEPARATOR . 'source-trace.raw.json';
+        $traceSha256 = strtolower(hash('sha256', $traceRaw));
+        if (file_exists($preservedTracePath) || is_link($preservedTracePath)) throw new Dev30PgFailure('child_source_trace_not_fresh');
+        $traceWritten = file_put_contents($preservedTracePath, $traceRaw, LOCK_EX);
+        if (!is_int($traceWritten) || $traceWritten !== strlen($traceRaw) || !is_file($preservedTracePath)
+            || is_link($preservedTracePath) || !@chmod($preservedTracePath, 0600)) {
+            throw new Dev30PgFailure('child_source_trace_preserve_failed');
+        }
+        $preservedTraceHash = hash_file('sha256', $preservedTracePath);
+        if (!is_string($preservedTraceHash) || !hash_equals($traceSha256, strtolower($preservedTraceHash))) {
+            throw new Dev30PgFailure('child_source_trace_hash_mismatch');
+        }
+    }
     $trace = is_string($traceRaw) ? json_decode($traceRaw, true) : null;
     $childNetwork = is_array($trace) && is_array($trace['networkEvidence'] ?? null) ? $trace['networkEvidence'] : [];
     $ctx['processes'][] = [
         'caseId' => $caseId, 'app' => $app, 'script' => $script,
-        'tracePath' => is_file($traceFile) ? $traceFile : null,
-        'traceSha256' => is_file($traceFile) ? strtolower((string)hash_file('sha256', $traceFile)) : null,
+        'tracePath' => $preservedTracePath,
+        'traceSha256' => $traceSha256,
         'includedFiles' => is_array($trace) && is_array($trace['includedFiles'] ?? null) ? $trace['includedFiles'] : [],
         'networkEvidence' => $childNetwork,
         'stdoutSha256' => hash('sha256', $stdout), 'stderrSha256' => hash('sha256', $stderr),
@@ -1273,6 +1293,7 @@ try {
     ]) throw new RuntimeException('case_inventory_invalid');
     if ($selectedCaseIds !== null && array_diff($selectedCaseIds, $caseIds) !== []) throw new RuntimeException('case_filter_invalid');
     $expectedCaseCount = count($selectedCaseIds ?? $caseIds);
+    $expectedCaseIds = $selectedCaseIds ?? $caseIds;
     $GLOBALS['dev30_selected_cases'] = $selectedCaseIds;
     $sourceBindingRaw = @file_get_contents($ctx['sourceBindingPath']);
     $sourceBinding = is_string($sourceBindingRaw) ? json_decode($sourceBindingRaw, true, 32) : null;
@@ -1466,11 +1487,12 @@ try {
             sort($expectedEntryKeys); sort($entryKeys);
             $bootstrapProjection = dev30_response($pending, 'bootstrap');
             $firstCursor = $pendingResponse['data']['nextCursor'] ?? null;
+            // Each cursor page scans 25 manual documents; owner-resolved history is omitted from operations.
             dev30_assert(($pendingResponse['ok'] ?? null) === true && count($pendingResponse['data']['operations'] ?? []) === 25
                 && ($pendingResponse['data']['limited'] ?? null) === true && is_string($firstCursor)
-                && ($pendingSecondPage['ok'] ?? null) === true && count($pendingSecondPage['data']['operations'] ?? []) === 25
+                && ($pendingSecondPage['ok'] ?? null) === true && count($pendingSecondPage['data']['operations'] ?? []) === 2
                 && ($pendingSecondPage['data']['limited'] ?? null) === true && is_string($pendingSecondPage['data']['nextCursor'] ?? null)
-                && ($pendingThirdPage['ok'] ?? null) === true && count($pendingThirdPage['data']['operations'] ?? []) === 4
+                && ($pendingThirdPage['ok'] ?? null) === true && ($pendingThirdPage['data']['operations'] ?? null) === []
                 && ($pendingThirdPage['data']['limited'] ?? null) === false && ($pendingThirdPage['data']['nextCursor'] ?? null) === null,
                 'unprofiled_pending_keyset_pages_did_not_complete_cleanly');
             dev30_assert(($bootstrapProjection['pendingMacKeyStored'] ?? null) === true
@@ -1578,6 +1600,46 @@ try {
         try {
             $companion = dev30_seed_companion($ctx, 'A scheduler-owned request must never enter manual recovery.', false);
             $companionBefore = dev30_delivery_counts($admin, $companion['documentId']);
+            $beforeStaleIngress = dev30_count_snapshot($admin);
+            $staleAttemptId = dev30_uuid();
+            $staleIngress = dev30_api($ctx, 'resume_refuse_companion_stale_ingress', 'correspondence.resume', [
+                'operationId' => $companion['requestId'], 'attemptId' => $staleAttemptId,
+            ], ['operationRequestId' => $staleAttemptId, 'authScopes' => ['compose'], 'priorRequestGlobals' => 'captured-invalid']);
+            $staleIngressResponse = dev30_response($staleIngress);
+            dev30_assert(($staleIngressResponse['ok'] ?? null) === false && ($staleIngressResponse['errorCode'] ?? null) === 'stale_context'
+                && !is_array($staleIngressResponse['data'] ?? null) && ($staleIngressResponse['globalStateRestored'] ?? null) === true
+                && $beforeStaleIngress === dev30_count_snapshot($admin)
+                && $companionBefore === dev30_delivery_counts($admin, $companion['documentId']),
+                'stale_captured_resume_token_was_reinterpreted_or_mutated_owner_rows');
+
+            $nullAttemptId = dev30_uuid();
+            $nullIngress = dev30_api($ctx, 'resume_refuse_companion_null_ingress', 'correspondence.resume', [
+                'operationId' => $companion['requestId'], 'attemptId' => $nullAttemptId,
+            ], ['operationRequestId' => $nullAttemptId, 'authScopes' => ['compose'], 'priorRequestGlobals' => 'captured-null-token']);
+            $nullIngressResponse = dev30_response($nullIngress);
+            dev30_assert(($nullIngressResponse['ok'] ?? null) === false && ($nullIngressResponse['errorCode'] ?? null) === 'stale_context'
+                && !is_array($nullIngressResponse['data'] ?? null) && ($nullIngressResponse['globalStateRestored'] ?? null) === true
+                && $beforeStaleIngress === dev30_count_snapshot($admin),
+                'already_captured_null_resume_token_was_reinterpreted_or_mutated_owner_rows');
+
+            $beforePendingResume = dev30_count_snapshot($admin);
+            dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=TRUE WHERE singleton IS TRUE');
+            try {
+                $pendingAttemptId = dev30_uuid();
+                $pendingIngress = dev30_api($ctx, 'resume_refuse_companion_pending_restore', 'correspondence.resume', [
+                    'operationId' => $companion['requestId'], 'attemptId' => $pendingAttemptId,
+                ], ['operationRequestId' => $pendingAttemptId, 'authScopes' => ['compose']]);
+            } finally {
+                dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=FALSE WHERE singleton IS TRUE');
+            }
+            $pendingIngressResponse = dev30_response($pendingIngress);
+            $pendingIngressRestore = dev30_pg($admin, 'SELECT pending FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
+            dev30_assert(($pendingIngressResponse['ok'] ?? null) === false && ($pendingIngressResponse['errorCode'] ?? null) === 'stale_context'
+                && !is_array($pendingIngressResponse['data'] ?? null) && ($pendingIngressResponse['globalStateRestored'] ?? null) === true
+                && ($pendingIngressRestore[0]['pending'] ?? null) === 'f' && $beforePendingResume === dev30_count_snapshot($admin)
+                && $companionBefore === dev30_delivery_counts($admin, $companion['documentId']),
+                'pending_restore_resume_preflight_was_not_refused_read_only');
+
             $companionResume = dev30_api($ctx, 'resume_refuse_companion', 'correspondence.resume', [
                 'operationId' => $companion['requestId'], 'attemptId' => dev30_uuid(),
             ], ['authScopes' => ['compose']]);
@@ -1723,6 +1785,130 @@ try {
                 && dev30_delivery_counts($admin, $mixedDocument['id']) === ['documents' => 1, 'operations' => 1, 'commands' => 1],
                 'mixed_same_request_compose_resume_created_duplicate_or_missing_delivery');
         } finally { dev30_reset_fixture_inputs($admin, $baseline); }
+    });
+
+    dev30_case($cases, 'adapter.resume_reason_projection', static function () use (&$ctx, $admin, $baseline): void {
+        dev30_reset_fixture_inputs($admin, $baseline); dev30_seed_case_clock($admin);
+        $scope = '';
+        $presenceBaseline = [];
+        $presenceModified = false;
+        try {
+            $scope = (string)dev23_companion_with_owner_runtime($ctx, static function ($store): string {
+                $scope = $store->scope()['playthrough_id'] ?? null;
+                if (!is_string($scope) || $scope === '') throw new RuntimeException('reason_projection_scope_missing');
+                return $scope;
+            });
+            $presenceBaseline = dev30_pg($admin,
+                'SELECT payload::text AS payload FROM plugins.correspondence_presence WHERE playthrough_id=$1', [$scope]);
+            if (count($presenceBaseline) > 1 || (isset($presenceBaseline[0]) && !is_string($presenceBaseline[0]['payload'] ?? null))) {
+                throw new RuntimeException('reason_projection_presence_baseline_invalid');
+            }
+            dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', [$scope]);
+            $presenceModified = true;
+
+            $composeQueued = static function (string $caseId, string $body, int $goldAmount = 0) use (&$ctx, $admin, $scope): array {
+                $requestId = dev30_uuid();
+                $result = dev30_api($ctx, $caseId . '_compose', 'correspondence.compose', [
+                    'operationId' => $requestId,
+                    'writerActorKey' => 'player',
+                    'signatureActorKey' => 'player',
+                    'recipientActorKey' => 'npc:900003',
+                    'body' => $body,
+                    'inventoryRevision' => 'dev30-reason-' . $requestId,
+                    'attachments' => [],
+                    'goldAmount' => $goldAmount,
+                ], ['operationRequestId' => $requestId, 'authScopes' => ['compose']]);
+                $response = dev30_response($result);
+                $document = dev30_document($admin, $requestId);
+                dev30_assert(($response['ok'] ?? null) === true && ($response['data']['operationId'] ?? null) === $requestId
+                    && ($response['data']['state'] ?? null) === 'queued' && ($response['data']['canResume'] ?? null) === true
+                    && ($response['data']['queuedReason'] ?? null) === 'executor_unavailable'
+                    && ($document['payload']['playthrough_id'] ?? null) === $scope,
+                    'reason_projection_letter_was_not_queued_in_the_actual_scope');
+                return ['requestId' => $requestId, 'documentId' => (string)$document['id']];
+            };
+            $resume = static function (array $letter, string $caseId) use (&$ctx): array {
+                $attemptId = dev30_uuid();
+                return dev30_api($ctx, $caseId, 'correspondence.resume', [
+                    'operationId' => $letter['requestId'], 'attemptId' => $attemptId,
+                ], ['operationRequestId' => $attemptId, 'authScopes' => ['compose']]);
+            };
+            $assertReason = static function (array $response, string $requestId, string $reason, bool $canResume): void {
+                $expectedKeys = ['canResume','companionSchedulerOwned','operationId','operatorClosed','queuedReason','state'];
+                $actualKeys = array_keys($response['data'] ?? []);
+                sort($expectedKeys, SORT_STRING); sort($actualKeys, SORT_STRING);
+                dev30_assert(($response['ok'] ?? null) === true && ($response['data']['operationId'] ?? null) === $requestId
+                    && ($response['data']['state'] ?? null) === 'queued' && ($response['data']['queuedReason'] ?? null) === $reason
+                    && ($response['data']['canResume'] ?? null) === $canResume && $actualKeys === $expectedKeys,
+                    'actual_owner_failure_did_not_project_its_fixed_reason_code');
+            };
+
+            $executorLetter = $composeQueued('resume_reason_executor', 'The actual owner has no observed executor for this request.');
+            $rendererLetter = $composeQueued('resume_reason_renderer', str_repeat('W', 1800));
+            $identityLetter = $composeQueued('resume_reason_identity', 'The actual owner identity is checked again during dispatch.');
+            $mappingLetter = $composeQueued('resume_reason_mapping', 'The actual owner validates the gold plugin mapping.', 500);
+
+            $beforeExecutor = dev30_count_snapshot($admin);
+            $executorResponse = dev30_response($resume($executorLetter, 'resume_reason_executor_attempt'));
+            $assertReason($executorResponse, $executorLetter['requestId'], 'executor_unavailable', true);
+            dev30_assert($beforeExecutor === dev30_count_snapshot($admin)
+                && dev30_delivery_counts($admin, $executorLetter['documentId']) === ['documents' => 1, 'operations' => 0, 'commands' => 0],
+                'executor_unavailable_projection_created_a_transfer');
+
+            $beforeIdentity = dev30_count_snapshot($admin);
+            dev30_pg($admin, 'UPDATE public.core_npc_master SET npc_name=$1 WHERE id=900003', ['Changed Lydia (synthetic reason fixture)']);
+            try {
+                $identityResponse = dev30_response($resume($identityLetter, 'resume_reason_identity_attempt'));
+            } finally {
+                dev30_pg($admin, 'UPDATE public.core_npc_master SET npc_name=$1 WHERE id=900003', [$baseline['actor']['npc_name']]);
+            }
+            $assertReason($identityResponse, $identityLetter['requestId'], 'identity_changed', false);
+            dev30_assert($beforeIdentity === dev30_count_snapshot($admin)
+                && dev30_delivery_counts($admin, $identityLetter['documentId']) === ['documents' => 1, 'operations' => 0, 'commands' => 0],
+                'identity_changed_projection_created_a_transfer');
+
+            $presence = dev30_run_child($ctx, 'resume_reason_seed_presence', $ctx['legacyTestRoot'] . DIRECTORY_SEPARATOR . 'owner_fixture.php',
+                ['--mode','seed-presence','--core-root',$ctx['coreRoot'],'--pg-socket',$ctx['pgSocket']]);
+            $presenceReceipt = json_decode(trim($presence['stdout']), true, 32, JSON_THROW_ON_ERROR);
+            dev30_assert(is_array($presenceReceipt) && ($presenceReceipt['ready'] ?? null) === true
+                && ($presenceReceipt['presenceExecutor'] ?? null) === 'Lydia', 'reason_projection_owner_presence_fixture_not_ready');
+
+            $beforeRenderer = dev30_count_snapshot($admin);
+            $rendererResponse = dev30_response($resume($rendererLetter, 'resume_reason_renderer_attempt'));
+            $assertReason($rendererResponse, $rendererLetter['requestId'], 'renderer_unavailable', true);
+            dev30_assert($beforeRenderer === dev30_count_snapshot($admin)
+                && dev30_delivery_counts($admin, $rendererLetter['documentId']) === ['documents' => 1, 'operations' => 0, 'commands' => 0],
+                'renderer_failure_projection_created_a_transfer');
+
+            $skyrimMappings = array_values(array_filter($baseline['plugins'], static fn(array $row): bool =>
+                is_string($row['plugin_name'] ?? null) && strcasecmp($row['plugin_name'], 'Skyrim.esm') === 0));
+            if (count($skyrimMappings) !== 1) throw new RuntimeException('reason_projection_gold_mapping_fixture_missing');
+            $beforeMapping = dev30_count_snapshot($admin);
+            try {
+                $removedMapping = dev30_pg($admin,
+                    'DELETE FROM public.game_plugins WHERE plugin_name=$1 RETURNING plugin_name', [$skyrimMappings[0]['plugin_name']]);
+                if (count($removedMapping) !== 1) throw new RuntimeException('reason_projection_gold_mapping_not_removed');
+                $mappingResponse = dev30_response($resume($mappingLetter, 'resume_reason_mapping_attempt'));
+            } finally {
+                dev30_reset_fixture_inputs($admin, $baseline);
+            }
+            $assertReason($mappingResponse, $mappingLetter['requestId'], 'mapping_unavailable', true);
+            dev30_assert($beforeMapping === dev30_count_snapshot($admin)
+                && dev30_delivery_counts($admin, $mappingLetter['documentId']) === ['documents' => 1, 'operations' => 0, 'commands' => 0],
+                'mapping_failure_projection_created_a_transfer');
+        } finally {
+            dev30_reset_fixture_inputs($admin, $baseline);
+            if ($scope !== '' && $presenceModified) {
+                dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', [$scope]);
+                if (count($presenceBaseline) === 1) {
+                    dev30_pg($admin, 'INSERT INTO plugins.correspondence_presence(playthrough_id,payload) VALUES($1,$2::jsonb)',
+                        [$scope, $presenceBaseline[0]['payload']]);
+                }
+                $restoredPresence = dev30_pg($admin,
+                    'SELECT payload::text AS payload FROM plugins.correspondence_presence WHERE playthrough_id=$1', [$scope]);
+                if ($restoredPresence !== $presenceBaseline) throw new RuntimeException('reason_projection_presence_not_restored');
+            }
+        }
     });
 
     dev30_case($cases, 'adapter.pending_restart_projection', static function () use (&$ctx, $admin, $baseline): void {
@@ -1927,6 +2113,7 @@ try {
             if (count($restore) !== 1 || !is_string($restore[0]['epoch'] ?? null) || ($restore[0]['pending'] ?? null) !== 'f') {
                 throw new RuntimeException('pending_restore_failure_fixture_not_ready');
             }
+            $beforeRestoreFailure = dev30_count_snapshot($admin);
             try {
                 dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=TRUE WHERE singleton IS TRUE');
                 $failed = dev30_api($ctx, 'pending_restore_failure', 'correspondence.pending.read', [], ['authScopes' => ['compose']]);
@@ -1939,7 +2126,7 @@ try {
             }
             $restoreAfter = dev30_pg($admin, 'SELECT epoch::text AS epoch,pending FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
             dev30_assert(count($restoreAfter) === 1 && $restoreAfter[0] === $restore[0]
-                && $before === dev30_count_snapshot($admin), 'pending_failure_fixture_state_or_rows_not_restored');
+                && $beforeRestoreFailure === dev30_count_snapshot($admin), 'pending_failure_fixture_state_or_rows_not_restored');
         } finally { dev30_reset_fixture_inputs($admin, $baseline); }
     });
 
@@ -2101,8 +2288,23 @@ try {
         });
     }
 
-    $status = count(array_filter($cases, static fn(array $case): bool => $case['status'] !== 'passed')) === 0
-        && is_int($expectedCaseCount) && count($cases) === $expectedCaseCount ? 'passed' : 'failed';
+    $executedCaseIds = array_column($cases, 'id');
+    $expectedIds = $expectedCaseIds;
+    $executedIds = $executedCaseIds;
+    sort($expectedIds, SORT_STRING);
+    sort($executedIds, SORT_STRING);
+    $inventoryMatches = $expectedCaseIds !== []
+        && count(array_unique($expectedCaseIds)) === count($expectedCaseIds)
+        && count(array_unique($executedCaseIds)) === count($executedCaseIds)
+        && $executedIds === $expectedIds;
+    if (!$inventoryMatches) {
+        $status = 'failed';
+        $failure = 'executed_case_inventory_mismatch';
+        fwrite(STDERR, "fixture:executed_case_inventory_mismatch\n");
+    } else {
+        $status = count(array_filter($cases, static fn(array $case): bool => $case['status'] !== 'passed')) === 0
+            && is_int($expectedCaseCount) && count($cases) === $expectedCaseCount ? 'passed' : 'failed';
+    }
 } catch (Throwable $error) {
     $failure = $error->getMessage();
     if (preg_match('/\A[a-z][a-z0-9_]{0,79}\z/iD', $failure) !== 1) $failure = 'fixture_preflight_failed';
@@ -2154,6 +2356,7 @@ $receipt = [
     'schemaVersion' => 1,
     'kind' => 'department-dev30-actual-pg',
     'status' => $status,
+    'failure' => $failure,
     'sourceCommit' => $ctx['sourceCommit'] ?? (string)($options['source-commit'] ?? ''),
     'ownerVersion' => $ownerBinding['ownerVersion'] ?? '0.1.0-dev.30',
     'ownerCommit' => $ownerBinding['ownerCommit'] ?? '1eb58d999698002f8aeaa05b21464f7608717794',

@@ -1534,6 +1534,50 @@ async function main() {
       await page.close();
     });
 
+    await test('letter recovery actions stay blocked while another compose response is pending', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-compose-pending-recovery', 'Z'.repeat(43));
+      await prepareComposer(page, 'The first letter is queued and eligible for Resume.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const firstCompose = await latestRequest(page, 'correspondence.compose');
+      const operationId = firstCompose.payload.operationId;
+      await respond(page, firstCompose, { operationId, state: 'queued', canResume: true, queuedReason: 'executor_unavailable' });
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('A different compose stays pending.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const pendingCompose = await latestRequest(page, 'correspondence.compose');
+      assert.notEqual(pendingCompose.payload.operationId, operationId);
+
+      const reconcile = page.locator('#letter-reconcile');
+      const resume = page.locator('#letter-resume');
+      const disabledBeforeDispatch = {
+        reconcile: await reconcile.isDisabled(),
+        resume: await resume.isDisabled(),
+      };
+      const forceClick = async (button) => button.evaluate((node) => node.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+      await forceClick(resume);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      const resumeRequest = await latestRequest(page, 'correspondence.resume');
+      const resumeCount = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length);
+      if (resumeRequest) {
+        await respond(page, resumeRequest, { operationId, state: 'queued', canResume: true, queuedReason: 'executor_unavailable' });
+        await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      }
+
+      await forceClick(reconcile);
+      await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 0)));
+      const reconcileCount = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.reconcile').length);
+      assert.deepEqual(disabledBeforeDispatch, { reconcile: true, resume: true }, 'both controls are disabled during a separate pending compose');
+      assert.equal(resumeCount, 0, 'a synthetic click cannot enter the Resume handler while compose is pending');
+      assert.equal(reconcileCount, 0, 'a synthetic click cannot enter the Reconcile handler while compose is pending');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 2,
+        'the delayed compose remains the only new write');
+      await page.close();
+    });
+
     await test('letter resume requires authoritative status and clears legacy, malformed, mismatched, and failed results', async () => {
       const page = await authenticatedPage(browser, 'scope-letter-resume-authority', 'S'.repeat(43));
       await prepareComposer(page, 'A letter needs an authoritative status refresh.');

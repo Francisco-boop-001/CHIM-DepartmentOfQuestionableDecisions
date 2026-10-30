@@ -39,6 +39,23 @@ resumeContractExpect(qd_validate_payload('correspondence.resume', (object)['oper
 resumeContractExpect(qd_validate_payload('correspondence.resume', (object)['operationId' => $operationId, 'attemptId' => 'not-a-uuid']) === 'invalid_request', 'resume must validate the fresh attempt UUID');
 resumeContractExpect((QD_OPERATION_REQUIREMENTS['correspondence.resume']['scope'] ?? null) === 'compose', 'resume must require compose scope');
 resumeContractExpect(in_array('correspondence.resume', QD_MUTATION_OPERATIONS, true), 'resume must enter the Department mutation journal');
+$resumeSourcePath = (new ReflectionFunction('qd_correspondence_resume'))->getFileName();
+$resumeSource = is_string($resumeSourcePath) ? file_get_contents($resumeSourcePath) : false;
+$resumeStart = is_string($resumeSource) ? strpos($resumeSource, 'function qd_correspondence_resume(') : false;
+$resumeEnd = is_string($resumeSource) && is_int($resumeStart) ? strpos($resumeSource, "\nfunction ", $resumeStart + 1) : false;
+$resumeBody = is_string($resumeSource) && is_int($resumeStart) && is_int($resumeEnd)
+    ? substr($resumeSource, $resumeStart, $resumeEnd - $resumeStart)
+    : '';
+$resumePreflight = strpos($resumeBody, 'qd_correspondence_dev18_fenced_snapshot($scopeKey, $authority,');
+$resumeTokenRead = strpos($resumeBody, '$originalToken = $GLOBALS[\'CORRESPONDENCE_REQUEST_RESTORE_TOKEN\'] ?? null;');
+$resumeIngressCapture = strpos($resumeBody, 'correspondenceCaptureRequestIngress($store);');
+$resumeTokenRecheck = strpos($resumeBody, 'hash_equals($originalToken, (string)$store->requestRestoreToken())');
+resumeContractExpect(is_int($resumePreflight) && is_int($resumeTokenRead) && $resumePreflight < $resumeTokenRead,
+    'fresh resume must capture restore authority in the owner-fenced snapshot before reading request globals');
+resumeContractExpect(is_int($resumeTokenRead) && is_int($resumeIngressCapture) && is_int($resumeTokenRecheck)
+    && $resumeTokenRead < $resumeIngressCapture && $resumeIngressCapture < $resumeTokenRecheck
+    && str_contains($resumeBody, '$store->assertRestoreToken($originalToken);'),
+    'resume preflight must retain ingress and writer-time restore-token revalidation');
 resumeContractExpect(qd_validate_payload('correspondence.pending.read', (object)[]) === 'ok', 'pending discovery must accept an initial page request');
 resumeContractExpect(qd_validate_payload('correspondence.pending.read', (object)['cursor' => str_repeat('x', 512)]) === 'ok', 'pending discovery must accept an opaque bounded cursor');
 resumeContractExpect(qd_validate_payload('correspondence.pending.read', (object)['cursor' => str_repeat('x', 513)]) === 'invalid_request', 'pending discovery must reject an oversized cursor');
@@ -179,6 +196,9 @@ resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', ['operat
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_content_overflow')) === 'renderer_unavailable', 'known renderer failures must map to a fixed renderer code');
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_unavailable')) === 'renderer_unavailable', 'pinned owner renderer failure must map to its fixed renderer code');
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('actor_identity_changed')) === 'identity_changed', 'known identity failures must map to a fixed identity code');
+resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('plugin_mapping_unavailable')) === 'mapping_unavailable', 'pinned plugin mapping failures must map to a fixed mapping code');
+resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('interaction_unavailable')) === 'interaction_unavailable', 'known interaction failures must keep their fixed code');
+resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('executor_unavailable')) === 'executor_unavailable', 'known executor failures must keep their fixed code');
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_private_body_secret')) === 'operation_unavailable', 'unknown owner exception messages must not leak or be overclassified');
 resumeContractExpect(qd_correspondence_safe_queue_reason(new RuntimeException('private body must not leak')) === 'operation_unavailable', 'unknown exceptions must map to a fixed safe fallback');
 
