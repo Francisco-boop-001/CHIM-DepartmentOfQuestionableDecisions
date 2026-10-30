@@ -1,12 +1,28 @@
 # Portable source build
 
-## Current prealpha.27 PCV25 release
+## Prealpha.28 queued-letter recovery candidate (not yet published)
 
-[Download prealpha.27](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.27/WorldOfDramaLlama-0.1.0-prealpha.27.zip). It pairs PCV owner 0.1.25 with support companion 0.1.0-prealpha.13. Sealed Fates dev.30, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Malpractice Makes Perfect dev.4, native 0.1.17, and UI keep their reviewed versions and bytes; 20 of 22 installable members are unchanged.
+Prealpha.28 adds a user-selected Resume path for an existing manual letter that remains queued after `executor_unavailable`. It retains the original request/document identity and saved body/attachments. Pending discovery and refresh are read-only. The package advances the Department DWPkg, native DLL to 0.1.18.0, and two UI files; the PCV companion 0.1.0-prealpha.13 is among the 18 of 22 installable payloads that retain their prealpha.27 bytes. User steps and limits are in [LETTER-RECOVERY.md](LETTER-RECOVERY.md).
 
-Reviewed evidence covers Windows source, control-flow, and package checks only. The reported input freeze is unchanged. Logger persistence, POSIX filesystem safety, and tagged native packet ordering remain unverified. HTTP, database, provider, native compilation, Skyrim, installed-game, and live behavior are outside this evidence.
+The build starts from the exact published prealpha.27 ZIP (SHA-256 `abb2fe3fb85859b26a26c251929a464e27c36d13179380e6ff491d15af2eb978`) and a clean committed source tree. It refuses to build unless all source paths match the selected Git commit, the source allowlist appends only the six declared .28 paths, the DWPkg delta is exact, the native build receipt matches the locked recipe and DLL, the source-binding and PE receipts bind that same commit/DLL, and root acceptance passes its source, owner, and native/UI/PostgreSQL gates. Root receipts are required inputs; synthetic unit-test fixtures cannot authorize release output.
 
-From a clean selected source commit, run packaging/build-installable-prealpha27.py build with --prealpha26-zip, --candidate-audit, --offline-checks, --source-commit, and --output-dir; run the same arguments with audit. See [PCV25-RELEASE.md](PCV25-RELEASE.md) for the relative-path commands, receipts, and output set.
+Set portable paths in PowerShell and build into a new directory outside the checkout:
+
+```powershell
+$Git = 'git'
+$Commit = '<frozen-source-commit>'
+$Baseline = 'path/to/WorldOfDramaLlama-0.1.0-prealpha.27.zip'
+$NativeDll = 'path/to/WorldOfDramaLlama.dll'
+$NativeBuild = 'path/to/native-build-receipt.json'
+$NativeBinding = 'path/to/native-source-binding.json'
+$NativePe = 'path/to/native-pe-verification.json'
+$Acceptance = 'path/to/root-acceptance.json'
+$Output = 'path/to/new-prealpha28-output'
+py -3 -B packaging/build-installable-prealpha28.py build --prealpha27-zip $Baseline --native-dll $NativeDll --native-build-receipt $NativeBuild --native-source-binding $NativeBinding --native-pe-receipt $NativePe --acceptance-receipt $Acceptance --source-commit $Commit --output-dir $Output --git $Git
+py -3 -B packaging/build-installable-prealpha28.py audit --prealpha27-zip $Baseline --native-dll $NativeDll --native-build-receipt $NativeBuild --native-source-binding $NativeBinding --native-pe-receipt $NativePe --acceptance-receipt $Acceptance --source-commit $Commit --output-dir $Output --git $Git
+```
+
+The output contains the installable ZIP, exact-allowlist source ZIP, sanitized offline-proof ZIP, and LF-only `SHA256SUMS.txt`. The public proof contains normalized source hashes, toolchain/dependency summary, x64 PE exports/version, accepted test counts, and evidence hashes; it does not copy raw PostgreSQL traces, server logs, letter text, credentials, or machine paths. The packager's static checks do not prove physical delivery, provider behavior, live-server behavior, installed-game behavior, Skyrim gameplay, or a mouse fix. Run the official DWPkg validator and independent clean/public-download verification before publication.
 
 ## Historical prealpha.26 Sealed Fates dev.30 TEST2-proof candidate
 

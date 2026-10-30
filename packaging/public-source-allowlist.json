@@ -280,6 +280,12 @@
     { "path": "docs/PCV25-RELEASE.md" },
     { "path": "docs/superpowers/plans/2026-10-29-pcv25-release.md" },
     { "path": "packaging/build-installable-prealpha27.py" },
-    { "path": "packaging/tests/test_installable_prealpha27.py" }
+    { "path": "packaging/tests/test_installable_prealpha27.py" },
+    { "path": "docs/LETTER-RECOVERY.md" },
+    { "path": "docs/superpowers/plans/2026-10-30-letter-resume.md" },
+    { "path": "docs/superpowers/specs/2026-10-30-letter-resume-design.md" },
+    { "path": "packaging/build-installable-prealpha28.py" },
+    { "path": "packaging/tests/test_installable_prealpha28.py" },
+    { "path": "server/tests/correspondence/resume-contract.php" }
   ]
 }

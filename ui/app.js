@@ -6,6 +6,7 @@
   const MAX_ROWS = 100;
   const MAX_CATALOG_ACTORS = 10000;
   const MAX_UNRESOLVED_LETTERS = 3;
+  const MAX_DISCOVERED_OPERATIONS = 25;
   const CONNECTION_STATES = new Set(['pending', 'approved', 'expired']);
   const STARTUP_TIMEOUT_MS = 20000;
   const STARTUP_TIMEOUT_TITLE = 'Companion bridge did not start';
@@ -21,7 +22,7 @@
   const OPS = new Set([
     'bootstrap', 'view.close', 'connection.begin', 'connection.status', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
-    'correspondence.mailbox.read', 'correspondence.detail.read', 'correspondence.compose', 'correspondence.reconcile',
+    'correspondence.mailbox.read', 'correspondence.detail.read', 'correspondence.compose', 'correspondence.reconcile', 'correspondence.resume', 'correspondence.pending.read',
     'brainwash.catalog.read', 'brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo',
   ]);
   const BRAINWASH_FIELDS = ['core', 'npc_static_bio', 'personality', 'appearance', 'occupation', 'skills', 'speechstyle', 'goals'];
@@ -30,7 +31,7 @@
     'mp.relationships.read': 'mp', 'sas.issues.read': 'sas',
     'correspondence.catalog.read': 'correspondence', 'correspondence.inventory.read': 'correspondence',
     'correspondence.mailbox.read': 'correspondence', 'correspondence.detail.read': 'correspondence',
-    'correspondence.compose': 'correspondence', 'correspondence.reconcile': 'correspondence',
+    'correspondence.compose': 'correspondence', 'correspondence.reconcile': 'correspondence', 'correspondence.resume': 'correspondence', 'correspondence.pending.read': 'correspondence',
     'brainwash.catalog.read': 'brainwash', 'brainwash.card.read': 'brainwash', 'brainwash.draft': 'brainwash',
     'brainwash.apply': 'brainwash', 'brainwash.undo': 'brainwash',
   };
@@ -39,7 +40,7 @@
     'mp.relationships.read': 'inspector', 'sas.issues.read': 'inspector',
     'correspondence.inventory.read': 'compose',
     'correspondence.mailbox.read': 'inspector', 'correspondence.detail.read': 'inspector',
-    'correspondence.compose': 'compose', 'correspondence.reconcile': 'compose',
+    'correspondence.compose': 'compose', 'correspondence.reconcile': 'compose', 'correspondence.resume': 'compose', 'correspondence.pending.read': 'compose',
     'brainwash.catalog.read': 'brainwash', 'brainwash.card.read': 'brainwash', 'brainwash.draft': 'brainwash',
     'brainwash.apply': 'brainwash', 'brainwash.undo': 'brainwash',
   };
@@ -82,6 +83,19 @@
     'busy', 'unavailable', 'rate_limited', 'too_large', 'invalid_response',
     'connection_setup_required', 'connection_secure_storage_failed',
   ]);
+  const QUEUED_REASON_COPY = {
+    executor_unavailable: "CHIM's delivery service is unavailable. Resume delivery will retry this same letter when you choose it.",
+    renderer_unavailable: 'CHIM cannot prepare this letter for delivery right now. Refresh its status before continuing.',
+    identity_changed: 'The character no longer matches the one for this letter. Refresh status before continuing.',
+    mapping_unavailable: 'CHIM cannot confirm which character this letter is addressed to. Refresh status before continuing.',
+    companion_owned: 'Sealed Fates handles this letter automatically. Do not send it again; check the same letter for updates.',
+    operator_closed: 'This letter was closed without a delivery confirmation. Check whether it arrived before taking further action.',
+    interaction_unavailable: 'CHIM cannot reach the intended character right now. Refresh status before continuing.',
+    integrity_unavailable: 'CHIM could not verify the saved letter. Delivery stays locked until it can be checked.',
+    not_dispatched: 'CHIM has not started delivery for this letter. Resume delivery will retry the same letter when you choose it.',
+    operation_unavailable: 'CHIM cannot confirm a delivery path for this letter right now. Refresh status before continuing.',
+  };
+  const NON_RESUMABLE_QUEUED_REASONS = new Set(['companion_owned', 'operator_closed', 'identity_changed', 'integrity_unavailable']);
 
   function createConnectionState() {
     return {
@@ -106,7 +120,10 @@
     pending: new Map(), inFlight: new Set(),
     pcv: { roster: null, status: null, mutationPending: false, mutationUnknown: false, mutationOperationId: null, sendPending: false, sendStatusPending: false, sendOperationId: null, sendUnknownId: null, sendSubmitted: null, sendDraftDiscardedId: null, draftText: '', lastFocusedControl: null },
     mail: { actors: [], catalogLimited: false, catalogRevision: null, catalogNextCursor: null, catalogError: null, inventory: null, inventoryLoaded: false, items: [], letters: [], selectedLetter: null, mailboxNextCursor: null,
-      operations: [], currentOperationId: null, operationDraft: null, recoveryNotice: '', composeLocked: false, mailboxLimited: false, reviewed: false },
+      operations: [], currentOperationId: null, operationDraft: null, recoveryNotice: '', composeLocked: false, composePending: false,
+      pendingReadStatus: 'required', pendingReadLimited: false, pendingReadCursor: null, pendingReadScanId: 0,
+      pendingReadMutationVersion: 0, pendingReadUsedCursors: new Set(), pendingReadDiscoveredIds: new Set(), pendingReadFailure: '',
+      mailboxLimited: false, reviewed: false },
   };
   let brainwashEditor = null;
   let brainwashEditorAvailable = false;
@@ -247,6 +264,8 @@
       'correspondence.mailbox.read': ['recipientActorKey', 'limit', 'cursor'], 'correspondence.detail.read': ['recipientActorKey', 'letterId'],
       'correspondence.compose': ['operationId', 'writerActorKey', 'recipientActorKey', 'signatureActorKey', 'body', 'inventoryRevision', 'attachments', 'goldAmount'],
       'correspondence.reconcile': ['operationId'],
+      'correspondence.resume': ['operationId', 'attemptId'],
+      'correspondence.pending.read': ['cursor'],
       'brainwash.catalog.read': ['query'], 'brainwash.card.read': ['actorKey'],
       'brainwash.draft': ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction', 'beliefs'],
       'brainwash.apply': ['actorKey', 'draftId', 'operationId', 'acceptedFields', 'acceptBeliefs'],
@@ -277,6 +296,11 @@
       if (new Set(payload.attachments.map((item) => item.itemKey)).size !== payload.attachments.length) return false;
     }
     if (operation === 'correspondence.reconcile' && !validUuid(payload.operationId)) return false;
+    if (operation === 'correspondence.resume' && (!exactKeys(payload, ['operationId', 'attemptId'])
+      || !validUuid(payload.operationId) || !validUuid(payload.attemptId))) return false;
+    if (operation === 'correspondence.pending.read' && (!exactKeys(payload, [], ['cursor'])
+      || (Object.prototype.hasOwnProperty.call(payload, 'cursor')
+        && (!boundedString(payload.cursor, 512) || payload.cursor.length === 0)))) return false;
     if (operation === 'brainwash.catalog.read' && (!exactKeys(payload, [], ['query'])
       || (payload.query !== undefined && !boundedString(payload.query, 128)))) return false;
     if (operation === 'brainwash.card.read' && (!exactKeys(payload, ['actorKey']) || !validBrainwashActorKey(payload.actorKey))) return false;
@@ -554,6 +578,7 @@
       } else {
         renderBootstrap();
       }
+      if (state.authenticated && state.access.compose && state.capabilities.correspondence) refreshPendingLetters();
       if (state.authenticated && state.pcv.sendUnknownId) requestPcvSendStatus(state.pcv.sendUnknownId);
       return true;
     }
@@ -602,6 +627,9 @@
     state.mail.operationDraft = null;
     state.mail.recoveryNotice = '';
     state.mail.reviewed = false;
+    clearResumeEligibility();
+    resetPendingReadScan('required');
+    state.mail.composePending = false;
     $('pcv-text').value = '';
     $('letter-body').value = '';
     $('letter-review-summary').replaceChildren();
@@ -644,6 +672,8 @@
     state.mail.operationDraft = null;
     state.mail.recoveryNotice = '';
     state.mail.composeLocked = false;
+    state.mail.composePending = false;
+    resetPendingReadScan('required');
     state.mail.reviewed = false;
     $('pcv-text').value = '';
     $('letter-body').value = '';
@@ -846,6 +876,7 @@
     }
     if (state.seenViewTokens.includes(init.viewToken)) return false;
     clearStartupWatchdog();
+    clearResumeEligibility();
     resetBrainwashEditor();
     const pendingSend = [...state.pending.values()].find((item) => item.envelope.operation === 'pcv.send');
     if (pendingSend) {
@@ -869,6 +900,8 @@
     state.nativeGeneration = init.nativeGeneration;
     state.serverContext = null;
     state.idCounter = 0;
+    resetPendingReadScan('required');
+    state.mail.composePending = false;
     state.authenticated = false;
     state.authRequired = true;
     state.capabilities = { pcv: false, mp: false, sas: false, correspondence: false, brainwash: false };
@@ -1853,6 +1886,58 @@
   function operationFor(operationId) {
     return state.mail.operations.find((operation) => operation.operationId === operationId) || null;
   }
+  function validPendingOperations(data) {
+    const fields = ['operations', 'limited', 'nextCursor'];
+    const rowFields = ['operationId', 'recipientLabel', 'state', 'hasTransfer', 'canResume', 'queuedReason', 'operatorClosed'];
+    const states = ['stored', 'queued', 'dispatched', 'unknown', 'partial'];
+    if (!isPlainObject(data) || !exactKeys(data, fields) || !Array.isArray(data.operations)
+      || data.operations.length > MAX_DISCOVERED_OPERATIONS || typeof data.limited !== 'boolean'
+      || !(data.nextCursor === null || (boundedString(data.nextCursor, 512) && data.nextCursor.length > 0))) return null;
+    const ids = new Set();
+    const operations = [];
+    for (const row of data.operations) {
+      if (!isPlainObject(row) || !exactKeys(row, rowFields) || !validUuid(row.operationId) || ids.has(row.operationId)
+        || !boundedString(row.recipientLabel, 256) || !row.recipientLabel.trim() || !states.includes(row.state)
+        || typeof row.hasTransfer !== 'boolean' || typeof row.canResume !== 'boolean' || typeof row.operatorClosed !== 'boolean'
+        || !(row.queuedReason === null || (typeof row.queuedReason === 'string' && Object.prototype.hasOwnProperty.call(QUEUED_REASON_COPY, row.queuedReason)))
+        || (row.queuedReason !== null && row.state !== 'queued')
+        || (row.canResume && (typeof row.queuedReason !== 'string' || row.state !== 'queued' || row.operatorClosed
+          || NON_RESUMABLE_QUEUED_REASONS.has(row.queuedReason)))) return null;
+      ids.add(row.operationId);
+      operations.push({
+        ...row, companionSchedulerOwned: row.queuedReason === 'companion_owned', hasTransfer: row.hasTransfer,
+        intentFingerprint: '', message: '',
+      });
+    }
+    return { operations, limited: data.limited, nextCursor: data.nextCursor };
+  }
+  function resetPendingReadScan(status = 'required') {
+    state.mail.pendingReadScanId += 1;
+    state.mail.pendingReadStatus = status;
+    state.mail.pendingReadLimited = false;
+    state.mail.pendingReadCursor = null;
+    state.mail.pendingReadUsedCursors = new Set();
+    state.mail.pendingReadDiscoveredIds = new Set();
+    state.mail.pendingReadFailure = '';
+  }
+  function invalidatePendingReadForMutation() {
+    state.mail.pendingReadMutationVersion += 1;
+    resetPendingReadScan('required');
+  }
+  function clearResumeEligibility(operationId = null) {
+    const operations = operationId ? [operationFor(operationId)] : state.mail.operations;
+    for (const operation of operations) {
+      if (!operation) continue;
+      operation.canResume = false;
+      operation.queuedReason = null;
+    }
+  }
+  function canResumeLetter(operation) {
+    return Boolean(state.authenticated && !state.closed && state.capabilities.correspondence && state.access.compose
+      && operation && operation.state === 'queued' && operation.canResume === true
+      && operation.companionSchedulerOwned !== true && operation.operatorClosed !== true
+      && !NON_RESUMABLE_QUEUED_REASONS.has(operation.queuedReason));
+  }
   function selectedUnresolvedOperation() {
     const selectedId = $('letter-operation').value;
     return operationFor(selectedId) || operationFor(state.mail.currentOperationId) || state.mail.operations[0] || null;
@@ -1869,11 +1954,18 @@
       $('letter-recovery').hidden = true;
       $('letter-reconcile').hidden = true;
       $('letter-reconcile').disabled = true;
+      $('letter-resume').hidden = true;
+      $('letter-resume').disabled = true;
+      $('letter-pending-refresh').hidden = true;
+      $('letter-pending-refresh').disabled = true;
+      $('letter-pending-continue').hidden = true;
+      $('letter-pending-continue').disabled = true;
       $('letter-new').hidden = true;
       $('letter-new').disabled = true;
       text('letter-recovery-status', '');
+      text('letter-pending-status', '');
       text('letter-recovery-result', '');
-      return { fingerprint: '', transferBlocked: false, duplicateBlocked: false };
+      return { fingerprint: '', transferBlocked: false, duplicateBlocked: false, pendingTransferBlocked: false };
     }
     $('letter-recovery').hidden = false;
     const currentSelection = select.value;
@@ -1883,13 +1975,17 @@
     const options = state.mail.operations.map((operation) => {
       const option = document.createElement('option');
       option.value = operation.operationId;
-      option.textContent = `${operation.operationId} · ${operation.state}`;
+      option.textContent = operation.recipientLabel
+        ? operation.recipientLabel + ' · ' + operation.state + ' · ' + operation.operationId
+        : operation.operationId + ' · ' + operation.state;
       return option;
     });
     if (!options.length) {
       const option = document.createElement('option');
       option.value = '';
-      option.textContent = 'No unresolved letters';
+      option.textContent = state.mail.pendingReadStatus === 'ready' && !state.mail.pendingReadLimited
+        ? 'No unresolved letters'
+        : state.mail.pendingReadLimited ? 'Waiting letters list is incomplete' : 'Waiting letters not confirmed';
       options.push(option);
     }
     select.replaceChildren(...options);
@@ -1903,7 +1999,7 @@
     const duplicateBlocked = Boolean(fingerprint && state.mail.operations.some((operation) => operation.intentFingerprint === fingerprint));
     const messages = [];
     if (state.mail.operations.length >= MAX_UNRESOLVED_LETTERS) {
-      messages.push('Three unresolved operations are retained. Reconcile one before sending another letter; none will be dropped.');
+      messages.push('The three-operation limit blocks new letters. All waiting letters remain listed; reconcile one before sending another.');
     } else if (transferBlocked) {
       messages.push('A transfer-bearing operation remains unresolved. Reconcile it before sending another transfer-bearing letter; text-only letters remain available.');
     } else if (payload && !fingerprint) {
@@ -1913,19 +2009,48 @@
     }
     if (selected && selected.message) messages.push(selected.message);
     else if (selected) messages.push(`${selected.operationId} remains unresolved (${selected.state}). Reconcile this same operation; absence alone does not prove it was not sent.`);
-    if (selected && selected.companionSchedulerOwned === true) {
+    if (selected && selected.companionSchedulerOwned === true && selected.queuedReason !== 'companion_owned') {
       messages.push('Sealed Fates handles this letter automatically. Do not send it again; check the same letter for updates.');
     }
-    if (selected && selected.operatorClosed === true) {
+    if (selected && selected.operatorClosed === true && selected.queuedReason !== 'operator_closed') {
       messages.push('This letter was closed without a delivery confirmation. You can still check whether it arrived.');
     }
+    if (selected && selected.state === 'queued' && selected.queuedReason) messages.push(QUEUED_REASON_COPY[selected.queuedReason]);
+    if (selected && selected.recipientLabel) messages.push('Selected letter is for ' + selected.recipientLabel + '.');
+    if (canResumeLetter(selected)) messages.push('Resume uses the saved letter and its original attachments; the current draft is not used.');
+    const transferDraft = Boolean(payload && (payload.attachments.length > 0 || payload.goldAmount > 0));
+    const pendingTransferBlocked = transferDraft && (state.mail.pendingReadStatus !== 'ready' || state.mail.pendingReadLimited);
+    if (pendingTransferBlocked) messages.push('Waiting letters are not fully confirmed. Refresh waiting letters before sending item or gold transfers; text-only letters remain available.');
     text('letter-recovery-status', messages.join(' '));
+    const pendingReadCopy = state.mail.pendingReadStatus === 'loading'
+      ? 'Checking current-scope waiting letters. New item and gold transfers stay disabled until the scan finishes.'
+      : state.mail.pendingReadStatus === 'incomplete'
+        ? 'More waiting-letter pages remain. Continue checking waiting letters; new item and gold transfers stay disabled.'
+        : state.mail.pendingReadStatus === 'failed' && state.mail.pendingReadFailure === 'stale_revision'
+          ? 'The waiting-letter scan changed before it finished. Refresh waiting letters to start a new scan. New item and gold transfers stay disabled.'
+          : state.mail.pendingReadStatus === 'failed'
+            ? 'Waiting letters could not be checked. Refresh waiting letters to start a new scan. New item and gold transfers stay disabled; text-only letters remain available.'
+            : state.mail.pendingReadStatus === 'limited' || state.mail.pendingReadLimited
+              ? 'The waiting-letter scan ended at a limit and remains incomplete. Refresh waiting letters before sending item or gold transfers.'
+              : state.mail.pendingReadStatus === 'required'
+                ? 'Waiting letters have not been confirmed yet. Refresh waiting letters before sending item or gold transfers.'
+                : '';
+    text('letter-pending-status', pendingReadCopy);
     text('letter-recovery-result', state.mail.recoveryNotice);
     $('letter-reconcile').hidden = !selected;
-    $('letter-reconcile').disabled = !selected || state.inFlight.has('correspondence.reconcile');
+    $('letter-reconcile').disabled = !selected || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume');
+    const resumeEligible = canResumeLetter(selected);
+    $('letter-resume').hidden = !resumeEligible;
+    $('letter-resume').disabled = !resumeEligible || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
+    $('letter-pending-refresh').hidden = false;
+    $('letter-pending-refresh').disabled = state.inFlight.has('correspondence.pending.read') || state.mail.composePending
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
+    $('letter-pending-continue').hidden = state.mail.pendingReadStatus !== 'incomplete' || !state.mail.pendingReadCursor;
+    $('letter-pending-continue').disabled = state.inFlight.has('correspondence.pending.read') || state.mail.composePending
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
     $('letter-new').hidden = false;
     $('letter-new').disabled = false;
-    return { fingerprint, transferBlocked, duplicateBlocked };
+    return { fingerprint, transferBlocked, duplicateBlocked, pendingTransferBlocked };
   }
   function renderMailAccess() {
     const authenticated = state.authenticated && !state.closed;
@@ -1955,7 +2080,8 @@
     const recovery = renderUnresolvedOperations();
     $('letter-review').disabled = !formValid;
     $('letter-send').disabled = !formValid || !state.mail.reviewed || state.mail.operations.length >= MAX_UNRESOLVED_LETTERS
-      || recovery.transferBlocked || recovery.duplicateBlocked || !recovery.fingerprint;
+      || recovery.transferBlocked || recovery.duplicateBlocked || recovery.pendingTransferBlocked || !recovery.fingerprint
+      || state.mail.composePending;
     if (!correspondenceReady) {
       const startup = !authenticated ? preAuthStatus() : null;
       setStatus('mail-state', startup ? startup.message : authenticated ? 'Sealed Fates is unavailable in this installation.' : 'Authentication is required to use Sealed Fates.', startup ? startup.state : 'error');
@@ -2057,6 +2183,87 @@
     } else await catalogJob;
     if (isCurrentView(context.viewToken, context.nativeGeneration)) renderMailAccess();
   }
+  async function refreshPendingLetters() {
+    if (!roleAllows('correspondence.pending.read') || state.inFlight.has('correspondence.pending.read') || state.mail.composePending
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile')) return;
+    resetPendingReadScan('loading');
+    renderMailAccess();
+    await readPendingLettersPage(null, state.mail.pendingReadScanId);
+  }
+  async function continuePendingLetters() {
+    if (!roleAllows('correspondence.pending.read') || state.mail.pendingReadStatus !== 'incomplete'
+      || !state.mail.pendingReadCursor || state.inFlight.has('correspondence.pending.read') || state.mail.composePending
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile')) return;
+    const cursor = state.mail.pendingReadCursor;
+    if (state.mail.pendingReadUsedCursors.has(cursor)) {
+      state.mail.pendingReadStatus = 'failed';
+      state.mail.pendingReadCursor = null;
+      state.mail.pendingReadFailure = '';
+      renderMailAccess();
+      return;
+    }
+    state.mail.pendingReadStatus = 'loading';
+    renderMailAccess();
+    await readPendingLettersPage(cursor, state.mail.pendingReadScanId);
+  }
+  async function readPendingLettersPage(cursor, scanId) {
+    const context = makeContext();
+    const mutationVersion = state.mail.pendingReadMutationVersion;
+    if (cursor !== null) state.mail.pendingReadUsedCursors.add(cursor);
+    await withBusy('correspondence.pending.read', cursor === null ? $('letter-pending-refresh') : $('letter-pending-continue'), async () => {
+      try {
+        requireCapability('correspondence.pending.read');
+        const data = await request('correspondence.pending.read', cursor === null ? {} : { cursor });
+        if (!isCurrentContext(context)) return;
+        if (scanId !== state.mail.pendingReadScanId) return;
+        if (mutationVersion !== state.mail.pendingReadMutationVersion) {
+          resetPendingReadScan('required');
+          renderMailAccess();
+          return;
+        }
+        const pending = validPendingOperations(data);
+        if (!pending) throw failLocal('UNAVAILABLE');
+        if (cursor !== null && state.mail.pendingReadCursor !== cursor) throw failLocal('UNAVAILABLE');
+        if (pending.nextCursor !== null && (pending.nextCursor === cursor || state.mail.pendingReadUsedCursors.has(pending.nextCursor))) throw failLocal('UNAVAILABLE');
+        const previous = new Map(state.mail.operations.map((operation) => [operation.operationId, operation]));
+        const discoveredIds = new Set(state.mail.pendingReadDiscoveredIds);
+        for (const operation of pending.operations) {
+          const old = previous.get(operation.operationId);
+          previous.set(operation.operationId, old
+            ? { ...old, ...operation, intentFingerprint: old.intentFingerprint, message: '' }
+            : operation);
+          discoveredIds.add(operation.operationId);
+        }
+        const operations = [...discoveredIds].map((operationId) => previous.get(operationId)).filter(Boolean);
+        for (const operation of state.mail.operations) {
+          if (!discoveredIds.has(operation.operationId)) operations.push(operation);
+        }
+        const scanComplete = pending.nextCursor === null && !pending.limited;
+        if (scanComplete && state.mail.currentOperationId && !discoveredIds.has(state.mail.currentOperationId)) {
+          state.mail.currentOperationId = null;
+          state.mail.operationDraft = null;
+          state.mail.composeLocked = false;
+          state.mail.reviewed = false;
+          $('letter-review-summary').hidden = true;
+        }
+        state.mail.pendingReadDiscoveredIds = discoveredIds;
+        state.mail.operations = scanComplete ? operations.filter((operation) => discoveredIds.has(operation.operationId)) : operations;
+        state.mail.pendingReadCursor = pending.nextCursor;
+        state.mail.pendingReadLimited = pending.limited;
+        state.mail.pendingReadFailure = '';
+        state.mail.pendingReadStatus = pending.nextCursor !== null ? 'incomplete' : pending.limited ? 'limited' : 'ready';
+        renderMailAccess();
+      } catch (error) {
+        if (!isCurrentContext(context) || scanId !== state.mail.pendingReadScanId) return;
+        clearResumeEligibility();
+        state.mail.pendingReadCursor = null;
+        state.mail.pendingReadStatus = 'failed';
+        state.mail.pendingReadLimited = false;
+        state.mail.pendingReadFailure = error && error.code === 'STALE_REVISION' ? 'stale_revision' : '';
+        renderMailAccess();
+      }
+    });
+  }
   async function loadMoreCatalog() {
     if (state.inFlight.has('correspondence.catalog.read') || !state.mail.catalogNextCursor) return;
     const context = makeContext();
@@ -2142,20 +2349,43 @@
   }
   function setReceiptText(message, kind = '') { setStatus('letter-receipt', message, kind); }
   function applyComposeResult(data, expectedOperationId) {
-    if (!isPlainObject(data) || data.operationId !== expectedOperationId || !['stored', 'queued', 'dispatched', 'delivered', 'unknown', 'partial', 'rejected'].includes(data.state)) throw failLocal('UNAVAILABLE');
+    const operation = operationFor(expectedOperationId);
+    const hasResumeEligibility = isPlainObject(data) && Object.prototype.hasOwnProperty.call(data, 'canResume');
+    const hasQueuedReason = isPlainObject(data) && Object.prototype.hasOwnProperty.call(data, 'queuedReason');
+    if (!isPlainObject(data) || data.operationId !== expectedOperationId || !['stored', 'queued', 'dispatched', 'delivered', 'unknown', 'partial', 'rejected'].includes(data.state)) {
+      clearResumeEligibility(expectedOperationId);
+      throw failLocal('UNAVAILABLE');
+    }
     const hasSchedulerOwnership = Object.prototype.hasOwnProperty.call(data, 'companionSchedulerOwned');
     const hasOperatorClosure = Object.prototype.hasOwnProperty.call(data, 'operatorClosed');
     if ((hasSchedulerOwnership && typeof data.companionSchedulerOwned !== 'boolean')
-      || (hasOperatorClosure && typeof data.operatorClosed !== 'boolean')) throw failLocal('UNAVAILABLE');
-    const operation = operationFor(expectedOperationId);
+      || (hasOperatorClosure && typeof data.operatorClosed !== 'boolean')
+      || (hasResumeEligibility !== hasQueuedReason)
+      || (hasResumeEligibility && typeof data.canResume !== 'boolean')
+      || (hasQueuedReason && !(data.queuedReason === null
+        || (typeof data.queuedReason === 'string' && Object.prototype.hasOwnProperty.call(QUEUED_REASON_COPY, data.queuedReason))))) {
+      clearResumeEligibility(expectedOperationId);
+      throw failLocal('UNAVAILABLE');
+    }
     if (!operation) return false;
-    if (hasSchedulerOwnership) operation.companionSchedulerOwned = data.companionSchedulerOwned;
-    if (hasOperatorClosure) operation.operatorClosed = data.operatorClosed;
+    const companionSchedulerOwned = hasSchedulerOwnership ? data.companionSchedulerOwned : operation.companionSchedulerOwned;
+    const operatorClosed = hasOperatorClosure ? data.operatorClosed : operation.operatorClosed;
     const receipt = isPlainObject(data.receipt) ? {
       deliveryConfirmed: data.receipt.deliveryConfirmed === true,
       receivedAt: boundedString(data.receipt.receivedAt, 256) ? data.receipt.receivedAt : '',
     } : null;
     const resolvedState = data.state === 'delivered' && (!receipt || receipt.deliveryConfirmed !== true) ? 'unknown' : data.state;
+    if ((hasQueuedReason && data.queuedReason !== null && resolvedState !== 'queued')
+      || (data.canResume === true && (typeof data.queuedReason !== 'string' || resolvedState !== 'queued'
+        || companionSchedulerOwned === true || operatorClosed === true
+        || NON_RESUMABLE_QUEUED_REASONS.has(data.queuedReason)))) {
+      clearResumeEligibility(expectedOperationId);
+      throw failLocal('UNAVAILABLE');
+    }
+    if (hasSchedulerOwnership) operation.companionSchedulerOwned = companionSchedulerOwned;
+    if (hasOperatorClosure) operation.operatorClosed = operatorClosed;
+    operation.canResume = hasResumeEligibility && data.canResume === true;
+    operation.queuedReason = resolvedState === 'queued' && hasQueuedReason ? data.queuedReason : null;
     const terminal = resolvedState === 'delivered' || resolvedState === 'rejected';
     const isCurrent = state.mail.currentOperationId === expectedOperationId;
     if (terminal) {
@@ -2206,23 +2436,29 @@
     return true;
   }
   async function sendLetter() {
-    if ($('letter-send').disabled || state.mail.composeLocked || !state.mail.reviewed) return;
+    if ($('letter-send').disabled || state.mail.composeLocked || state.mail.composePending || !state.mail.reviewed) return;
     const base = composePayload();
     if (!base) return;
     const intentFingerprint = letterIntentFingerprint(base);
     const hasTransfer = base.attachments.length > 0 || base.goldAmount > 0;
+    if (hasTransfer && (state.mail.pendingReadStatus !== 'ready' || state.mail.pendingReadLimited)) {
+      renderMailAccess();
+      return;
+    }
     if (!intentFingerprint || state.mail.operations.length >= MAX_UNRESOLVED_LETTERS
       || state.mail.operations.some((operation) => operation.intentFingerprint === intentFingerprint)
       || (hasTransfer && state.mail.operations.some((operation) => operation.hasTransfer))) {
       renderMailAccess();
       return;
     }
+    invalidatePendingReadForMutation();
     const operationId = newUuid();
     const payload = { operationId, ...base };
-    state.mail.operations.push({ operationId, state: 'unknown', intentFingerprint, hasTransfer, message: '' });
+    state.mail.operations.push({ operationId, state: 'unknown', intentFingerprint, hasTransfer, message: '', canResume: false, queuedReason: null });
     state.mail.currentOperationId = operationId;
     state.mail.operationDraft = { body: base.body };
     state.mail.composeLocked = true;
+    state.mail.composePending = true;
     renderMailAccess();
     setReceiptText('Submitting once. If the result is uncertain, reconcile this same operation; do not send a second copy.');
     const context = makeContext();
@@ -2255,13 +2491,21 @@
         setStatus('letter-receipt', `${localError(error)} Reconcile this operation; do not send a second copy.`, 'error');
       }
       renderMailAccess();
+    } finally {
+      if (isCurrentView(context.viewToken, context.nativeGeneration)) {
+        state.mail.composePending = false;
+        renderMailAccess();
+      }
     }
   }
   async function reconcileLetter() {
     const selected = selectedUnresolvedOperation();
-    if (!selected || state.inFlight.has('correspondence.reconcile')) return;
+    if (!selected || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume')) return;
     const operationId = selected.operationId;
     const context = makeContext();
+    invalidatePendingReadForMutation();
+    clearResumeEligibility(operationId);
+    renderMailAccess();
     await withBusy('correspondence.reconcile', $('letter-reconcile'), async () => {
       try {
         requireCapability('correspondence.reconcile');
@@ -2272,6 +2516,7 @@
         if (!isCurrentContext(context)) return;
         const operation = operationFor(operationId);
         if (operation) {
+          clearResumeEligibility(operationId);
           operation.state = 'unknown';
           operation.message = error.boundaryCode === 'not_found'
             ? 'Not found yet; this operation remains unresolved. Reconcile the same ID later; absence does not prove no write.'
@@ -2282,6 +2527,41 @@
           setStatus('letter-receipt', error.boundaryCode === 'not_found'
             ? 'Not found yet; this operation remains unresolved. Do not send its payload again.'
             : `${localError(error)} The existing operation remains unresolved.`, 'error');
+        }
+        renderMailAccess();
+      }
+    });
+  }
+  async function resumeLetter() {
+    const selected = selectedUnresolvedOperation();
+    if (!canResumeLetter(selected) || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile')) return;
+    const operationId = selected.operationId;
+    const attemptId = newUuid();
+    const context = makeContext();
+    invalidatePendingReadForMutation();
+    clearResumeEligibility(operationId);
+    renderMailAccess();
+    setReceiptText('Resuming delivery of this same letter once. If the result is uncertain, refresh its status before another attempt.');
+    await withBusy('correspondence.resume', $('letter-resume'), async () => {
+      let replyReceived = false;
+      try {
+        requireCapability('correspondence.resume');
+        const data = await request('correspondence.resume', { operationId, attemptId });
+        if (!isCurrentContext(context)) return;
+        replyReceived = true;
+        applyComposeResult(data, operationId);
+      } catch (error) {
+        if (!isCurrentContext(context)) return;
+        const operation = operationFor(operationId);
+        if (!operation) return;
+        clearResumeEligibility(operationId);
+        if (replyReceived || error.dispatched === true) operation.state = 'unknown';
+        operation.message = '';
+        if (state.mail.currentOperationId === operationId) {
+          state.mail.composeLocked = true;
+          setReceiptText(localError(error) + ' The existing letter remains locked. Refresh its status before another attempt.', 'error');
+        } else {
+          state.mail.recoveryNotice = localError(error) + ' The existing letter remains unresolved. Refresh its status before another attempt.';
         }
         renderMailAccess();
       }
@@ -2617,7 +2897,10 @@
     $('gold-amount').addEventListener('input', () => { updateAttachmentCount(); markComposeChanged(); });
     $('letter-review').addEventListener('click', reviewLetter);
     $('letter-send').addEventListener('click', () => invoke(sendLetter, 'letter-receipt'));
+    $('letter-pending-refresh').addEventListener('click', () => invoke(refreshPendingLetters, 'letter-pending-status'));
+    $('letter-pending-continue').addEventListener('click', () => invoke(continuePendingLetters, 'letter-pending-status'));
     $('letter-reconcile').addEventListener('click', () => invoke(reconcileLetter, 'letter-receipt'));
+    $('letter-resume').addEventListener('click', () => invoke(resumeLetter, 'letter-receipt'));
     $('letter-operation').addEventListener('change', renderMailAccess);
     $('letter-new').addEventListener('click', startNewLetter);
   }

@@ -138,7 +138,8 @@ namespace
 			"dql::inventory::GoldAmountFromInventory("));
 		CHECK(ContainsBetween(source, "ComposeResult PrepareComposePayload(", "void LoadOpenKey()",
 			"dql::inventory::GoldAmountFromInventory(player->GetInventory())"));
-		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.17.0\"_v,") != std::string::npos);
+		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.18.0\"_v,") != std::string::npos);
+		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_0_18\")") != std::string::npos);
 		CHECK(source.find("void RespondPreDispatchError(") != std::string::npos);
 		CHECK(source.find("dql::contract::MakePreDispatchError(request, code, message)") != std::string::npos);
 		CHECK(source.find("dql::contract::MakeError(request, code, message, dispatched)") != std::string::npos);
@@ -152,6 +153,27 @@ namespace
 			"RespondPreDispatchError("));
 		CHECK(source.find("request.operation == \"pcv.arm\"") != std::string::npos);
 		CHECK(source.find("request.operation == \"pcv.end\"") != std::string::npos);
+		CHECK(ContainsBetween(source, "static bool IsServerWriteOperation(", "bool IsCurrentRequest(", "correspondence.resume"));
+		CHECK(!ContainsBetween(source, "static bool IsServerWriteOperation(", "bool IsCurrentRequest(", "correspondence.pending.read"));
+		const auto pendingStart = source.find("if (request.operation == \"correspondence.pending.read\")");
+		const auto pendingEnd = source.find("if (request.operation == \"correspondence.resume\")", pendingStart);
+		CHECK(pendingStart != std::string_view::npos && pendingEnd != std::string_view::npos);
+		const auto pendingHandler = source.substr(pendingStart, pendingEnd - pendingStart);
+		CHECK(pendingHandler.find("CanUseCorrespondence") != std::string_view::npos);
+		CHECK(pendingHandler.find("RespondPreDispatchError(") != std::string_view::npos);
+		CHECK(pendingHandler.find("SubmitServerRequest(request, request.payload)") != std::string_view::npos);
+		CHECK(pendingHandler.find("BuildInventorySnapshot(") == std::string_view::npos);
+		CHECK(pendingHandler.find("PrepareComposePayload(") == std::string_view::npos);
+		const auto resumeStart = source.find("if (request.operation == \"correspondence.resume\")");
+		const auto resumeEnd = source.find("if (request.operation == \"correspondence.compose\")", resumeStart);
+		CHECK(resumeStart != std::string_view::npos && resumeEnd != std::string_view::npos);
+		const auto resumeHandler = source.substr(resumeStart, resumeEnd - resumeStart);
+		CHECK(resumeHandler.find("CanUseCorrespondence") != std::string_view::npos);
+		CHECK(resumeHandler.find("RespondPreDispatchError(") != std::string_view::npos);
+		CHECK(resumeHandler.find("SubmitServerRequest(request, request.payload)") != std::string_view::npos);
+		CHECK(resumeHandler.find("PrepareComposePayload(") == std::string_view::npos);
+		CHECK(ContainsBetween(source, "void RespondServerWriteState(", "void HandleConnectionOperation(",
+			"request.payload[\"operationId\"]"));
 		CHECK(ContainsBetween(source, "if (isPcvOperation &&", "if (request.operation == \"pcv.send\")",
 			"RespondPreDispatchError("));
 		CHECK(ContainsBetween(source, "bool SubmitServerRequest(", "void OnServerCompletion(",

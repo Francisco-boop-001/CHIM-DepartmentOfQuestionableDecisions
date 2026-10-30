@@ -1709,7 +1709,8 @@ namespace
 
 		static bool IsServerWriteOperation(std::string_view operation) noexcept
 		{
-			return operation == "pcv.arm" || operation == "pcv.end" || operation == "correspondence.compose";
+			return operation == "pcv.arm" || operation == "pcv.end" || operation == "correspondence.compose" ||
+				operation == "correspondence.resume";
 		}
 
 		bool IsCurrentRequest(const dql::contract::Envelope& request) const
@@ -2691,6 +2692,24 @@ namespace
 				}
 				return;
 			}
+			if (request.operation == "correspondence.pending.read") {
+				if (!dql::policy::CanUseCorrespondence(AccessState(), *request.serverContext)) {
+					RespondPreDispatchError(request, serverAccessCompose_ ? "unavailable" : "forbidden",
+						"The current pairing cannot read pending correspondence.");
+					return;
+				}
+				SubmitServerRequest(request, request.payload);
+				return;
+			}
+			if (request.operation == "correspondence.resume") {
+				if (!dql::policy::CanUseCorrespondence(AccessState(), *request.serverContext)) {
+					RespondPreDispatchError(request, serverAccessCompose_ ? "unavailable" : "forbidden",
+						"The current pairing cannot resume correspondence.");
+					return;
+				}
+				SubmitServerRequest(request, request.payload);
+				return;
+			}
 			if (request.operation == "correspondence.compose") {
 				if (!dql::policy::CanUseCorrespondence(AccessState(), *request.serverContext)) {
 					RespondPreDispatchError(request, serverAccessCompose_ ? "unavailable" : "forbidden",
@@ -2912,7 +2931,7 @@ extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.17.0"_v,
+SKSEPluginInfo(.Version = "0.1.18.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
@@ -2924,7 +2943,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	SKSE::Init(skse);
 	InitializeNativeLogger();
 	LogEvent("startup", "skse_initialized");
-	LogEvent("startup", "version_0_1_0_17");
+	LogEvent("startup", "version_0_1_0_18");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
 	if (!messaging || !papyrus) {

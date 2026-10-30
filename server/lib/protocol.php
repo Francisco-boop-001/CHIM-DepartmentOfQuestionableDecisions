@@ -11,6 +11,7 @@ const QD_MAX_TEXT_CHARACTERS = 2000;
 const QD_MAX_TEXT_BYTES = 8000;
 const QD_MAX_JOURNAL_RESULT_BYTES = 16384;
 const QD_BRAINWASH_FIELDS = ['core', 'npc_static_bio', 'personality', 'appearance', 'occupation', 'skills', 'speechstyle', 'goals'];
+const QD_PENDING_QUEUED_REASONS = ['executor_unavailable', 'renderer_unavailable', 'identity_changed', 'mapping_unavailable', 'companion_owned', 'operator_closed', 'interaction_unavailable', 'integrity_unavailable', 'not_dispatched', 'operation_unavailable'];
 
 const QD_OPERATION_REQUIREMENTS = [
     'bootstrap' => ['scope' => null, 'capability' => null],
@@ -28,6 +29,8 @@ const QD_OPERATION_REQUIREMENTS = [
     'correspondence.detail.read' => ['scope' => 'inspector', 'capability' => 'correspondence'],
     'correspondence.compose' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'correspondence.reconcile' => ['scope' => 'compose', 'capability' => 'correspondence'],
+    'correspondence.resume' => ['scope' => 'compose', 'capability' => 'correspondence'],
+    'correspondence.pending.read' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'brainwash.catalog.read' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
     'brainwash.card.read' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
     'brainwash.draft' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
@@ -404,6 +407,16 @@ function qd_validate_payload(string $operation, object $payload): string
 
         case 'correspondence.reconcile':
             return qd_exact_properties($payload, ['operationId']) && qd_is_uuid($payload->operationId) ? 'ok' : 'invalid_request';
+
+        case 'correspondence.resume':
+            return qd_exact_properties($payload, ['operationId', 'attemptId'])
+                && qd_is_uuid($payload->operationId)
+                && qd_is_uuid($payload->attemptId) ? 'ok' : 'invalid_request';
+
+        case 'correspondence.pending.read':
+            return qd_exact_properties($payload, [], ['cursor'])
+                && (!property_exists($payload, 'cursor') || qd_valid_string($payload->cursor, 512))
+                ? 'ok' : 'invalid_request';
 
         case 'brainwash.catalog.read':
             return qd_exact_properties($payload, [], ['query'])

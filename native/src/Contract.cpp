@@ -222,6 +222,7 @@ namespace dql::contract
 				"bootstrap", "view.close", "pcv.roster.read", "pcv.status.read", "pcv.arm", "pcv.end", "pcv.send", "pcv.send.status",
 				"mp.relationships.read", "sas.issues.read", "correspondence.catalog.read", "correspondence.inventory.read",
 				"correspondence.mailbox.read", "correspondence.detail.read", "correspondence.compose", "correspondence.reconcile",
+				"correspondence.pending.read", "correspondence.resume",
 				"brainwash.catalog.read", "brainwash.card.read", "brainwash.draft", "brainwash.apply", "brainwash.undo",
 				"connection.begin", "connection.status"
 			};
@@ -460,6 +461,45 @@ namespace dql::contract
 			return data.dump(-1, ' ', false).size() <= 48'000;
 		}
 
+		bool IsCorrespondencePendingResponseData(const Json& data)
+		{
+			if (!HasOnlyKeys(data, { "operations", "limited", "nextCursor" }) || !data["operations"].is_array() ||
+				data["operations"].size() > 25 || !data["limited"].is_boolean()) return false;
+			const auto& nextCursor = data["nextCursor"];
+			if (!(nextCursor.is_null() || (nextCursor.is_string() &&
+				!nextCursor.get_ref<const std::string&>().empty() && nextCursor.get_ref<const std::string&>().size() <= 512)) ||
+				data["limited"].get<bool>() != !nextCursor.is_null()) return false;
+			constexpr std::array<std::string_view, 5> states{
+				"stored", "queued", "dispatched", "unknown", "partial"
+			};
+			constexpr std::array<std::string_view, 10> reasons{
+				"executor_unavailable", "renderer_unavailable", "identity_changed", "mapping_unavailable",
+				"companion_owned", "operator_closed", "interaction_unavailable", "integrity_unavailable",
+				"not_dispatched", "operation_unavailable"
+			};
+			for (const auto& operation : data["operations"]) {
+				if (!HasOnlyKeys(operation, { "operationId", "recipientLabel", "state", "hasTransfer", "canResume", "queuedReason", "operatorClosed" }) ||
+					!IsUuid(operation["operationId"]) || !operation["recipientLabel"].is_string() ||
+					!operation["state"].is_string() ||
+					std::find(states.begin(), states.end(), operation["state"].get_ref<const std::string&>()) == states.end() ||
+					!operation["hasTransfer"].is_boolean() || !operation["canResume"].is_boolean() ||
+					!operation["operatorClosed"].is_boolean()) return false;
+				const auto& reason = operation["queuedReason"];
+				if (!reason.is_null() && (!reason.is_string() ||
+					std::find(reasons.begin(), reasons.end(), reason.get_ref<const std::string&>()) == reasons.end())) return false;
+			}
+			return true;
+		}
+
+		bool IsCorrespondencePendingRequestPayload(const Json& payload)
+		{
+			if (!payload.is_object()) return false;
+			if (payload.empty()) return true;
+			if (!HasOnlyKeys(payload, { "cursor" }) || !payload["cursor"].is_string()) return false;
+			const auto& cursor = payload["cursor"].get_ref<const std::string&>();
+			return !cursor.empty() && cursor.size() <= 512;
+		}
+
 		JsonParseResult ParseBoundedJsonImpl(std::string_view raw)
 		{
 			if (raw.empty() || raw.size() > kMaxEnvelopeBytes) {
@@ -556,6 +596,14 @@ namespace dql::contract
 		if (operation == "correspondence.catalog.read" && !IsCatalogRequestPayload(root["payload"])) {
 			return { std::nullopt, "invalid_request" };
 		}
+		if (operation == "correspondence.pending.read" && !IsCorrespondencePendingRequestPayload(root["payload"])) {
+			return { std::nullopt, "invalid_request" };
+		}
+		if (operation == "correspondence.resume" &&
+			(!HasOnlyKeys(root["payload"], { "operationId", "attemptId" }) ||
+				!IsUuid(root["payload"]["operationId"]) || !IsUuid(root["payload"]["attemptId"]))) {
+			return { std::nullopt, "invalid_request" };
+		}
 		if (operation.starts_with("brainwash.") && !IsBrainwashRequestPayload(operation, root["payload"])) {
 			return { std::nullopt, "invalid_request" };
 		}
@@ -594,6 +642,9 @@ namespace dql::contract
 				return { std::nullopt, "invalid_response" };
 			}
 			if (request.operation == "correspondence.catalog.read" && !IsCatalogResponseData(root["data"])) {
+				return { std::nullopt, "invalid_response" };
+			}
+			if (request.operation == "correspondence.pending.read" && !IsCorrespondencePendingResponseData(root["data"])) {
 				return { std::nullopt, "invalid_response" };
 			}
 			if (request.operation.starts_with("brainwash.") && !IsBrainwashResponseData(request.operation, root["data"])) {

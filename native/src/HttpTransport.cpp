@@ -250,12 +250,13 @@ namespace dql::http
 		{
 			return operation == "pcv.arm" || operation == "pcv.end" || operation == "pcv.companion.stage" ||
 				operation == "pcv.companion.cancel" || operation == "correspondence.compose" ||
+				operation == "correspondence.resume" ||
 				operation == "connection.begin";
 		}
 
 		[[nodiscard]] bool IsAllowedOperation(std::string_view operation) noexcept
 		{
-			static constexpr std::array<std::string_view, 17> allowed{
+			static constexpr std::array<std::string_view, 19> allowed{
 				"bootstrap",
 				"pcv.roster.read",
 				"pcv.status.read",
@@ -271,6 +272,8 @@ namespace dql::http
 				"correspondence.detail.read",
 				"correspondence.compose",
 				"correspondence.reconcile",
+				"correspondence.pending.read",
+				"correspondence.resume",
 				"connection.begin",
 				"connection.status"
 			};

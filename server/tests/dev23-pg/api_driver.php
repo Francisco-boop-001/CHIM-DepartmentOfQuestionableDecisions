@@ -8,7 +8,8 @@ declare(strict_types=1);
  * {"operation":"correspondence.mailbox.read","payload":{"recipientActorKey":"npc:900003"}}
  * Optional keys: caseId, authScopes, pauseAfterProfileLease, sourceDrift,
  * pauseTimeoutSeconds, nestedProfileLease, priorRequestGlobals, leaseMode,
- * operationRequestId, repeatSameRequest.
+ * operationRequestId, repeatSameRequest, pendingPages, pauseAfterPendingPage,
+ * legacyPendingKeyProbe.
  * Tokens, server contexts, payloads, and private paths are never written to stdout.
  */
 function qd_dev20_fail(string $code): never
@@ -189,6 +190,8 @@ $allowed = [
     'correspondence.detail.read',
     'correspondence.compose',
     'correspondence.reconcile',
+    'correspondence.resume',
+    'correspondence.pending.read',
 ];
 if (!in_array($input->operation, $allowed, true)) {
     qd_dev20_fail('operation_not_allowlisted');
@@ -239,6 +242,25 @@ if ($operationRequestId !== null
     qd_dev20_fail('operation_request_id_invalid');
 }
 $repeatSameRequest = ($input->repeatSameRequest ?? false) === true;
+$pendingPages = $input->pendingPages ?? 1;
+$pauseAfterPendingPage = ($input->pauseAfterPendingPage ?? false) === true;
+if (!is_int($pendingPages) || $pendingPages < 1 || $pendingPages > 8
+    || ($pendingPages > 1 && ($input->operation !== 'correspondence.pending.read'
+        || property_exists($input->payload, 'cursor') || $repeatSameRequest))
+    || ($pauseAfterPendingPage && ($pendingPages < 2 || $input->operation !== 'correspondence.pending.read'))) {
+    qd_dev20_fail('pending_page_count_invalid');
+}
+$legacyPendingKeyProbe = ($input->legacyPendingKeyProbe ?? false) === true;
+if ($legacyPendingKeyProbe && ($input->operation !== 'correspondence.pending.read' || $pendingPages !== 1 || $repeatSameRequest)) {
+    qd_dev20_fail('legacy_pending_key_probe_invalid');
+}
+$nextResumeAttemptId = $input->nextResumeAttemptId ?? null;
+if ($nextResumeAttemptId !== null
+    && ($input->operation !== 'correspondence.resume' || !is_string($nextResumeAttemptId)
+        || preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/D', $nextResumeAttemptId) !== 1
+        || $nextResumeAttemptId === ($input->payload->attemptId ?? null))) {
+    qd_dev20_fail('next_resume_attempt_invalid');
+}
 $sourceDrift = ($input->sourceDrift ?? false) === true;
 if ($sourceDrift && $input->operation !== 'bootstrap') qd_dev20_fail('source_drift_bootstrap_only');
 
@@ -384,6 +406,14 @@ try {
     }
     $bootstrapWire = json_decode((string)($bootstrap['body'] ?? ''), true);
     $bootstrapSummary = qd_dev20_summary($bootstrap, 'bootstrap');
+    $stateRaw = @file_get_contents($settings['statePath']);
+    $stateData = is_string($stateRaw) ? json_decode($stateRaw, true) : null;
+    $contextRecord = is_array($stateData) ? ($stateData['contexts'][$pair['pairId']] ?? null) : null;
+    $bootstrapSummary['pendingMacKeyStored'] = is_array($contextRecord)
+        && is_string($contextRecord['pendingReadMacKey'] ?? null)
+        && preg_match('/\A[a-f0-9]{64}\z/D', $contextRecord['pendingReadMacKey']) === 1;
+    $bootstrapSummary['pendingMacKeyNotExposed'] = is_array($bootstrapWire['data'] ?? null)
+        && !array_key_exists('pendingReadMacKey', $bootstrapWire['data']);
     if (is_array($sourceDriftEvidence)) $bootstrapSummary['sourceDrift'] = $sourceDriftEvidence;
     qd_dev20_emit($bootstrapSummary);
     if ($input->operation === 'bootstrap') exit(0);
@@ -480,24 +510,105 @@ try {
     $hadBorrowedLease = is_resource($borrowedLease);
     $pauseArmed = $pause;
     $operationRequestId ??= qd_dev20_uuid();
-    $operationResponse = $call($input->operation, $input->payload, $bootstrapWire['data']['serverContext'], $operationRequestId);
-    $summary = qd_dev20_summary($operationResponse, 'operation');
-    $summary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
-    if (isset($fixtureGenerationEvidence)) $summary['fixtureGenerationEvidence'] = $fixtureGenerationEvidence;
-    $summary['borrowedLeaseSameOpen'] = !$hadBorrowedLease
-        ? !is_resource($GLOBALS['ptr_runtime_lease'] ?? null)
-        : (is_resource($GLOBALS['ptr_runtime_lease'] ?? null) && $GLOBALS['ptr_runtime_lease'] === $borrowedLease);
-    $summary['borrowedLeaseStillHeld'] = !$hadBorrowedLease
-        ? null
-        : qd_dev20_lease_still_held(is_string($mainLeaseOriginalPath) ? $mainLeaseOriginalPath : (string)$mainLeasePath);
-    if ($caseId !== null) $summary['caseId'] = $caseId;
-    qd_dev20_emit($summary);
-    if ($repeatSameRequest) {
-        $repeatResponse = $call($input->operation, $input->payload, $bootstrapWire['data']['serverContext'], $operationRequestId);
-        $repeatSummary = qd_dev20_summary($repeatResponse, 'repeat');
-        $repeatSummary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
-        if ($caseId !== null) $repeatSummary['caseId'] = $caseId;
-        qd_dev20_emit($repeatSummary);
+    $serverContext = $bootstrapWire['data']['serverContext'];
+    if ($legacyPendingKeyProbe) {
+        qd_server_state_transaction($settings, static function (array &$state) use ($pair): void {
+            unset($state['contexts'][$pair['pairId']]['pendingReadMacKey']);
+        });
+        $legacyStateRaw = @file_get_contents($settings['statePath']);
+        if (!is_string($legacyStateRaw)) qd_dev20_fail('legacy_pending_state_unreadable');
+        $legacyStateHash = hash('sha256', $legacyStateRaw);
+        $otherResponse = $call('correspondence.reconcile', (object)['operationId' => qd_dev20_uuid()], $serverContext);
+        $otherSummary = qd_dev20_summary($otherResponse, 'legacyOther');
+        $otherSummary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
+        if ($caseId !== null) $otherSummary['caseId'] = $caseId;
+        qd_dev20_emit($otherSummary);
+        $pendingResponse = $call('correspondence.pending.read', new stdClass(), $serverContext);
+        $pendingSummary = qd_dev20_summary($pendingResponse, 'legacyPending');
+        $pendingSummary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
+        if ($caseId !== null) $pendingSummary['caseId'] = $caseId;
+        qd_dev20_emit($pendingSummary);
+        $legacyStateAfter = @file_get_contents($settings['statePath']);
+        qd_dev20_emit([
+            'event' => 'legacy_pending_key_probe',
+            'otherOperationAccepted' => ($otherSummary['errorCode'] ?? null) === 'not_found' || ($otherSummary['ok'] ?? false) === true,
+            'pendingDiscoveryRefused' => ($pendingSummary['errorCode'] ?? null) === 'stale_context',
+            'missingKeyNotRewritten' => is_string($legacyStateAfter) && hash_equals($legacyStateHash, hash('sha256', $legacyStateAfter)),
+            'caseId' => $caseId,
+        ]);
+    } else {
+        $operationResponse = $call($input->operation, $input->payload, $serverContext, $operationRequestId);
+        $summary = qd_dev20_summary($operationResponse, 'operation');
+        $summary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
+        if ($input->operation === 'correspondence.pending.read') {
+            $summary['pageOrdinal'] = 1;
+            $summary['pendingContextReused'] = true;
+        }
+        if (isset($fixtureGenerationEvidence)) $summary['fixtureGenerationEvidence'] = $fixtureGenerationEvidence;
+        $summary['borrowedLeaseSameOpen'] = !$hadBorrowedLease
+            ? !is_resource($GLOBALS['ptr_runtime_lease'] ?? null)
+            : (is_resource($GLOBALS['ptr_runtime_lease'] ?? null) && $GLOBALS['ptr_runtime_lease'] === $borrowedLease);
+        $summary['borrowedLeaseStillHeld'] = !$hadBorrowedLease
+            ? null
+            : qd_dev20_lease_still_held(is_string($mainLeaseOriginalPath) ? $mainLeaseOriginalPath : (string)$mainLeasePath);
+        if ($caseId !== null) $summary['caseId'] = $caseId;
+        qd_dev20_emit($summary);
+        if ($pendingPages > 1) {
+            $operationWire = json_decode((string)($operationResponse['body'] ?? ''), true);
+            $cursor = is_array($operationWire) ? ($operationWire['data']['nextCursor'] ?? null) : null;
+            if ($pauseAfterPendingPage) {
+                if (!is_string($cursor) || $cursor === '') qd_dev20_fail('pending_page_barrier_without_cursor');
+                $control = $fixtureRoot . DIRECTORY_SEPARATOR . 'control';
+                $marker = $control . DIRECTORY_SEPARATOR . 'pending-page1-ready';
+                $release = $control . DIRECTORY_SEPARATOR . 'continue-pending-page';
+                if (is_link($control) || is_link($marker) || is_link($release) || file_exists($marker) || file_exists($release)) {
+                    qd_dev20_fail('pending_page_barrier_path_invalid');
+                }
+                $handle = @fopen($marker, 'x+b');
+                if (!is_resource($handle)) qd_dev20_fail('pending_page_barrier_create_failed');
+                try {
+                    if (fwrite($handle, "page1-ready\n") !== 12 || !fflush($handle)) qd_dev20_fail('pending_page_barrier_write_failed');
+                } finally {
+                    fclose($handle);
+                }
+                @chmod($marker, 0660);
+                qd_dev20_emit(['event' => 'pending_page_paused', 'caseId' => $caseId, 'pageOrdinal' => 1]);
+                $deadline = microtime(true) + $pauseTimeout;
+                while (!is_file($release)) {
+                    if (is_link($release) || microtime(true) >= $deadline) qd_dev20_fail('pending_page_pause_timeout');
+                    usleep(10000);
+                }
+                $releaseBytes = @file_get_contents($release);
+                if ($releaseBytes !== "continue\n") qd_dev20_fail('pending_page_release_invalid');
+            }
+            for ($page = 2; $page <= $pendingPages && is_string($cursor) && $cursor !== ''; $page++) {
+                $pageResponse = $call('correspondence.pending.read', (object)['cursor' => $cursor], $serverContext);
+                $pageSummary = qd_dev20_summary($pageResponse, 'pendingPage' . $page);
+                $pageSummary['pageOrdinal'] = $page;
+                $pageSummary['pendingContextReused'] = true;
+                $pageSummary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
+                if ($caseId !== null) $pageSummary['caseId'] = $caseId;
+                qd_dev20_emit($pageSummary);
+                $pageWire = json_decode((string)($pageResponse['body'] ?? ''), true);
+                $cursor = is_array($pageWire) && is_array($pageWire['data'] ?? null) ? ($pageWire['data']['nextCursor'] ?? null) : null;
+            }
+        }
+        if ($repeatSameRequest) {
+            $repeatResponse = $call($input->operation, $input->payload, $serverContext, $operationRequestId);
+            $repeatSummary = qd_dev20_summary($repeatResponse, 'repeat');
+            $repeatSummary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
+            if ($caseId !== null) $repeatSummary['caseId'] = $caseId;
+            qd_dev20_emit($repeatSummary);
+        }
+        if (is_string($nextResumeAttemptId)) {
+            $nextPayload = clone $input->payload;
+            $nextPayload->attemptId = $nextResumeAttemptId;
+            $nextResponse = $call($input->operation, $nextPayload, $serverContext);
+            $nextSummary = qd_dev20_summary($nextResponse, 'nextAttempt');
+            $nextSummary['globalStateRestored'] = qd_dev20_globals_match($globalSnapshot);
+            if ($caseId !== null) $nextSummary['caseId'] = $caseId;
+            qd_dev20_emit($nextSummary);
+        }
     }
 } catch (Throwable $error) {
     if ($error instanceof QDDev18DriverFailure) {

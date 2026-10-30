@@ -14,15 +14,19 @@ const pagePath = path.resolve(__dirname, '..', 'index.html');
 const fifthTabFixturePath = path.join(__dirname, 'fixtures', 'fifth-tab.html');
 const resultPath = process.env.UI_TEST_RESULTS;
 const screenshotPath = process.env.UI_TEST_SCREENSHOT;
+const testFilter = process.env.UI_TEST_FILTER || '';
 const connectionPendingScreenshotPath = process.env.UI_CONNECTION_PENDING_SCREENSHOT;
 const connectionSetupErrorScreenshotPath = process.env.UI_CONNECTION_SETUP_ERROR_SCREENSHOT;
 const nativeRefusalScreenshotPath = process.env.UI_NATIVE_REFUSAL_SCREENSHOT;
 const nativeRecoveryScreenshotPath = process.env.UI_NATIVE_RECOVERY_SCREENSHOT;
 const letterRecoveryScreenshotPath = process.env.UI_LETTER_RECOVERY_SCREENSHOT;
+const letterResumeScreenshotPath = process.env.UI_LETTER_RESUME_SCREENSHOT;
+const letterResumePaginationScreenshotPath = process.env.UI_LETTER_RESUME_PAGINATION_SCREENSHOT;
 const results = [];
 let uuidCounter = 1;
 
 async function test(name, run) {
+  if (testFilter && !name.toLowerCase().includes(testFilter.toLowerCase())) return;
   try {
     await run();
     results.push({ name, status: 'passed' });
@@ -181,7 +185,20 @@ async function authenticatedPage(browser, serverContext = 'scope-test-1', scopeT
   const request = await initialize(page);
   assert.match(request.requestId, /^[0-9a-f-]{36}$/i, 'requestId must be a UUID');
   assert.equal(request.context.serverContext, null, 'bootstrap must start without a server context');
-  await respond(page, request, authenticatedData(serverContext, scopeToken, overrides));
+  const bootstrap = authenticatedData(serverContext, scopeToken, overrides);
+  await respond(page, request, bootstrap);
+  if (overrides.skipPendingReadReply !== true && bootstrap.authenticated && bootstrap.capabilities.correspondence && bootstrap.access.compose) {
+    await page.waitForFunction(() => window.__bridgeRequests.some((item) => item.operation === 'correspondence.pending.read'));
+    const pending = await latestRequest(page, 'correspondence.pending.read');
+    if (overrides.pendingReadError) {
+      await respond(page, pending, null, { ok: false, error: overrides.pendingReadError });
+    } else {
+      const data = Object.prototype.hasOwnProperty.call(overrides, 'pendingReadData')
+        ? overrides.pendingReadData
+        : { operations: [], limited: false, nextCursor: null };
+      await respond(page, pending, data);
+    }
+  }
   return page;
 }
 
@@ -1468,6 +1485,589 @@ async function main() {
       await page.close();
     });
 
+    await test('letter resume is an explicit retry of the existing operation', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-resume-explicit', 'R'.repeat(43));
+      await prepareComposer(page, 'A queued letter stays the same letter.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      const operationId = compose.payload.operationId;
+      await respond(page, compose, {
+        operationId, state: 'queued', canResume: true, queuedReason: 'executor_unavailable',
+      });
+
+      const resume = page.locator('#letter-resume');
+      assert.equal(await resume.count(), 1, 'eligible queued letters expose a distinct Resume delivery action');
+      assert.equal(await resume.isVisible(), true);
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /delivery service is unavailable/i);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'Resume never unlocks Send');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 0,
+        'eligibility never starts a retry by itself');
+      await resume.click();
+      const firstResume = await latestRequest(page, 'correspondence.resume');
+      assert.equal(firstResume.operation, 'correspondence.resume');
+      assert.deepEqual(Object.keys(firstResume.payload).sort(), ['attemptId', 'operationId']);
+      assert.equal(firstResume.payload.operationId, operationId);
+      assert.match(firstResume.payload.attemptId, /^[0-9a-f-]{36}$/i);
+      assert.notEqual(firstResume.payload.attemptId, operationId, 'each explicit retry has a separate attempt ID');
+      assert.equal(await resume.isDisabled(), true, 'the action is disabled while its request is in flight');
+      await resume.evaluate((button) => button.click());
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 1,
+        'a second click cannot dispatch while the first attempt is in flight');
+      await page.evaluate(() => document.getElementById('letter-send').click());
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'the locked Send button cannot create a second letter');
+
+      await respond(page, firstResume, {
+        operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched',
+      });
+      await resume.waitFor({ state: 'visible' });
+      await resume.click();
+      const secondResume = await latestRequest(page, 'correspondence.resume');
+      assert.equal(secondResume.payload.operationId, operationId, 'a later explicit click still targets the original letter');
+      assert.notEqual(secondResume.payload.attemptId, firstResume.payload.attemptId, 'a later explicit click gets a fresh attempt ID');
+      await respond(page, secondResume, { operationId, state: 'unknown', canResume: false, queuedReason: null });
+      await resume.waitFor({ state: 'hidden' });
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1);
+      await page.close();
+    });
+
+    await test('letter resume requires authoritative status and clears legacy, malformed, mismatched, and failed results', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-resume-authority', 'S'.repeat(43));
+      await prepareComposer(page, 'A letter needs an authoritative status refresh.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      const operationId = compose.payload.operationId;
+      await respond(page, compose, { operationId, state: 'queued' });
+      const resume = page.locator('#letter-resume');
+      assert.equal(await resume.isHidden(), true, 'legacy servers that omit resume metadata never expose Resume');
+
+      const reconcile = async (data, overrides = {}) => {
+        await page.getByRole('button', { name: /reconcile same operation/i }).click();
+        const request = await latestRequest(page, 'correspondence.reconcile');
+        assert.deepEqual(request.payload, { operationId }, 'status refresh sends only the original operation ID');
+        if (overrides.ok === false) await respond(page, request, null, { ok: false, error: overrides.error });
+        else await respond(page, request, data, overrides);
+        return request;
+      };
+
+      await reconcile({ operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' });
+      await resume.waitFor({ state: 'visible' });
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 0,
+        'reconcile is read-only even when it reports that a guarded retry is eligible');
+
+      await reconcile({ operationId, state: 'queued' });
+      await resume.waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#letter-operation').inputValue(), operationId, 'legacy status preserves the original unresolved ID');
+
+      await reconcile({ operationId, state: 'queued', canResume: 'true', queuedReason: 'not_dispatched' });
+      await resume.waitFor({ state: 'hidden' });
+      await reconcile({ operationId, state: 'queued', canResume: true, queuedReason: 'private_exception' });
+      await resume.waitFor({ state: 'hidden' });
+      for (const queuedReason of [['executor_unavailable'], { code: 'executor_unavailable' }, 7]) {
+        await reconcile({ operationId, state: 'queued', canResume: false, queuedReason });
+        await resume.waitFor({ state: 'hidden' });
+      }
+      await reconcile({ operationId, state: 'queued', canResume: true });
+      await resume.waitFor({ state: 'hidden' });
+      await reconcile({ operationId, state: 'queued', canResume: true, queuedReason: null });
+      await resume.waitFor({ state: 'hidden' });
+      await reconcile({ operationId: newUuid(), state: 'queued', canResume: true, queuedReason: 'not_dispatched' });
+      await resume.waitFor({ state: 'hidden' });
+
+      await reconcile({ operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' });
+      await resume.waitFor({ state: 'visible' });
+      await reconcile(null, { ok: false, error: { code: 'unavailable', message: 'Private server detail.' } });
+      await resume.waitFor({ state: 'hidden' });
+      assert.equal(await page.locator('#letter-operation').inputValue(), operationId);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 0);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1);
+      await page.close();
+    });
+
+    await test('letter resume shows fixed queued reasons and only offers an owner-eligible retry', async () => {
+      const cases = [
+        { code: 'executor_unavailable', copy: /delivery service is unavailable/i, canResume: true },
+        { code: 'renderer_unavailable', copy: /cannot prepare this letter for delivery/i },
+        { code: 'identity_changed', copy: /character no longer matches the one for this letter/i },
+        { code: 'mapping_unavailable', copy: /cannot confirm which character this letter is addressed to/i },
+        { code: 'companion_owned', copy: /Sealed Fates handles this letter automatically/i },
+        { code: 'operator_closed', copy: /closed without a delivery confirmation/i },
+        { code: 'interaction_unavailable', copy: /cannot reach the intended character right now/i },
+        { code: 'integrity_unavailable', copy: /could not verify the saved letter/i },
+        { code: 'not_dispatched', copy: /has not started delivery for this letter/i, canResume: true },
+        { code: 'operation_unavailable', copy: /cannot confirm a delivery path for this letter/i },
+      ];
+      const page = await authenticatedPage(browser, 'scope-letter-resume-reasons', 'U'.repeat(43));
+      await prepareComposer(page, 'Readable reasons never create a retry.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      const operationId = compose.payload.operationId;
+      const resume = page.locator('#letter-resume');
+
+      for (const [index, item] of cases.entries()) {
+        let request = compose;
+        if (index > 0) {
+          await page.getByRole('button', { name: /reconcile same operation/i }).click();
+          request = await latestRequest(page, 'correspondence.reconcile');
+        }
+        await respond(page, request, {
+          operationId, state: 'queued', canResume: item.canResume || false, queuedReason: item.code,
+          companionSchedulerOwned: item.code === 'companion_owned', operatorClosed: item.code === 'operator_closed',
+        });
+        await page.locator('#letter-recovery-status').getByText(item.copy).waitFor();
+        assert.doesNotMatch(await page.locator('#letter-recovery-status').innerText(), /executor_unavailable|renderer_unavailable|identity_changed|mapping_unavailable|companion_owned|operator_closed|interaction_unavailable|integrity_unavailable|not_dispatched|operation_unavailable/i,
+          'fixed codes are never shown to players');
+        assert.equal(await resume.isVisible(), item.canResume === true, item.code + ' eligibility is controlled by the server and ownership guards');
+        assert.equal(await page.locator('#letter-send').isDisabled(), true);
+        assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      }
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 0,
+        'reason refreshes do not mutate delivery state');
+      await page.close();
+    });
+
+    await test('letter resume is unavailable for uncertain, dispatched, owned, closed, and terminal states', async () => {
+      const cases = [
+        { name: 'unknown', result: { state: 'unknown', canResume: true, queuedReason: 'not_dispatched' } },
+        { name: 'partial', result: { state: 'partial', canResume: true, queuedReason: 'not_dispatched' } },
+        { name: 'dispatched', result: { state: 'dispatched', canResume: true, queuedReason: 'not_dispatched' } },
+        { name: 'companion-owned', result: { state: 'queued', canResume: false, queuedReason: 'companion_owned', companionSchedulerOwned: true } },
+        { name: 'operator-closed', result: { state: 'queued', canResume: false, queuedReason: 'operator_closed', operatorClosed: true } },
+        { name: 'identity-changed', result: { state: 'queued', canResume: true, queuedReason: 'identity_changed' } },
+        { name: 'integrity-unavailable', result: { state: 'queued', canResume: true, queuedReason: 'integrity_unavailable' } },
+        { name: 'delivered', result: { state: 'delivered', receipt: { deliveryConfirmed: true } } },
+        { name: 'rejected', result: { state: 'rejected' } },
+      ];
+      for (const [index, item] of cases.entries()) {
+        const page = await authenticatedPage(browser, 'scope-letter-resume-guard-' + index, String.fromCharCode(65 + index).repeat(43));
+        await prepareComposer(page, 'Guard case ' + item.name + '.');
+        await page.getByRole('button', { name: /send sealed letter/i }).click();
+        const compose = await latestRequest(page, 'correspondence.compose');
+        await respond(page, compose, { operationId: compose.payload.operationId, ...item.result });
+        assert.equal(await page.locator('#letter-resume').isHidden(), true, item.name + ' must not expose Resume delivery');
+        assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 0);
+        await page.close();
+      }
+    });
+
+    await test('letter resume eligibility clears across a view context change until a fresh reconcile', async () => {
+      const serverContext = 'scope-letter-resume-context';
+      const scopeToken = 'V'.repeat(43);
+      const page = await authenticatedPage(browser, serverContext, scopeToken);
+      await prepareComposer(page, 'Reopen requires fresh status.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      const operationId = compose.payload.operationId;
+      await respond(page, compose, { operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' });
+      assert.equal(await page.locator('#letter-resume').isVisible(), true);
+
+      await page.locator('#letter-resume').click();
+      const oldResume = await latestRequest(page, 'correspondence.resume');
+      await page.getByRole('button', { name: 'Close' }).click();
+      const reopened = await initialize(page, newUuid(), '2');
+      await respond(page, reopened, authenticatedData(serverContext, scopeToken));
+      await page.waitForFunction(() => window.__bridgeRequests.some((request) => request.operation === 'correspondence.pending.read'));
+      const pending = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(pending.payload, {});
+      await respond(page, pending, { operations: [{
+        operationId, recipientLabel: 'Recipient', state: 'queued', hasTransfer: false,
+        canResume: false, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: false, nextCursor: null });
+      assert.equal(await page.locator('#letter-resume').isHidden(), true, 'view reinitialization clears old resume eligibility');
+      assert.equal(await respond(page, oldResume, { operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' }), false,
+        'a reply from the old view cannot restore eligibility');
+
+      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      const reconcile = await latestRequest(page, 'correspondence.reconcile');
+      await respond(page, reconcile, { operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' });
+      assert.equal(await page.locator('#letter-resume').isVisible(), true, 'only fresh status can requalify the retained operation');
+      await page.close();
+    });
+
+    await test('letter resume restores the original queued transfer after a fresh UI restart', async () => {
+      const operationId = newUuid();
+      const page = await authenticatedPage(browser, 'scope-letter-resume-restart', 'Y'.repeat(43), {
+        pendingReadData: {
+          operations: [{
+            operationId, recipientLabel: 'Restart recipient', state: 'queued', hasTransfer: true,
+            canResume: true, queuedReason: 'executor_unavailable', operatorClosed: false,
+          }],
+          limited: false,
+          nextCursor: null,
+        },
+      });
+      const pendingRead = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(pendingRead.payload, {}, 'discovery is an empty read on the current scope');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)), [operationId]);
+      assert.equal(await page.locator('#letter-operation').inputValue(), operationId, 'the discovered original ID is selected');
+      assert.match(await page.locator('#letter-operation option:checked').innerText(), /Restart recipient.*queued/i);
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /delivery service is unavailable/i);
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /Resume uses the saved letter and its original attachments; the current draft is not used\./);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'restart discovery restores no private body text');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.some((request) => request.operation === 'correspondence.compose')), false);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.some((request) => request.operation === 'correspondence.resume')), false,
+        'discovery never resumes a letter by itself');
+      const resume = page.locator('#letter-resume');
+      assert.equal(await resume.isVisible(), true);
+      await saveScreenshot(page, letterResumeScreenshotPath);
+
+      await resume.click();
+      const request = await latestRequest(page, 'correspondence.resume');
+      assert.deepEqual(Object.keys(request.payload).sort(), ['attemptId', 'operationId']);
+      assert.equal(request.payload.operationId, operationId, 'restart recovery resumes the exact discovered letter');
+      assert.notEqual(request.payload.attemptId, operationId);
+      await respond(page, request, { operationId, state: 'queued', canResume: false, queuedReason: 'executor_unavailable' });
+      assert.equal(await resume.isHidden(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.compose').length), 0);
+      await page.close();
+    });
+
+    await test('letter resume leaves text-only Send available during pending discovery and keeps the new operation', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-resume-read-race', 'Z'.repeat(43), { skipPendingReadReply: true });
+      const initialRead = await latestRequest(page, 'correspondence.pending.read');
+      assert.ok(initialRead, 'bootstrap starts the read-only discovery request');
+      await prepareComposer(page, 'A text-only letter while waiting letters are being checked.');
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'only new transfer sends wait for discovery');
+
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      assert.equal(compose.payload.attachments.length, 0);
+      assert.equal(compose.payload.goldAmount, 0);
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'queued' });
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [compose.payload.operationId], 'the local operation is visible before the older pending snapshot returns');
+
+      await respond(page, initialRead, { operations: [], limited: false, nextCursor: null });
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [compose.payload.operationId], 'a read started before compose cannot erase the new text-only operation');
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId,
+        'the current operation remains selected after discovery completes');
+      await page.close();
+    });
+
+    await test('letter resume imports all 25 unresolved operations without truncation', async () => {
+      const states = ['stored', 'queued', 'dispatched', 'unknown', 'partial'];
+      const operations = Array.from({ length: 25 }, (_, index) => {
+        const state = states[index % states.length];
+        return {
+          operationId: newUuid(), recipientLabel: 'Waiting recipient ' + (index + 1), state,
+          hasTransfer: index === 0, canResume: false, queuedReason: state === 'queued' ? 'not_dispatched' : null,
+          operatorClosed: false,
+        };
+      });
+      const page = await authenticatedPage(browser, 'scope-letter-resume-25', 'Z'.repeat(43), {
+        pendingReadData: { operations, limited: false, nextCursor: null },
+      });
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      const ids = await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+      assert.deepEqual(ids, operations.map((operation) => operation.operationId));
+      assert.equal(await page.locator('#letter-operation').inputValue(), operations[0].operationId);
+      assert.match(await page.locator('#letter-operation option:first-child').innerText(), /Waiting recipient 1.*stored/i);
+      await prepareComposer(page, 'The three-operation cap cannot hide discovered waiting letters.');
+      assert.equal(await page.locator('#letter-operation option').count(), 25);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the existing three-operation limit can still block new letters');
+      await page.close();
+    });
+
+    await test('letter resume manually completes more than 26 empty candidate pages before enabling transfers', async () => {
+      const pageCount = 27;
+      const firstCursor = 'resolved-page-1';
+      const page = await authenticatedPage(browser, 'scope-letter-resume-many-pages', 'b'.repeat(43), {
+        pendingReadData: { operations: [], limited: false, nextCursor: firstCursor },
+      });
+      const firstRead = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(firstRead.payload, {});
+      await prepareComposer(page, 'A paid letter waits for the whole current-scope scan.', {
+        inventory: { inventoryRevision: 'many-pages-1', items: [], gold: { available: 10 } },
+      });
+      await page.locator('#gold-amount').fill('1');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the first empty page does not prove the scan is complete');
+      await saveScreenshot(page, letterResumePaginationScreenshotPath);
+
+      let cursor = firstCursor;
+      for (let pageIndex = 1; pageIndex < pageCount; pageIndex += 1) {
+        const readCount = pageIndex;
+        await page.getByRole('button', { name: /continue checking waiting letters/i }).click({ timeout: 1000 });
+        await waitForOperationCount(page, 'correspondence.pending.read', readCount + 1);
+        assert.equal(await page.locator('#letter-pending-continue').isDisabled(), true, 'the in-flight page disables another Continue action');
+        assert.equal(await page.locator('#letter-pending-refresh').isDisabled(), true, 'the in-flight page disables a competing Refresh');
+        const request = await latestRequest(page, 'correspondence.pending.read');
+        assert.deepEqual(request.payload, { cursor }, 'page ' + (pageIndex + 1) + ' uses the exact opaque cursor from its predecessor');
+        const nextCursor = pageIndex + 1 < pageCount ? 'resolved-page-' + (pageIndex + 1) : null;
+        await respond(page, request, { operations: [], limited: false, nextCursor });
+        if (nextCursor) {
+          assert.equal(await page.locator('#letter-send').isDisabled(), true, 'intermediate empty pages keep transfers locked');
+          assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.pending.read').length), readCount + 1,
+            'the UI never auto-fetches another page');
+        }
+        cursor = nextCursor;
+      }
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'only the clean terminal page unlocks transfers');
+      assert.equal(await page.locator('#letter-pending-continue').isHidden(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.pending.read').length), pageCount);
+      await page.close();
+    });
+
+    await test('letter resume refresh restarts from the first page and retains known operations while scanning', async () => {
+      const operationId = newUuid();
+      const page = await authenticatedPage(browser, 'scope-letter-resume-refresh-pages', 'i'.repeat(43), {
+        pendingReadData: { operations: [{
+          operationId, recipientLabel: 'Known recipient', state: 'queued', hasTransfer: false,
+          canResume: true, queuedReason: 'not_dispatched', operatorClosed: false,
+        }], limited: false, nextCursor: 'old-scan-cursor' },
+      });
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      assert.equal(await page.locator('#letter-operation').inputValue(), operationId);
+
+      await page.getByRole('button', { name: /refresh waiting letters/i }).click();
+      await waitForOperationCount(page, 'correspondence.pending.read', 2);
+      const restarted = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(restarted.payload, {}, 'Refresh starts at the first page instead of reusing the old cursor');
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [operationId], 'known rows remain visible while the replacement scan is in flight');
+
+      await respond(page, restarted, { operations: [], limited: false, nextCursor: 'replacement-page-2' });
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [operationId], 'an empty intermediate page does not drop rows discovered by the previous scan');
+      await page.getByRole('button', { name: /refresh waiting letters/i }).click();
+      await waitForOperationCount(page, 'correspondence.pending.read', 3);
+      const secondRestart = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(secondRestart.payload, {}, 'a second Refresh also starts a new scan');
+      await respond(page, secondRestart, { operations: [{
+        operationId, recipientLabel: 'Known recipient', state: 'queued', hasTransfer: false,
+        canResume: true, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: false, nextCursor: null });
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)), [operationId]);
+      assert.equal(await page.locator('#letter-pending-continue').isHidden(), true, 'only a complete terminal scan hides Continue');
+      await page.close();
+    });
+
+    await test('letter resume finds an unknown transfer on candidate page 20 and keeps the transfer lock', async () => {
+      const oldOperationId = newUuid();
+      let cursor = 'candidate-page-2';
+      const page = await authenticatedPage(browser, 'scope-letter-resume-old-candidate', 'c'.repeat(43), {
+        pendingReadData: { operations: [], limited: false, nextCursor: cursor },
+      });
+      await prepareComposer(page, 'An older transfer must remain protected.', {
+        inventory: { inventoryRevision: 'old-candidate-1', items: [], gold: { available: 10 } },
+      });
+      await page.locator('#gold-amount').fill('1');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      for (let pageNumber = 2; pageNumber <= 20; pageNumber += 1) {
+        const readCount = pageNumber - 1;
+        await page.getByRole('button', { name: /continue checking waiting letters/i }).click({ timeout: 1000 });
+        await waitForOperationCount(page, 'correspondence.pending.read', readCount + 1);
+        const request = await latestRequest(page, 'correspondence.pending.read');
+        assert.deepEqual(request.payload, { cursor });
+        const isLast = pageNumber === 20;
+        const nextCursor = isLast ? null : 'candidate-page-' + (pageNumber + 1);
+        const operations = isLast ? [{
+          operationId: oldOperationId, recipientLabel: 'Older recipient', state: 'unknown', hasTransfer: true,
+          canResume: false, queuedReason: null, operatorClosed: false,
+        }] : [];
+        await respond(page, request, { operations, limited: false, nextCursor });
+        cursor = nextCursor;
+      }
+      const ids = await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+      assert.deepEqual(ids, [oldOperationId], 'the 500th candidate page contributes its unresolved operation');
+      assert.equal(await page.locator('#letter-operation').inputValue(), oldOperationId);
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the old hasTransfer flag blocks a duplicate payment after the scan completes');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /transfer-bearing operation remains unresolved/i);
+      assert.equal(await page.locator('#letter-resume').isHidden(), true, 'an unknown old operation cannot be resumed');
+      await page.close();
+    });
+
+    await test('letter resume keeps the selected guarded action available during a page read and rejects stale results', async () => {
+      const operationId = newUuid();
+      const page = await authenticatedPage(browser, 'scope-letter-resume-during-pages', 'd'.repeat(43), {
+        pendingReadData: { operations: [{
+          operationId, recipientLabel: 'Selected recipient', state: 'queued', hasTransfer: false,
+          canResume: true, queuedReason: 'not_dispatched', operatorClosed: false,
+        }], limited: false, nextCursor: 'selected-page-next' },
+      });
+      const firstPage = await latestRequest(page, 'correspondence.pending.read');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      assert.equal(await page.locator('#letter-resume').isVisible(), true);
+      assert.equal(await page.locator('#letter-resume').isDisabled(), false, 'queued Resume stays usable while more pages remain');
+      assert.equal(await page.locator('#letter-reconcile').isDisabled(), false, 'read-only reconcile stays usable while more pages remain');
+
+      await page.getByRole('button', { name: /continue checking waiting letters/i }).click({ timeout: 1000 });
+      await waitForOperationCount(page, 'correspondence.pending.read', 2);
+      const nextPage = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(nextPage.payload, { cursor: 'selected-page-next' });
+      assert.equal(await page.locator('#letter-resume').isDisabled(), false, 'Resume remains enabled while the next bridge read is in flight');
+      assert.equal(await page.locator('#letter-reconcile').isDisabled(), false, 'reconcile remains enabled while the next bridge read is in flight');
+
+      await page.locator('#letter-resume').click();
+      const resume = await latestRequest(page, 'correspondence.resume');
+      assert.equal(resume.payload.operationId, operationId);
+      await respond(page, resume, { operationId, state: 'unknown' });
+      await respond(page, nextPage, { operations: [{
+        operationId, recipientLabel: 'Selected recipient', state: 'queued', hasTransfer: false,
+        canResume: true, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: false, nextCursor: 'stale-next' });
+      assert.equal(await page.locator('#letter-resume').isHidden(), true, 'an older page reply cannot restore permission after the explicit attempt');
+      assert.equal(await page.locator('#letter-pending-continue').isHidden(), true, 'the invalidated snapshot cursor cannot be reused');
+      assert.match(await page.locator('#letter-pending-status').innerText(), /refresh waiting letters/i);
+      await page.close();
+    });
+
+    await test('letter resume ignores an older cursor response after a native context change', async () => {
+      const operationId = newUuid();
+      const serverContext = 'scope-letter-resume-cursor-context';
+      const scopeToken = 'j'.repeat(43);
+      const page = await authenticatedPage(browser, serverContext, scopeToken, {
+        pendingReadData: { operations: [{
+          operationId, recipientLabel: 'Old context recipient', state: 'queued', hasTransfer: true,
+          canResume: true, queuedReason: 'not_dispatched', operatorClosed: false,
+        }], limited: false, nextCursor: 'old-context-cursor' },
+      });
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      assert.equal(await page.locator('#letter-resume').isVisible(), true);
+      await page.getByRole('button', { name: /continue checking waiting letters/i }).click({ timeout: 1000 });
+      await waitForOperationCount(page, 'correspondence.pending.read', 2);
+      const stalePage = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(stalePage.payload, { cursor: 'old-context-cursor' });
+
+      await page.getByRole('button', { name: 'Close' }).click();
+      const bootstrap = await initialize(page, newUuid(), '2');
+      await respond(page, bootstrap, authenticatedData(serverContext, scopeToken));
+      await waitForOperationCount(page, 'correspondence.pending.read', 3);
+      const currentPage = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(currentPage.payload, {}, 'the new view starts a fresh current-context scan');
+      assert.equal(await page.locator('#letter-resume').isHidden(), true, 'context initialization clears old resume eligibility');
+
+      assert.equal(await respond(page, stalePage, { operations: [{
+        operationId, recipientLabel: 'Old context recipient', state: 'queued', hasTransfer: true,
+        canResume: true, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: false, nextCursor: null }), false, 'the old cursor response is rejected by the native context fence');
+      assert.equal(await page.locator('#letter-resume').isHidden(), true, 'an old page cannot unlock Resume in the new view');
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [operationId], 'the retained unresolved row is not erased by the stale reply');
+      await respond(page, currentPage, { operations: [{
+        operationId, recipientLabel: 'Current recipient', state: 'queued', hasTransfer: true,
+        canResume: false, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: false, nextCursor: null });
+      assert.equal(await page.locator('#letter-resume').isHidden(), true, 'only current-context metadata can qualify the row');
+      await page.close();
+    });
+
+    await test('letter resume fails closed for legacy, tampered, repeated, and stale cursors', async () => {
+      const legacyPage = await authenticatedPage(browser, 'scope-letter-resume-legacy-cursor', 'e'.repeat(43), { skipPendingReadReply: true });
+      const legacyRead = await latestRequest(legacyPage, 'correspondence.pending.read');
+      await respond(legacyPage, legacyRead, { operations: [], limited: false });
+      assert.match(await legacyPage.locator('#letter-pending-status').innerText(), /could not be checked/i,
+        'an old-server response without nextCursor is not treated as complete');
+      await prepareComposer(legacyPage, 'A transfer waits for current cursor support.', {
+        inventory: { inventoryRevision: 'legacy-cursor-1', items: [], gold: { available: 10 } },
+      });
+      await legacyPage.locator('#gold-amount').fill('1');
+      await legacyPage.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await legacyPage.locator('#letter-send').isDisabled(), true);
+      await legacyPage.close();
+
+      const tamperedPage = await authenticatedPage(browser, 'scope-letter-resume-tampered-cursor', 'f'.repeat(43), {
+        pendingReadData: { operations: [], limited: false, nextCursor: 't'.repeat(513) },
+      });
+      assert.match(await tamperedPage.locator('#letter-pending-status').innerText(), /could not be checked/i,
+        'an oversized cursor fails closed');
+      await tamperedPage.close();
+
+      const repeatedPage = await authenticatedPage(browser, 'scope-letter-resume-repeated-cursor', 'g'.repeat(43), {
+        pendingReadData: { operations: [], limited: false, nextCursor: 'repeat-cursor' },
+      });
+      await repeatedPage.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await repeatedPage.getByRole('button', { name: /continue checking waiting letters/i }).click({ timeout: 1000 });
+      await waitForOperationCount(repeatedPage, 'correspondence.pending.read', 2);
+      const repeatedRequest = await latestRequest(repeatedPage, 'correspondence.pending.read');
+      await respond(repeatedPage, repeatedRequest, { operations: [], limited: false, nextCursor: 'repeat-cursor' });
+      assert.match(await repeatedPage.locator('#letter-pending-status').innerText(), /could not be checked/i,
+        'a cursor already consumed by this scan cannot be reused');
+      await repeatedPage.close();
+
+      const stalePage = await authenticatedPage(browser, 'scope-letter-resume-stale-cursor', 'h'.repeat(43), {
+        pendingReadData: { operations: [], limited: false, nextCursor: 'stale-cursor' },
+      });
+      await stalePage.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await stalePage.getByRole('button', { name: /continue checking waiting letters/i }).click({ timeout: 1000 });
+      await waitForOperationCount(stalePage, 'correspondence.pending.read', 2);
+      const staleRequest = await latestRequest(stalePage, 'correspondence.pending.read');
+      await respond(stalePage, staleRequest, null, { ok: false, error: { code: 'stale_revision', message: 'opaque stale detail' } });
+      assert.match(await stalePage.locator('#letter-pending-status').innerText(), /scan changed.*refresh waiting letters/i,
+        'a backend-stale cursor tells the user to begin a new scan');
+      assert.doesNotMatch(await stalePage.locator('#letter-pending-status').innerText(), /opaque stale detail/i);
+      await stalePage.close();
+    });
+
+    await test('letter resume preserves retained operations after limited and failed pending reads', async () => {
+      const page = await authenticatedPage(browser, 'scope-letter-resume-preserve', 'a'.repeat(43));
+      await prepareComposer(page, 'Player-paid transfer that must remain listed.', {
+        inventory: { inventoryRevision: 'resume-preserve-1', items: [], gold: { available: 10 } },
+      });
+      await page.locator('#gold-amount').fill('1');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.locator('#letter-send').click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      const originalId = compose.payload.operationId;
+      assert.equal(compose.payload.goldAmount, 1);
+      await respond(page, compose, { operationId: originalId, state: 'queued', canResume: false, queuedReason: 'executor_unavailable' });
+
+      const discoveredId = newUuid();
+      await page.getByRole('button', { name: /refresh waiting letters/i }).click();
+      const limitedRead = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, limitedRead, { operations: [{
+        operationId: discoveredId, recipientLabel: 'Other recipient', state: 'queued', hasTransfer: false,
+        canResume: false, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: true, nextCursor: null });
+      const retainedIds = await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
+      assert.deepEqual(retainedIds, [discoveredId, originalId], 'a truncated read merges known local operations instead of dropping them');
+      assert.match(await page.locator('#letter-pending-status').innerText(), /scan ended at a limit.*incomplete/i);
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await prepareComposer(page, 'A new transfer remains blocked.', {
+        inventory: { inventoryRevision: 'resume-preserve-2', items: [], gold: { available: 10 } },
+      });
+      await page.locator('#gold-amount').fill('1');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'a discovered pending transfer lock blocks new transfers');
+      assert.equal(await page.getByText(/waiting letters are not fully confirmed/i).count(), 1);
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await prepareComposer(page, 'A text-only letter remains available.', {
+        inventory: { inventoryRevision: 'resume-preserve-3', items: [], gold: { available: 10 } },
+      });
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'incomplete discovery does not block a new text-only letter');
+
+      await page.getByRole('button', { name: /refresh waiting letters/i }).click();
+      const failedRead = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, failedRead, null, { ok: false, error: { code: 'unsupported_operation', message: 'Private server detail.' } });
+      assert.match(await page.locator('#letter-pending-status').innerText(), /could not be checked.*text-only letters remain available/i);
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'failed discovery still leaves text-only Send available');
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)), [discoveredId, originalId]);
+      assert.doesNotMatch(await page.locator('#letter-operation').innerText(), /No unresolved letters/i);
+      assert.doesNotMatch(await page.locator('#letter-pending-status').innerText(), /Private server detail/);
+
+      await page.getByRole('button', { name: /refresh waiting letters/i }).click();
+      const malformedRead = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, malformedRead, { operations: [{
+        operationId: newUuid(), recipientLabel: 'Malformed row', state: 'queued', hasTransfer: 'unknown',
+        canResume: false, queuedReason: null, operatorClosed: false,
+      }], limited: false, nextCursor: null });
+      assert.equal(await page.locator('#letter-operation option').count(), 2, 'malformed read preserves existing rows');
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)), [discoveredId, originalId]);
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await prepareComposer(page, 'A paid letter after an invalid pending read.');
+      await page.locator('#gold-amount').fill('1');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'malformed discovery blocks new transfers');
+      await page.close();
+    });
+
     await test('nearby-cast guidance explains missing and stale CHIM reports without requiring a first message', async () => {
       const page = await authenticatedPage(browser);
       assert.equal(await page.locator('#connection-status').innerText(), 'Connected to CHIM');
@@ -1762,7 +2362,12 @@ async function main() {
   }
 
   const failed = results.filter((result) => result.status === 'failed');
-  const summary = { total: results.length, passed: results.length - failed.length, failed: failed.length, tests: results };
+  if (testFilter && !results.length) {
+    process.stderr.write('UI_TEST_FILTER matched no tests: ' + testFilter + '\n');
+    process.exitCode = 1;
+  }
+  const summary = { filter: testFilter || null, total: results.length, passed: results.length - failed.length, failed: failed.length,
+    matchedCases: results.map((result) => result.name), tests: results };
   const serialized = `${JSON.stringify(summary, null, 2)}\n`;
   process.stdout.write(serialized);
   if (resultPath) fs.writeFileSync(resultPath, serialized, 'utf8');

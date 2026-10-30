@@ -5,6 +5,9 @@ const QD_CORRESPONDENCE_MAILBOX_SCAN_MAX = 512;
 const QD_CORRESPONDENCE_PAGE_MAX = 100;
 const QD_CORRESPONDENCE_PAGE_BYTES = 48000;
 const QD_CORRESPONDENCE_CURSOR_TTL = 900;
+const QD_CORRESPONDENCE_PENDING_MAX = 25;
+const QD_CORRESPONDENCE_PENDING_FETCH_MAX = 26;
+const QD_CORRESPONDENCE_PENDING_CURSOR_DOMAIN = 'department-correspondence-pending-read-v1';
 const QD_CORRESPONDENCE_SOURCE_FILES = [
     'manifest.json',
     'lib/runtime.php',
@@ -476,6 +479,8 @@ function qd_correspondence_runtime_operations(): array
         'correspondence.detail.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('detail', $payload, $context),
         'correspondence.compose' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('compose', $payload, $context),
         'correspondence.reconcile' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('reconcile', $payload, $context),
+        'correspondence.resume' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('resume', $payload, $context),
+        'correspondence.pending.read' => static fn(stdClass $payload, array $context): array => qd_correspondence_dispatch('pending', $payload, $context),
     ];
 }
 
@@ -487,6 +492,8 @@ function qd_correspondence_dispatch(string $operation, stdClass $payload, array 
         'detail' => 'qd_correspondence_detail_read',
         'compose' => 'qd_correspondence_compose',
         'reconcile' => 'qd_correspondence_reconcile',
+        'resume' => 'qd_correspondence_resume',
+        'pending' => 'qd_correspondence_pending_read',
     ];
     $handler = $handlers[$operation] ?? null;
     if (!is_string($handler)) throw new LogicException('Unknown correspondence operation.');
@@ -841,11 +848,12 @@ function qd_correspondence_compose(stdClass $payload, array $context): array
     $recipientKey = $mapped['recipientKey'];
     $signatureKey = $mapped['signatureKey'];
     $input = $mapped['input'];
+    $queuedReason = null;
     try {
         if (qd_correspondence_uses_restore_fence()) {
             return qd_correspondence_compose_dev18($context, $withCurrentContext, $requestId, $writerKey, $recipientKey, $signatureKey, $input);
         }
-        $result = $withCurrentContext(static function () use ($context, $requestId, $writerKey, $recipientKey, $signatureKey, $input): array {
+        $result = $withCurrentContext(static function () use ($context, $requestId, $writerKey, $recipientKey, $signatureKey, $input, &$queuedReason): array {
             return qd_runtime_with_core_db(static function ($connection) use ($context, $requestId, $writerKey, $recipientKey, $signatureKey, $input): array {
                 $active = qd_runtime_active_playthrough($connection);
                 qd_correspondence_assert_active_scope($active, qd_correspondence_scope_key($context));
@@ -881,12 +889,13 @@ function qd_correspondence_compose(stdClass $payload, array $context): array
                 $documentId = $composed['document_id'] ?? null;
                 if (!is_string($documentId)) throw new QDServerFault('unavailable');
                 try {
-                    $service->dispatch($documentId);
-                } catch (Throwable) {
+                    $queuedReason = qd_correspondence_dispatch_result_reason($service->dispatch($documentId));
+                } catch (Throwable $error) {
+                    $queuedReason = qd_correspondence_safe_queue_reason($error);
                     // Preserve the source's queued document if dispatch cannot complete.
                 }
                 qd_correspondence_assert_active_scope(qd_runtime_active_playthrough($connection), qd_correspondence_scope_key($context));
-                return qd_correspondence_write_outcome($service, $store, $connection, $documentId, $requestId);
+                return qd_correspondence_write_outcome($service, $store, $connection, $documentId, $requestId, $queuedReason, true);
             });
         });
         $assertCurrent();
@@ -916,7 +925,8 @@ function qd_correspondence_compose_dev18(array $context, callable $withCurrentCo
         return true;
     });
 
-    $result = $withCurrentContext(static function () use ($context, $scopeKey, $authority, $requestId, $input): array {
+    $queuedReason = null;
+    $result = $withCurrentContext(static function () use ($context, $scopeKey, $authority, $requestId, $input, &$queuedReason): array {
         $beginCommit = $context['beginCommit'] ?? null;
         if (!is_callable($beginCommit)) throw new QDServerFault('unavailable');
         $beginCommit();
@@ -964,8 +974,9 @@ function qd_correspondence_compose_dev18(array $context, callable $withCurrentCo
                     $documentId = $composed['document_id'] ?? null;
                     if (!is_string($documentId)) throw new QDServerFault('unavailable');
                     try {
-                        $service->dispatch($documentId);
-                    } catch (Throwable) {
+                        $queuedReason = qd_correspondence_dispatch_result_reason($service->dispatch($documentId));
+                    } catch (Throwable $error) {
+                        $queuedReason = qd_correspondence_safe_queue_reason($error);
                         // Keep the queued owner document when dispatch cannot complete.
                     }
                     try {
@@ -974,7 +985,7 @@ function qd_correspondence_compose_dev18(array $context, callable $withCurrentCo
                         throw new QDServerFault('stale_context');
                     }
                     qd_correspondence_assert_active_scope(qd_runtime_active_playthrough($connection), $scopeKey);
-                    return qd_correspondence_write_outcome($service, $store, $connection, $documentId, $requestId);
+                    return qd_correspondence_write_outcome($service, $store, $connection, $documentId, $requestId, $queuedReason, true);
                 },
             );
         });
@@ -1060,7 +1071,7 @@ function qd_correspondence_reconcile(stdClass $payload, array $context): array
             $store = qd_correspondence_read_store($connection, $active, $docs, $ops, $events);
             $service = new CorrespondenceService($store);
             try {
-                return qd_correspondence_project_result($service, $store, $connection, $docId, $requestId);
+                return qd_correspondence_project_result($service, $store, $connection, $docId, $requestId, null, null, 'not_dispatched', true);
             } catch (Throwable) {
                 throw new QDServerFault('unavailable');
             }
@@ -1074,9 +1085,408 @@ function qd_correspondence_reconcile(stdClass $payload, array $context): array
     }
 }
 
-function qd_correspondence_write_outcome(CorrespondenceService $service, CorrespondencePgStore $store, mixed $connection, string $documentId, string $requestId): array
+function qd_correspondence_pending_read(stdClass $payload, array $context): array
 {
-    return $store->transaction(static fn(): array => qd_correspondence_project_result($service, $store, $connection, $documentId, $requestId));
+    qd_correspondence_require_fields($payload, [], ['cursor']);
+    qd_correspondence_require_access($context, ['compose']);
+    $assertCurrent = qd_correspondence_assertion($context);
+    $assertCurrent();
+    qd_correspondence_load_sources();
+    if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.30' || !qd_correspondence_uses_restore_fence()) {
+        throw new QDServerFault('unavailable');
+    }
+
+    try {
+        $scopeKey = qd_correspondence_scope_key($context);
+        $cursor = $payload->cursor ?? null;
+        $macKey = $context['pendingReadMacKey'] ?? null;
+        if (!is_string($macKey) || preg_match('/\A[a-f0-9]{64}\z/D', $macKey) !== 1) throw new QDServerFault('stale_context');
+        $sourceIdentity = qd_correspondence_loaded_source_identity();
+        if (!is_array($sourceIdentity) || ($sourceIdentity['version'] ?? null) !== '0.1.0-dev.30'
+            || !is_string($sourceIdentity['manifestHash'] ?? null)) throw new QDServerFault('unavailable');
+        $result = qd_correspondence_read_snapshot($scopeKey, static function ($connection, array $active) use ($context, $scopeKey, $cursor, $macKey, $sourceIdentity): array {
+            $scope = (string)$active['profileId'];
+            $authority = qd_correspondence_dev18_authority($context);
+            $restoreToken = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null;
+            if (!is_string($restoreToken) || $restoreToken === '') throw new QDServerFault('stale_context');
+            $binding = qd_correspondence_pending_binding($context, $scopeKey, $restoreToken, $authority['generation'], $sourceIdentity);
+            $cursorState = is_string($cursor) ? qd_correspondence_pending_cursor_parse($cursor, $binding, $macKey) : null;
+            $manualCount = $cursorState === null ? null : qd_correspondence_pending_manual_count($connection, $scope);
+            if ($cursorState !== null && !hash_equals($cursorState['count'], (string)$manualCount)) throw new QDServerFault('stale_revision');
+            $upper = qd_correspondence_pending_uppermost_tuple($connection, $scope);
+            if ($cursorState !== null && $upper !== $cursorState['upper']) throw new QDServerFault('stale_revision');
+            $scan = qd_correspondence_pending_source_rows($connection, $scope, $upper, $cursorState['last'] ?? null);
+            $documents = $scan['documents'];
+            $operations = $scan['operations'];
+            $events = qd_correspondence_prefetch_events($connection, $documents, $operations);
+            $companionDecisions = qd_correspondence_prefetch_companion_decisions($connection, $documents);
+            $autonomyChildren = qd_correspondence_prefetch_autonomy_children($connection, $scope, $documents);
+            $store = qd_correspondence_read_store($connection, $active, $documents, $operations, $events, $companionDecisions);
+            $service = new CorrespondenceService($store);
+            $pending = [];
+            $limited = $scan['hasMore'];
+
+            foreach ($scan['rawRows'] as $row) {
+                $requestId = $row['request_id'] ?? null;
+                $documentId = $row['document_id'] ?? null;
+                if (!is_string($requestId) || !qd_is_uuid($requestId) || !is_string($documentId) || !qd_is_uuid($documentId)) {
+                    throw new QDServerFault('unavailable');
+                }
+                $doc = $documents[$documentId] ?? null;
+                if (!is_array($doc) || ($doc['document_id'] ?? null) !== $documentId
+                    || ($doc['request_id'] ?? null) !== $requestId || ($doc['playthrough_id'] ?? null) !== $scope
+                    || ($doc['payer']['kind'] ?? null) !== 'player') {
+                    $pending[] = [
+                        'operationId' => $requestId,
+                        'recipientLabel' => 'Unknown recipient',
+                        'state' => 'unknown',
+                        'hasTransfer' => true,
+                        'canResume' => false,
+                        'queuedReason' => null,
+                        'operatorClosed' => false,
+                    ];
+                } else {
+                    $operatorClosed = array_key_exists('operator_close', $doc);
+                    $recipient = $doc['recipient'] ?? null;
+                    $recipientLabel = is_array($recipient) && is_string($recipient['name'] ?? null)
+                        && correspondenceActorName($recipient['name']) ? $recipient['name'] : 'Unknown recipient';
+                    $hasOwnerOperation = is_string($doc['operation_id'] ?? null)
+                        ? true
+                        : (in_array($row['has_operation'] ?? null, ['t', 'f'], true) ? $row['has_operation'] === 't' : null);
+                    $hasDispatchAnchor = in_array($row['has_dispatch_anchor'] ?? null, ['t', 'f'], true)
+                        ? $row['has_dispatch_anchor'] === 't' : null;
+                    $companionRows = $store->companionDecisionRows($documentId);
+                    $eligibilityEvidence = [
+                        'companionOwned' => is_array($companionRows) ? $companionRows !== [] : null,
+                        'autonomyChild' => ($autonomyChildren['available'] ?? false) === true
+                            ? ($autonomyChildren['children'][$documentId] ?? null) : null,
+                        'hasOperation' => $hasOwnerOperation,
+                        'hasDispatchAnchor' => $hasDispatchAnchor,
+                    ];
+                    $integrity = false;
+                    try {
+                        $integrity = qd_correspondence_document_integrity($store, $doc, $companionRows);
+                        $projection = qd_correspondence_project_result(
+                            $service,
+                            $store,
+                            $connection,
+                            $documentId,
+                            $requestId,
+                            null,
+                            null,
+                            'not_dispatched',
+                            true,
+                            $eligibilityEvidence,
+                        );
+                    } catch (Throwable) {
+                        $companionRows = null;
+                        $projection = null;
+                    }
+
+                    $projectedState = is_array($projection) ? ($projection['state'] ?? null) : null;
+                    if ($integrity && in_array($projectedState, ['delivered', 'rejected'], true)) {
+                        continue;
+                    }
+                    $state = in_array($projectedState, ['queued', 'dispatched', 'unknown', 'partial'], true)
+                        ? $projectedState : 'unknown';
+                    if (!$integrity || ($doc['operation_id'] ?? null) === null && ($hasOwnerOperation || $hasDispatchAnchor)) {
+                        $state = 'unknown';
+                    }
+                    $hasTransfer = in_array($state, ['dispatched', 'unknown', 'partial'], true)
+                        || !$integrity || $hasOwnerOperation !== false || $hasDispatchAnchor !== false
+                        || (($doc['attachments'] ?? null) !== []);
+                    $canResume = $state === 'queued'
+                        && ($projection['canResume'] ?? null) === true
+                        && $hasOwnerOperation === false && $hasDispatchAnchor === false && !$operatorClosed;
+                    $queuedReason = $projection['queuedReason'] ?? null;
+                    if ($state === 'queued' && !$canResume && !is_string($queuedReason)) {
+                        $queuedReason = 'integrity_unavailable';
+                    }
+                    if ($state !== 'queued') $queuedReason = null;
+                    if (!is_string($queuedReason) || !in_array($queuedReason, QD_PENDING_QUEUED_REASONS, true)) {
+                        $queuedReason = null;
+                    }
+                    $pending[] = [
+                        'operationId' => $requestId,
+                        'recipientLabel' => $recipientLabel,
+                        'state' => $state,
+                        'hasTransfer' => $hasTransfer,
+                        'canResume' => $canResume,
+                        'queuedReason' => $queuedReason,
+                        'operatorClosed' => $operatorClosed,
+                    ];
+                }
+
+            }
+
+            $upperAfter = qd_correspondence_pending_uppermost_tuple($connection, $scope);
+            if ($upperAfter !== $upper) throw new QDServerFault('stale_revision');
+            $nextCursor = null;
+            if ($scan['hasMore']) {
+                $lastRow = $scan['rawRows'][array_key_last($scan['rawRows'])] ?? null;
+                $last = is_array($lastRow) ? qd_correspondence_pending_tuple($lastRow) : null;
+                if ($upper === null || $last === null) throw new QDServerFault('unavailable');
+                $manualCount ??= qd_correspondence_pending_manual_count($connection, $scope);
+                $nextCursor = qd_correspondence_pending_cursor_create($binding, $upper, $last, $macKey, $manualCount);
+                $limited = true;
+            }
+            return ['operations' => $pending, 'limited' => $limited, 'nextCursor' => $nextCursor];
+        }, $context);
+        $assertCurrent();
+        return $result;
+    } catch (QDServerFault $error) {
+        throw $error;
+    } catch (Throwable) {
+        throw new QDServerFault('unavailable');
+    }
+}
+
+function qd_correspondence_in_current_context(array $context, callable $assertCurrent, callable $work): mixed
+{
+    $withCurrentContext = $context['withCurrentContext'] ?? null;
+    if (!is_callable($withCurrentContext)) throw new QDServerFault('unavailable');
+    $result = $withCurrentContext($work);
+    $assertCurrent();
+    return $result;
+}
+
+function qd_correspondence_resume_guard(CorrespondenceService $service, object $store, mixed $connection, string $scopeKey, string $requestId): array
+{
+    $active = qd_runtime_active_playthrough($connection);
+    qd_correspondence_assert_active_scope($active, $scopeKey);
+    $scope = (string)($active['profileId'] ?? '');
+    $found = $store->findRequest($scope, $requestId);
+    $documentId = is_array($found) ? ($found['document_id'] ?? null) : null;
+    if (!is_string($documentId) || preg_match('/\A[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\z/D', $documentId) !== 1) {
+        throw new QDServerFault('not_found');
+    }
+    $doc = $store->loadDocument($documentId);
+    if (!is_array($doc) || ($doc['document_id'] ?? null) !== $documentId || ($doc['request_id'] ?? null) !== $requestId
+        || ($doc['playthrough_id'] ?? null) !== $scope) {
+        throw new QDServerFault('not_found');
+    }
+    $companionRows = qd_correspondence_companion_decision_rows($store, $doc);
+    $integrity = qd_correspondence_document_integrity($store, $doc, $companionRows);
+    $status = $service->get($documentId);
+    $autonomyChild = qd_correspondence_autonomy_child($store, $doc);
+    $hasOperation = qd_correspondence_has_operation_for_document($store, $documentId);
+    $hasDispatchAnchor = qd_correspondence_has_dispatch_anchor($store, $documentId);
+    if (!qd_correspondence_resume_eligible(
+        qd_correspondence_loaded_source_version(),
+        $doc,
+        (string)($status['state'] ?? ''),
+        $integrity,
+        $companionRows !== [],
+        $autonomyChild,
+        $hasOperation,
+        $hasDispatchAnchor,
+    )) {
+        throw new QDServerFault($integrity && $hasOperation !== null && $hasDispatchAnchor !== null ? 'conflict' : 'unavailable');
+    }
+    return [$documentId, $doc];
+}
+
+function qd_correspondence_resume(stdClass $payload, array $context): array
+{
+    qd_correspondence_require_fields($payload, ['operationId', 'attemptId']);
+    qd_correspondence_require_access($context, ['compose']);
+    $wireOperationId = $payload->operationId ?? null;
+    $attemptId = $payload->attemptId ?? null;
+    if (!is_string($wireOperationId) || !qd_is_uuid($wireOperationId)
+        || !is_string($attemptId) || !qd_is_uuid($attemptId)) {
+        throw new QDServerFault('invalid_request');
+    }
+    $requestId = strtolower($wireOperationId);
+    $assertCurrent = qd_correspondence_assertion($context);
+    $beginCommit = $context['beginCommit'] ?? null;
+    if (!is_callable($context['withCurrentContext'] ?? null) || !is_callable($beginCommit)) throw new QDServerFault('unavailable');
+    $assertCurrent();
+    qd_correspondence_load_sources();
+    if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.30' || !qd_correspondence_uses_restore_fence()) {
+        throw new QDServerFault('unavailable');
+    }
+    $authority = qd_correspondence_dev18_authority($context);
+    $scopeKey = qd_correspondence_scope_key($context);
+    $originalToken = $GLOBALS['CORRESPONDENCE_REQUEST_RESTORE_TOKEN'] ?? null;
+    if (!is_string($originalToken) || $originalToken === '') throw new QDServerFault('stale_context');
+
+    $result = qd_correspondence_in_current_context($context, $assertCurrent, static function () use ($context, $authority, $scopeKey, $requestId, $wireOperationId, $originalToken, $beginCommit): array {
+        return qd_runtime_with_correspondence_owner_lease($authority['ownerRoot'], $authority['generation'], $authority['lease'], static function () use ($authority, $scopeKey, $requestId, $wireOperationId, $originalToken, $beginCommit): array {
+            return qd_runtime_with_owned_connection(
+                static fn() => correspondenceNativeConnection(),
+                static function ($connection): void { qd_correspondence_close_owned_pg_connection($connection); },
+                static function ($connection) use ($authority, $scopeKey, $requestId, $wireOperationId, $originalToken, $beginCommit): array {
+                    $store = new CorrespondencePgStore(
+                        $connection,
+                        static fn($candidate): ?string => $candidate->observedExecutor(),
+                        static fn(string $title, string $body): bool => correspondencePrepareCoreNote($authority['coreRoot'], $title, $body),
+                        $authority['coreRoot'] . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'playthrough_runtime' . DIRECTORY_SEPARATOR . 'correspondence.restore.json',
+                    );
+                    $store->ensureSchema();
+                    correspondenceCaptureRequestIngress($store);
+                    if (!is_string($store->requestRestoreToken()) || !hash_equals($originalToken, (string)$store->requestRestoreToken())) {
+                        throw new QDServerFault('stale_context');
+                    }
+                    try {
+                        $store->assertRestoreToken($originalToken);
+                    } catch (Throwable) {
+                        throw new QDServerFault('stale_context');
+                    }
+                    $commitStore = qd_correspondence_commit_boundary_store($store, $beginCommit);
+                    $service = new CorrespondenceService($commitStore);
+                    $response = $store->transaction(static function () use ($store, $commitStore, $service, $connection, $scopeKey, $requestId, $wireOperationId, $originalToken): array {
+                        $store->assertRestoreToken($originalToken);
+                        $active = qd_runtime_active_playthrough($connection);
+                        qd_correspondence_assert_active_scope($active, $scopeKey);
+                        try {
+                            [$documentId] = qd_correspondence_resume_guard($service, $store, $connection, $scopeKey, $requestId);
+                        } catch (DomainException $error) {
+                            if (qd_correspondence_safe_queue_reason($error) !== 'identity_changed') throw $error;
+                            $found = $store->findRequest((string)($active['profileId'] ?? ''), $requestId);
+                            $documentId = is_array($found) ? ($found['document_id'] ?? null) : null;
+                            if (!is_string($documentId)) throw new QDServerFault('not_found');
+                            $data = qd_correspondence_project_result($service, $store, $connection, $documentId, $requestId, null, null, 'identity_changed', true);
+                            $data['operationId'] = $wireOperationId;
+                            return $data;
+                        }
+
+                        $savepoint = 'department_letter_resume_dispatch';
+                        $store->query('SAVEPOINT ' . $savepoint);
+                        try {
+                            $dispatch = $service->dispatch($documentId);
+                            $store->query('RELEASE SAVEPOINT ' . $savepoint);
+                        } catch (Throwable $error) {
+                            if ($error instanceof QDServerFault) throw $error;
+                            $store->query('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                            $store->query('RELEASE SAVEPOINT ' . $savepoint);
+                            $reason = qd_correspondence_safe_queue_reason($error);
+                            qd_correspondence_resume_guard($service, $store, $connection, $scopeKey, $requestId);
+                            $dispatch = ['state' => 'queued', 'reason' => $reason];
+                        }
+                        $queuedReason = qd_correspondence_dispatch_result_reason($dispatch);
+                        $data = qd_correspondence_project_result($service, $store, $connection, $documentId, $requestId, null, null, $queuedReason, true);
+                        $data['operationId'] = $wireOperationId;
+                        qd_correspondence_assert_active_scope(qd_runtime_active_playthrough($connection), $scopeKey);
+                        $store->assertRestoreToken($originalToken);
+                        return $data;
+                    });
+                    return $response;
+                },
+            );
+        });
+    });
+    return $result;
+}
+
+function qd_correspondence_resume_eligible(string $version, array $doc, string $state, bool $integrity, bool $companionOwned, ?bool $autonomyChild, ?bool $hasOperation, ?bool $hasDispatchAnchor = false): bool
+{
+    return $version === '0.1.0-dev.30'
+        && $state === 'queued'
+        && $integrity
+        && !$companionOwned
+        && $autonomyChild === false
+        && $hasOperation === false
+        && $hasDispatchAnchor === false
+        && array_key_exists('operator_close', $doc) === false
+        && array_key_exists('operation_id', $doc)
+        && $doc['operation_id'] === null
+        && ($doc['payer']['kind'] ?? null) === 'player';
+}
+
+function qd_correspondence_safe_queue_reason(Throwable $error): string
+{
+    $message = $error instanceof DomainException ? $error->getMessage() : null;
+    return match ($message) {
+        'executor_unavailable' => 'executor_unavailable',
+        'renderer_unavailable', 'renderer_dependency_unavailable', 'renderer_background_unavailable', 'renderer_content_overflow', 'renderer_failed', 'renderer_directory_unavailable', 'renderer_output_unavailable' => 'renderer_unavailable',
+        'actor_identity_changed' => 'identity_changed',
+        'actor_form_unavailable', 'dynamic_form_unsupported', 'plugin_mapping_unavailable', 'invalid_local_form', 'invalid_plugin', 'item_cache_unavailable' => 'mapping_unavailable',
+        'companion_scheduler_owned' => 'companion_owned',
+        'operator_closed' => 'operator_closed',
+        'interaction_unavailable' => 'interaction_unavailable',
+        'document_unavailable', 'operation_unavailable', 'dispatch_anchor_unavailable' => 'integrity_unavailable',
+        default => 'operation_unavailable',
+    };
+}
+
+function qd_correspondence_dispatch_result_reason(array $result): ?string
+{
+    if (($result['state'] ?? null) !== 'queued') return null;
+    $reason = $result['reason'] ?? null;
+    return is_string($reason) && in_array($reason, QD_PENDING_QUEUED_REASONS, true)
+        ? $reason
+        : 'operation_unavailable';
+}
+
+function qd_correspondence_has_operation_for_document(object $store, string $documentId): ?bool
+{
+    if (!method_exists($store, 'query')) return null;
+    $rows = $store->query(
+        'SELECT EXISTS(SELECT 1 FROM plugins.correspondence_operations WHERE document_id=$1::uuid LIMIT 1) AS present',
+        [$documentId],
+    );
+    if (count($rows) !== 1 || !in_array($rows[0]['present'] ?? null, ['t', 'f'], true)) return null;
+    return $rows[0]['present'] === 't';
+}
+
+function qd_correspondence_has_dispatch_anchor(object $store, string $documentId): ?bool
+{
+    if (!method_exists($store, 'query')) return null;
+    $rows = $store->query(
+        "SELECT EXISTS(SELECT 1 FROM public.eventlog WHERE type='info' AND sess='correspondence_v1' AND data LIKE $1 LIMIT 1) AS present",
+        ['{"document_id":"' . $documentId . '","operation_id":"________-____-____-____-____________"}'],
+    );
+    if (count($rows) !== 1 || !in_array($rows[0]['present'] ?? null, ['t', 'f'], true)) return null;
+    return $rows[0]['present'] === 't';
+}
+
+function qd_correspondence_autonomy_child(object $store, array $doc): ?bool
+{
+    $documentId = $doc['document_id'] ?? null;
+    $scope = $doc['playthrough_id'] ?? null;
+    if (!method_exists($store, 'query') || !is_string($documentId) || !is_string($scope)) return null;
+    $table = $store->query("SELECT to_regclass('plugins.correspondence_autonomy_decisions')::text AS decision_table");
+    if (count($table) !== 1 || !is_string($table[0]['decision_table'] ?? null)) return null;
+    $rows = $store->query(
+        'SELECT 1 AS child FROM plugins.correspondence_autonomy_decisions WHERE playthrough_id=$1 AND child_document_id=$2::uuid LIMIT 1',
+        [$scope, $documentId],
+    );
+    return count($rows) <= 1 ? $rows !== [] : null;
+}
+
+function qd_correspondence_prefetch_autonomy_children(mixed $connection, string $scope, array $documents): array
+{
+    $documentIds = [];
+    foreach ($documents as $document) {
+        $documentId = $document['document_id'] ?? null;
+        if (is_string($documentId) && qd_is_uuid($documentId)) $documentIds[strtolower($documentId)] = false;
+    }
+    if ($documentIds === []) return ['available' => true, 'children' => []];
+    $table = qd_correspondence_pg_rows($connection, "SELECT to_regclass('plugins.correspondence_autonomy_decisions')::text AS decision_table");
+    if (count($table) !== 1) throw new QDServerFault('unavailable');
+    if (!is_string($table[0]['decision_table'] ?? null) || $table[0]['decision_table'] === '') {
+        return ['available' => false, 'children' => []];
+    }
+    $ids = array_keys($documentIds);
+    $array = '{' . implode(',', $ids) . '}';
+    $rows = qd_correspondence_pg_rows(
+        $connection,
+        'SELECT DISTINCT child_document_id::text AS child_document_id FROM plugins.correspondence_autonomy_decisions '
+            . 'WHERE playthrough_id=$1 AND child_document_id=ANY($2::uuid[]) LIMIT $3::integer',
+        [$scope, $array, (string)(count($ids) + 1)],
+    );
+    if (count($rows) > count($ids)) throw new QDServerFault('unavailable');
+    foreach ($rows as $row) {
+        $documentId = $row['child_document_id'] ?? null;
+        if (!is_string($documentId) || !array_key_exists(strtolower($documentId), $documentIds)) throw new QDServerFault('unavailable');
+        $documentIds[strtolower($documentId)] = true;
+    }
+    return ['available' => true, 'children' => $documentIds];
+}
+
+function qd_correspondence_write_outcome(CorrespondenceService $service, CorrespondencePgStore $store, mixed $connection, string $documentId, string $requestId, ?string $queuedReason = null, bool $includeResumeMetadata = false): array
+{
+    return $store->transaction(static fn(): array => qd_correspondence_project_result($service, $store, $connection, $documentId, $requestId, null, null, $queuedReason, $includeResumeMetadata));
 }
 
 function qd_correspondence_companion_decision_rows(object $store, array $doc): array
@@ -1135,17 +1545,91 @@ function qd_correspondence_companion_identity_matches(array $rows, array $doc, s
         && ($row['actor_id'] ?? null) === $match[1];
 }
 
-function qd_correspondence_project_result(CorrespondenceService $service, object $store, mixed $connection, string $documentId, string $requestId, ?callable $physicalItemResolver = null, ?callable $physicalActorResolver = null): array
+function qd_correspondence_project_result(CorrespondenceService $service, object $store, mixed $connection, string $documentId, string $requestId, ?callable $physicalItemResolver = null, ?callable $physicalActorResolver = null, ?string $queuedReason = null, bool $includeResumeMetadata = false, ?array $resumeEligibilityEvidence = null): array
 {
-    $status = $service->get($documentId);
     $doc = $store->loadDocument($documentId);
     if (!is_array($doc) || ($doc['request_id'] ?? null) !== $requestId) throw new QDServerFault('not_found');
     $version = qd_correspondence_loaded_source_version();
     $companionRows = qd_correspondence_version_supports_companion_scheduler($version) ? qd_correspondence_companion_decision_rows($store, $doc) : null;
     $documentIntegrity = qd_correspondence_document_integrity($store, $doc, $companionRows);
+    $identityReason = null;
+    try {
+        $status = $service->get($documentId);
+    } catch (Throwable $error) {
+        if ($includeResumeMetadata && $version === '0.1.0-dev.30' && ($doc['operation_id'] ?? null) === null
+            && $documentIntegrity && qd_correspondence_safe_queue_reason($error) === 'identity_changed') {
+            $status = ['state' => 'queued'];
+            $identityReason = 'identity_changed';
+        } else {
+            throw $error;
+        }
+    }
     $metadata = qd_correspondence_version_supports_companion_scheduler($version)
         ? ['companionSchedulerOwned' => $companionRows !== [] && $companionRows !== null, 'operatorClosed' => $documentIntegrity && array_key_exists('operator_close', $doc)]
         : [];
+    $state = match ($status['state'] ?? null) {
+        'queued' => 'queued',
+        'dispatched' => 'dispatched',
+        default => 'unknown',
+    };
+    if ($includeResumeMetadata && $version === '0.1.0-dev.30') {
+        $canResume = false;
+        $reason = null;
+        if ($state === 'queued') {
+            $companionOwned = $companionRows !== [] && $companionRows !== null;
+            if ($resumeEligibilityEvidence !== null) {
+                $autonomyChild = in_array($resumeEligibilityEvidence['autonomyChild'] ?? null, [true, false], true)
+                    ? $resumeEligibilityEvidence['autonomyChild'] : null;
+                $hasOperation = ($doc['operation_id'] ?? null) !== null
+                    ? true
+                    : (in_array($resumeEligibilityEvidence['hasOperation'] ?? null, [true, false], true)
+                        ? $resumeEligibilityEvidence['hasOperation'] : null);
+                $hasDispatchAnchor = in_array($resumeEligibilityEvidence['hasDispatchAnchor'] ?? null, [true, false], true)
+                    ? $resumeEligibilityEvidence['hasDispatchAnchor'] : null;
+                $companionOwned = in_array($resumeEligibilityEvidence['companionOwned'] ?? null, [true, false], true)
+                    ? $resumeEligibilityEvidence['companionOwned'] : null;
+            } else {
+                $autonomyChild = false;
+                $hasOperation = ($doc['operation_id'] ?? null) === null ? false : true;
+                $hasDispatchAnchor = false;
+                if ($documentIntegrity && !$companionOwned && $identityReason === null && $hasOperation === false) {
+                    $autonomyChild = qd_correspondence_autonomy_child($store, $doc);
+                    $hasOperation = qd_correspondence_has_operation_for_document($store, $documentId);
+                    if ($hasOperation === false) $hasDispatchAnchor = qd_correspondence_has_dispatch_anchor($store, $documentId);
+                }
+            }
+            $canResume = $identityReason === null && qd_correspondence_resume_eligible(
+                $version,
+                $doc,
+                $state,
+                $documentIntegrity,
+                $companionOwned !== false,
+                $autonomyChild,
+                $hasOperation,
+                $hasDispatchAnchor,
+            );
+            if ($canResume) {
+                $reason = is_string($queuedReason) && in_array($queuedReason, QD_PENDING_QUEUED_REASONS, true)
+                    ? $queuedReason
+                    : 'not_dispatched';
+            } elseif ($identityReason !== null) {
+                $reason = $identityReason;
+            } elseif (!$documentIntegrity || $hasOperation !== false || $hasDispatchAnchor !== false) {
+                $reason = 'integrity_unavailable';
+            } elseif ($companionOwned) {
+                $reason = 'companion_owned';
+            } elseif (array_key_exists('operator_close', $doc)) {
+                $reason = 'operator_closed';
+            } elseif ($autonomyChild !== false || ($doc['payer']['kind'] ?? null) !== 'player') {
+                $reason = 'operation_unavailable';
+            } elseif (is_string($queuedReason) && in_array($queuedReason, QD_PENDING_QUEUED_REASONS, true)) {
+                $reason = $queuedReason;
+            } else {
+                $reason = 'operation_unavailable';
+            }
+        }
+        $metadata += ['canResume' => $canResume, 'queuedReason' => $reason];
+    }
     $operation = is_string($doc['operation_id'] ?? null) ? $store->loadOperation($doc['operation_id']) : null;
     $receipt = qd_correspondence_validate_receipt($store, $connection, $doc, $operation, $physicalItemResolver, $physicalActorResolver, $companionRows, $documentIntegrity);
     if (($receipt['confirmed'] ?? false) === true) {
@@ -1153,11 +1637,6 @@ function qd_correspondence_project_result(CorrespondenceService $service, object
     }
     if (($receipt['failed'] ?? false) === true && ($status['state'] ?? null) === 'failed') return ['operationId' => $requestId, 'state' => 'rejected'] + $metadata;
     if (($receipt['partial'] ?? false) === true) return ['operationId' => $requestId, 'state' => 'partial'] + $metadata;
-    $state = match ($status['state'] ?? null) {
-        'queued' => 'queued',
-        'dispatched' => 'dispatched',
-        default => 'unknown',
-    };
     return ['operationId' => $requestId, 'state' => $state] + $metadata;
 }
 
@@ -1498,6 +1977,187 @@ function qd_correspondence_mailbox_source_rows(mixed $connection, string $scope,
         }
     }
     return ['rawRows' => $rows, 'documents' => $documents, 'operations' => $operations, 'limited' => $limited];
+}
+
+function qd_correspondence_pending_binding(array $context, string $scopeKey, string $restoreToken, string $generation, array $sourceIdentity): string
+{
+    $principalId = $context['principalId'] ?? null;
+    $viewToken = $context['viewToken'] ?? null;
+    $serverContext = $context['serverContext'] ?? null;
+    $scopeHash = $context['scopeHash'] ?? null;
+    $version = $sourceIdentity['version'] ?? null;
+    $manifestHash = $sourceIdentity['manifestHash'] ?? null;
+    if (!qd_is_uuid($principalId) || !qd_is_uuid($viewToken) || !is_string($serverContext) || $serverContext === ''
+        || !is_string($scopeHash) || preg_match('/\A[a-f0-9]{64}\z/D', $scopeHash) !== 1
+        || $scopeKey === '' || $restoreToken === '' || !qd_valid_string($generation, 128, true)
+        || !is_string($version) || $version !== '0.1.0-dev.30'
+        || !is_string($manifestHash) || preg_match('/\A[a-f0-9]{64}\z/D', $manifestHash) !== 1) {
+        throw new QDServerFault('stale_context');
+    }
+    $identity = [
+        'principal' => strtolower($principalId),
+        'view' => strtolower($viewToken),
+        'serverContext' => hash('sha256', $serverContext),
+        'scopeHash' => $scopeHash,
+        'scope' => hash('sha256', $scopeKey),
+        'restore' => hash('sha256', $restoreToken),
+        'generation' => $generation,
+        'sourceVersion' => $version,
+        'sourceManifest' => $manifestHash,
+    ];
+    return hash('sha256', qd_canonical_json($identity));
+}
+
+function qd_correspondence_pending_tuple(array $value): ?array
+{
+    $createdAt = $value['createdAt'] ?? $value['created_at'] ?? null;
+    $documentId = $value['documentId'] ?? $value['document_id'] ?? null;
+    if (!is_string($createdAt)
+        || preg_match('/\A[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}(?:\.[0-9]{1,6})?(?:[+-][0-9]{2}(?::?[0-9]{2})?|Z)\z/D', $createdAt) !== 1
+        || !qd_is_uuid($documentId)) return null;
+    return ['createdAt' => $createdAt, 'documentId' => strtolower($documentId)];
+}
+
+function qd_correspondence_pending_count_valid(mixed $count): bool
+{
+    return is_string($count)
+        && preg_match('/\A(?:0|[1-9][0-9]{0,18})\z/D', $count) === 1
+        && (strlen($count) < 19 || strcmp($count, '9223372036854775807') <= 0);
+}
+
+function qd_correspondence_pending_manual_count(mixed $connection, string $scope): string
+{
+    $rows = qd_correspondence_pg_rows(
+        $connection,
+        "SELECT count(*)::text AS manual_count FROM plugins.correspondence_documents d "
+            . "WHERE d.playthrough_id=$1 AND d.payload->'payer'->>'kind'='player'",
+        [$scope],
+    );
+    $count = $rows[0]['manual_count'] ?? null;
+    if (count($rows) !== 1 || !qd_correspondence_pending_count_valid($count)) throw new QDServerFault('unavailable');
+    return $count;
+}
+
+function qd_correspondence_pending_b64url(string $bytes): string
+{
+    return rtrim(strtr(base64_encode($bytes), '+/', '-_'), '=');
+}
+
+function qd_correspondence_pending_cursor_create(string $binding, array $upper, array $last, string $keyHex, string $manualCount): string
+{
+    $upper = qd_correspondence_pending_tuple($upper);
+    $last = qd_correspondence_pending_tuple($last);
+    if (preg_match('/\A[a-f0-9]{64}\z/D', $binding) !== 1 || $upper === null || $last === null
+        || preg_match('/\A[a-f0-9]{64}\z/D', $keyHex) !== 1 || !qd_correspondence_pending_count_valid($manualCount)) {
+        throw new QDServerFault('unavailable');
+    }
+    $json = json_encode([
+        'v' => 1,
+        'b' => $binding,
+        'u' => [$upper['createdAt'], $upper['documentId']],
+        'l' => [$last['createdAt'], $last['documentId']],
+        'c' => $manualCount,
+        'e' => time() + QD_CORRESPONDENCE_CURSOR_TTL,
+    ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+    $payload = qd_correspondence_pending_b64url($json);
+    $signature = hash_hmac('sha256', QD_CORRESPONDENCE_PENDING_CURSOR_DOMAIN . "\0" . $payload, hex2bin($keyHex), true);
+    $cursor = $payload . '.' . qd_correspondence_pending_b64url($signature);
+    if (strlen($cursor) > 512) throw new QDServerFault('unavailable');
+    return $cursor;
+}
+
+function qd_correspondence_pending_cursor_parse(string $cursor, string $binding, string $keyHex): array
+{
+    if (strlen($cursor) > 512 || preg_match('/\A([A-Za-z0-9_-]+)\.([A-Za-z0-9_-]{43})\z/D', $cursor, $parts) !== 1
+        || preg_match('/\A[a-f0-9]{64}\z/D', $binding) !== 1 || preg_match('/\A[a-f0-9]{64}\z/D', $keyHex) !== 1) {
+        throw new QDServerFault('stale_revision');
+    }
+    $rawMac = base64_decode(strtr($parts[2], '-_', '+/') . '=', true);
+    $expectedMac = hash_hmac('sha256', QD_CORRESPONDENCE_PENDING_CURSOR_DOMAIN . "\0" . $parts[1], hex2bin($keyHex), true);
+    if (!is_string($rawMac) || !hash_equals($expectedMac, $rawMac)) throw new QDServerFault('stale_revision');
+    $rawJson = base64_decode(strtr($parts[1], '-_', '+/') . str_repeat('=', (4 - strlen($parts[1]) % 4) % 4), true);
+    $state = is_string($rawJson) ? json_decode($rawJson, true, 8) : null;
+    if (!is_array($state) || array_keys($state) !== ['v', 'b', 'u', 'l', 'c', 'e'] || ($state['v'] ?? null) !== 1
+        || !is_string($state['b'] ?? null) || preg_match('/\A[a-f0-9]{64}\z/D', $state['b']) !== 1
+        || !qd_correspondence_pending_count_valid($state['c'] ?? null)
+        || !is_int($state['e'] ?? null) || $state['e'] <= time()) throw new QDServerFault('stale_revision');
+    $upper = is_array($state['u'] ?? null) && array_is_list($state['u']) && count($state['u']) === 2
+        ? qd_correspondence_pending_tuple(['createdAt' => $state['u'][0], 'documentId' => $state['u'][1]]) : null;
+    $last = is_array($state['l'] ?? null) && array_is_list($state['l']) && count($state['l']) === 2
+        ? qd_correspondence_pending_tuple(['createdAt' => $state['l'][0], 'documentId' => $state['l'][1]]) : null;
+    if ($upper === null || $last === null) throw new QDServerFault('stale_revision');
+    if (!hash_equals($binding, $state['b'])) throw new QDServerFault('stale_context');
+    return ['count' => $state['c'], 'upper' => $upper, 'last' => $last];
+}
+
+function qd_correspondence_pending_uppermost_tuple(mixed $connection, string $scope): ?array
+{
+    $rows = qd_correspondence_pg_rows(
+        $connection,
+        "SELECT d.created_at::text AS created_at,d.document_id::text AS document_id FROM plugins.correspondence_documents d "
+            . "WHERE d.playthrough_id=$1 AND d.payload->'payer'->>'kind'='player' "
+            . "ORDER BY d.created_at DESC,d.document_id DESC LIMIT 1",
+        [$scope],
+    );
+    if ($rows === []) return null;
+    if (count($rows) !== 1 || ($tuple = qd_correspondence_pending_tuple($rows[0])) === null) throw new QDServerFault('unavailable');
+    return $tuple;
+}
+
+function qd_correspondence_pending_source_rows(mixed $connection, string $scope, ?array $upper, ?array $after): array
+{
+    if ($upper === null) return ['rawRows' => [], 'documents' => [], 'operations' => [], 'hasMore' => false, 'limited' => false];
+    $upper = qd_correspondence_pending_tuple($upper);
+    $rawAfter = $after;
+    $after = $rawAfter === null ? null : qd_correspondence_pending_tuple($rawAfter);
+    if ($upper === null || ($rawAfter !== null && $after === null)) throw new QDServerFault('stale_revision');
+    $sql = "SELECT d.document_id::text AS document_id,d.request_id::text AS request_id,d.created_at::text AS created_at,d.payload::text AS document_payload,"
+        . "COALESCE(o.payload::text,'') AS operation_payload,"
+        . "EXISTS(SELECT 1 FROM plugins.correspondence_operations any_operation WHERE any_operation.document_id=d.document_id LIMIT 1) AS has_operation,"
+        . "EXISTS(SELECT 1 FROM public.eventlog dispatch_event WHERE dispatch_event.type='info' AND dispatch_event.sess='correspondence_v1' "
+        . "AND dispatch_event.data LIKE ('{\"document_id\":\"' || d.document_id::text || '\",\"operation_id\":\"________-____-____-____-____________\"}') LIMIT 1) AS has_dispatch_anchor "
+        . "FROM plugins.correspondence_documents d LEFT JOIN plugins.correspondence_operations o "
+        . "ON o.operation_id::text=d.payload->>'operation_id' AND o.document_id=d.document_id "
+        . "WHERE d.playthrough_id=$1 AND d.payload->'payer'->>'kind'='player' "
+        . "AND (d.created_at,d.document_id)<=($2::timestamptz,$3::uuid) "
+        . "AND ($4::timestamptz IS NULL OR (d.created_at,d.document_id)<($4::timestamptz,$5::uuid)) "
+        . "ORDER BY d.created_at DESC,d.document_id DESC LIMIT $6::integer";
+    $rows = qd_correspondence_pg_rows($connection, $sql, [
+        $scope, $upper['createdAt'], $upper['documentId'], $after['createdAt'] ?? null, $after['documentId'] ?? null,
+        (string)QD_CORRESPONDENCE_PENDING_FETCH_MAX,
+    ]);
+    $hasMore = count($rows) > QD_CORRESPONDENCE_PENDING_MAX;
+    $rows = array_slice($rows, 0, QD_CORRESPONDENCE_PENDING_MAX);
+    $documents = [];
+    $operations = [];
+    $limited = false;
+    foreach ($rows as $row) {
+        $documentId = $row['document_id'] ?? null;
+        if (!is_string($documentId) || !qd_is_uuid($documentId) || !is_string($row['request_id'] ?? null) || !qd_is_uuid($row['request_id'])
+            || qd_correspondence_pending_tuple($row) === null) throw new QDServerFault('unavailable');
+        try {
+            $document = json_decode((string)($row['document_payload'] ?? ''), true, 512, JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            continue;
+        }
+        if (!is_array($document)) {
+            continue;
+        }
+        $documents[$documentId] = $document;
+        $operationId = $document['operation_id'] ?? null;
+        if (is_string($operationId)) {
+            $operations[$operationId] = [];
+            if (is_string($row['operation_payload'] ?? null) && $row['operation_payload'] !== '') {
+                try {
+                    $operation = json_decode($row['operation_payload'], true, 512, JSON_THROW_ON_ERROR);
+                    if (is_array($operation)) $operations[$operationId] = $operation;
+                } catch (Throwable) {
+                    // Preserve the document as unknown; the source row remains safely cursor-addressable.
+                }
+            }
+        }
+    }
+    return ['rawRows' => $rows, 'documents' => $documents, 'operations' => $operations, 'hasMore' => $hasMore, 'limited' => $limited];
 }
 
 function qd_correspondence_detail_source_rows(mixed $connection, string $scope, array $actor, string $letterId): array

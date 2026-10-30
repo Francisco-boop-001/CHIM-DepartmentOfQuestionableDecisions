@@ -6,7 +6,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/journal.php';
 require_once __DIR__ . '/overlay_setup.php';
 
-const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
+const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose', 'correspondence.resume', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
 const QD_OWNER_IDEMPOTENT_MUTATIONS = ['brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
 
 function qd_false_capabilities(): array
@@ -109,11 +109,18 @@ function qd_context_record_matches(array $state, string $pairId, object $request
         && hash_equals($record['scopeHash'], $scopeHash);
 }
 
+function qd_context_record_current(array $settings, string $pairId, object $request, string $scopeHash): ?array
+{
+    return qd_server_state_transaction($settings, static function (array &$state) use ($pairId, $request, $scopeHash): ?array {
+        if (!qd_context_record_matches($state, $pairId, $request, $scopeHash)) return null;
+        $record = $state['contexts'][$pairId] ?? null;
+        return is_array($record) ? $record : null;
+    });
+}
+
 function qd_context_record_is_current(array $settings, string $pairId, object $request, string $scopeHash): bool
 {
-    return qd_server_state_transaction($settings, static function (array &$state) use ($pairId, $request, $scopeHash): bool {
-        return qd_context_record_matches($state, $pairId, $request, $scopeHash);
-    });
+    return qd_context_record_current($settings, $pairId, $request, $scopeHash) !== null;
 }
 
 function qd_assert_current_context(array $settings, array $dependencies, string $authorizationHeader, array $auth, mixed $requiredScope, object $request, string $expectedScopeHash): array
@@ -424,6 +431,7 @@ function qd_bootstrap_authenticated_response(object $request, ?string $authoriza
             'nativeGeneration' => $request->context->nativeGeneration,
             'scopeHash' => $scopeHash,
             'scopeToken' => $scopeToken,
+            'pendingReadMacKey' => bin2hex(random_bytes(32)),
         ];
         return $scopeToken;
     });
@@ -433,7 +441,14 @@ function qd_bootstrap_authenticated_response(object $request, ?string $authoriza
 
 function qd_operation_id(object $request): string
 {
-    return $request->payload->operationId;
+    return $request->operation === 'correspondence.resume' ? $request->payload->attemptId : $request->payload->operationId;
+}
+
+function qd_operation_semantic_payload(object $request): stdClass
+{
+    $semanticPayload = clone $request->payload;
+    unset($semanticPayload->{$request->operation === 'correspondence.resume' ? 'attemptId' : 'operationId'});
+    return $semanticPayload;
 }
 
 function qd_to_json_value(mixed $value): mixed
@@ -520,6 +535,7 @@ function qd_page_field(string $operation): ?string
         'mp.relationships.read' => 'records',
         'sas.issues.read' => 'issues',
         'correspondence.mailbox.read' => 'letters',
+        'correspondence.pending.read' => 'operations',
         default => null,
     };
 }
@@ -529,9 +545,39 @@ function qd_response_has_next_cursor(object $data): bool
     return property_exists($data, 'nextCursor') && $data->nextCursor !== null && $data->nextCursor !== '';
 }
 
+function qd_validate_pending_operation_rows(array $operations): bool
+{
+    $expectedKeys = ['canResume', 'hasTransfer', 'operationId', 'operatorClosed', 'queuedReason', 'recipientLabel', 'state'];
+    foreach ($operations as $row) {
+        if (!is_object($row)) return false;
+        $keys = array_keys(get_object_vars($row));
+        sort($keys, SORT_STRING);
+        if ($keys !== $expectedKeys
+            || !qd_is_uuid($row->operationId ?? null)
+            || !qd_valid_string($row->recipientLabel ?? null)
+            || !in_array($row->state ?? null, ['stored', 'queued', 'dispatched', 'unknown', 'partial'], true)
+            || !is_bool($row->hasTransfer ?? null)
+            || !is_bool($row->canResume ?? null)
+            || !is_bool($row->operatorClosed ?? null)) {
+            return false;
+        }
+        if ($row->state === 'queued') {
+            if (!is_string($row->queuedReason ?? null)
+                || !in_array($row->queuedReason, QD_PENDING_QUEUED_REASONS, true)
+                || ($row->canResume && $row->operatorClosed)) {
+                return false;
+            }
+        } elseif ($row->queuedReason !== null || $row->canResume) {
+            return false;
+        }
+        if (in_array($row->state, ['dispatched', 'unknown', 'partial'], true) && !$row->hasTransfer) return false;
+    }
+    return true;
+}
+
 function qd_operation_has_cursor(string $operation): bool
 {
-    return in_array($operation, ['mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.mailbox.read'], true);
+    return in_array($operation, ['mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.mailbox.read', 'correspondence.pending.read'], true);
 }
 
 function qd_response_with_bounded_data(object $request, mixed $rawData, bool $authorDetail): array
@@ -570,6 +616,15 @@ function qd_response_with_bounded_data(object $request, mixed $rawData, bool $au
         } elseif (property_exists($data, 'nextCursor')) {
             throw new QDServerFault('unavailable');
         }
+        if ($request->operation === 'correspondence.pending.read') {
+            $keys = array_keys(get_object_vars($data));
+            sort($keys, SORT_STRING);
+            if ($keys !== ['limited', 'nextCursor', 'operations'] || count($data->operations) > 25
+                || $data->limited !== qd_response_has_next_cursor($data)
+                || !qd_validate_pending_operation_rows($data->operations)) {
+                throw new QDServerFault('unavailable');
+            }
+        }
         if (count($data->$field) > QD_MAX_PAGE_ROWS) {
             if (qd_response_has_next_cursor($data)) {
                 throw new QDServerFault('unavailable');
@@ -600,12 +655,16 @@ function qd_response_with_bounded_data(object $request, mixed $rawData, bool $au
     }
 }
 
-function qd_dispatch_authorized_operation(object $request, array $auth, string $scopeKey, string $scopeHash, string $authorizationHeader, array $settings, array $dependencies, array $readiness): array
+function qd_dispatch_authorized_operation(object $request, array $auth, string $scopeKey, string $scopeHash, string $authorizationHeader, array $settings, array $dependencies, array $readiness, ?string $pendingReadMacKey = null): array
 {
     $operation = $request->operation;
     $callback = $dependencies['operations'][$operation] ?? null;
     if (!is_callable($callback)) {
         throw new QDServerFault('unavailable');
+    }
+    if ($operation === 'correspondence.pending.read'
+        && (!is_string($pendingReadMacKey) || preg_match('/\A[a-f0-9]{64}\z/D', $pendingReadMacKey) !== 1)) {
+        throw new QDServerFault('stale_context');
     }
     $requiredScope = QD_OPERATION_REQUIREMENTS[$operation]['scope'];
     $currentAuth = $auth;
@@ -633,6 +692,7 @@ function qd_dispatch_authorized_operation(object $request, array $auth, string $
         'serverContext' => $request->context->serverContext,
         'viewToken' => $request->context->viewToken,
         'nativeGeneration' => $request->context->nativeGeneration,
+        'pendingReadMacKey' => $operation === 'correspondence.pending.read' ? $pendingReadMacKey : null,
         'assertCurrent' => $commitGuard,
         'beginCommit' => $beginCommit,
         'withCurrentContext' => static fn(callable $callback): mixed => qd_with_current_context(
@@ -660,8 +720,7 @@ function qd_dispatch_authorized_operation(object $request, array $auth, string $
     if (in_array($operation, QD_MUTATION_OPERATIONS, true)) {
         $commitGuard();
         $payloadHash = hash('sha256', qd_canonical_json($request->payload));
-        $semanticPayload = clone $request->payload;
-        unset($semanticPayload->operationId);
+        $semanticPayload = qd_operation_semantic_payload($request);
         $semanticHash = hash('sha256', qd_canonical_json($semanticPayload));
         $ownerIdempotent = in_array($operation, QD_OWNER_IDEMPOTENT_MUTATIONS, true);
         $journal = qd_journal_begin($settings, $auth['pairId'], $scopeHash, $operation, qd_operation_id($request), $payloadHash, $semanticHash, $ownerIdempotent);
@@ -751,15 +810,23 @@ function qd_server_dispatch(mixed $request, ?string $authorizationHeader, array 
         return qd_with_profile_lease($dependencies, static function () use ($request, $auth, $authorizationHeader, $settings, $dependencies): array {
             $scopeKey = qd_authoritative_scope($dependencies, $auth['pairId']);
             $scopeHash = hash('sha256', $scopeKey);
-            if (!qd_context_record_is_current($settings, $auth['pairId'], $request, $scopeHash)) {
+            $contextRecord = qd_context_record_current($settings, $auth['pairId'], $request, $scopeHash);
+            if ($contextRecord === null) {
                 throw new QDServerFault('stale_context');
+            }
+            $pendingReadMacKey = null;
+            if ($request->operation === 'correspondence.pending.read') {
+                $pendingReadMacKey = $contextRecord['pendingReadMacKey'] ?? null;
+                if (!is_string($pendingReadMacKey) || preg_match('/\A[a-f0-9]{64}\z/D', $pendingReadMacKey) !== 1) {
+                    throw new QDServerFault('stale_context');
+                }
             }
             $readiness = qd_runtime_readiness($dependencies);
             $capability = QD_OPERATION_REQUIREMENTS[$request->operation]['capability'];
             if (!is_string($capability) || !$readiness[$capability]) {
                 throw new QDServerFault('unavailable');
             }
-            return qd_dispatch_authorized_operation($request, $auth, $scopeKey, $scopeHash, $authorizationHeader ?? '', $settings, $dependencies, $readiness);
+            return qd_dispatch_authorized_operation($request, $auth, $scopeKey, $scopeHash, $authorizationHeader ?? '', $settings, $dependencies, $readiness, $pendingReadMacKey);
         });
     } catch (QDServerFault $error) {
         return qd_error_response($requestObject, $error->wireCode);

@@ -4,11 +4,13 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
-## Current release: prealpha.27
+## Prealpha.28 release candidate — not yet published
 
-[Download prealpha.27](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.27/WorldOfDramaLlama-0.1.0-prealpha.27.zip). It pairs Private Conversation owner 0.1.25 with support companion 0.1.0-prealpha.13. Sealed Fates dev.30, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Malpractice Makes Perfect dev.4, the native 0.1.17 DLL, and UI are unchanged; 20 of 22 installable archive members remain byte-identical. See [PCV25 release build and evidence](docs/PCV25-RELEASE.md).
+This candidate adds an explicit **Resume** action for the same saved manual letter when its first attempt is still queued because the native executor was unavailable. Resume uses the stored letter body and attachments and keeps the original request and document identity. Refresh and pending-letter discovery remain read-only; queued means waiting, not delivered. Release assets are not published yet. See the [letter recovery guide](docs/LETTER-RECOVERY.md).
 
-Reviewed evidence covers Windows source, control-flow, and package checks only. The reported input freeze is unchanged. Logger persistence, POSIX filesystem safety, and tagged native packet ordering remain unverified. HTTP, database, provider, native compilation, Skyrim, installed-game, and live behavior are outside this evidence.
+The release pairs Private Conversation owner 0.1.25 with support companion 0.1.0-prealpha.13, Sealed Fates dev.30, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Malpractice Makes Perfect dev.4, and native 0.1.18.0. It starts from the exact prealpha.27 archive (SHA-256 `abb2fe3fb85859b26a26c251929a464e27c36d13179380e6ff491d15af2eb978`) and changes only the Department DWPkg, native DLL, `app.js`, and `index.html`; 18 of 22 installable payloads remain byte-identical. See the [prealpha.28 build contract](docs/BUILD.md).
+
+Release evidence is bound to the exact source commit and requires the native build/host-test receipt, x64 PE export/version verification, and root acceptance for native, UI, and PostgreSQL checks. It does not establish physical letter or gold delivery, provider behavior, live-server behavior, installed-game behavior, Skyrim gameplay, or a mouse fix.
 
 ## Historical prealpha.26: Sealed Fates dev.30
 

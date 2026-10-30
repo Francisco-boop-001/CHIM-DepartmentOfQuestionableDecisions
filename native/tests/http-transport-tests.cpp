@@ -7,6 +7,7 @@
 #include "HttpTransport.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cctype>
 #include <chrono>
@@ -16,6 +17,7 @@
 #include <iostream>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <utility>
 
@@ -341,6 +343,10 @@ using dql::http::Route;
 		reject(std::move(unsupported), ErrorCode::invalidRequest);
 		auto wrongWriteFlag = MakeRequest(server.BaseUrl(), "pcv.arm", false);
 		reject(std::move(wrongWriteFlag), ErrorCode::invalidRequest);
+		auto wrongResumeWriteFlag = MakeRequest(server.BaseUrl(), "correspondence.resume", false);
+		reject(std::move(wrongResumeWriteFlag), ErrorCode::invalidRequest);
+		auto pendingReadWriteFlag = MakeRequest(server.BaseUrl(), "correspondence.pending.read", true);
+		reject(std::move(pendingReadWriteFlag), ErrorCode::invalidRequest);
 		auto tooLarge = MakeRequest(server.BaseUrl());
 		tooLarge.envelopeJson.assign(65537, 'x');
 		reject(std::move(tooLarge), ErrorCode::requestTooLarge);
@@ -438,6 +444,27 @@ using dql::http::Route;
 		transport.Shutdown();
 	}
 
+	void TestPendingReadIsNotTrackedAsWrite()
+	{
+		LocalServer server(Response(200, "OK", "{}"), true);
+		HttpTransport transport;
+		auto request = MakeRequest(server.BaseUrl(), "correspondence.pending.read", false);
+		request.envelopeJson = "{\"version\":1,\"operation\":\"correspondence.pending.read\",\"payload\":{}}";
+		std::promise<HttpResult> promise;
+		auto result = promise.get_future();
+		const auto submitted = transport.Submit(std::move(request),
+			[&](HttpResult value) { promise.set_value(std::move(value)); });
+		Check(submitted.queued, "pending status read is allowed by the fixed API route");
+		Check(server.WaitForRequest(), "pending status read reaches the local HTTP fixture");
+		Check(!transport.HasInFlightWrites(), "pending status read is not tracked as a write");
+		server.Release();
+		const auto response = AwaitResult(result);
+		Check(response.outcome == Outcome::completed && response.statusCode == 200,
+			"pending status read completes without write semantics");
+		Check(server.RequestCount() == 1, "pending status read is never replayed");
+		transport.Shutdown();
+	}
+
 	void TestInstallationPathPrefixIsPreserved()
 	{
 		LocalServer server(Response(200, "OK", "{}"));
@@ -499,13 +526,17 @@ using dql::http::Route;
 
 	void TestCloseCancelsReadsButPreservesAcceptedWrites()
 	{
-		for (const bool write : { false, true }) {
+		const std::array<std::pair<std::string_view, bool>, 3> requests{{
+			{ "mp.relationships.read", false },
+			{ "correspondence.compose", true },
+			{ "correspondence.resume", true }
+		}};
+		for (const auto& [op, write] : requests) {
 			LocalServer server(Response(200, "OK", "{}"), true);
 			std::promise<HttpResult> promise;
 			auto result = promise.get_future();
 			HttpTransport transport;
-			const auto op = write ? "correspondence.compose" : "mp.relationships.read";
-			const auto submitted = transport.Submit(MakeRequest(server.BaseUrl(), op, write),
+			const auto submitted = transport.Submit(MakeRequest(server.BaseUrl(), std::string(op), write),
 				[&](HttpResult value) { promise.set_value(std::move(value)); });
 			Check(submitted.queued, "cancel test request queues");
 			Check(server.WaitForRequest(), "server observes dispatch before cancellation");
@@ -536,7 +567,7 @@ using dql::http::Route;
 			[&](HttpResult value) { readPromise.set_value(std::move(value)); });
 		Check(readSubmit.queued, "active read queues before generation invalidation");
 		Check(server.WaitForRequest(), "fixture observes active read");
-		const auto writeSubmit = transport.Submit(MakeRequest(server.BaseUrl(), "correspondence.compose", true),
+		const auto writeSubmit = transport.Submit(MakeRequest(server.BaseUrl(), "correspondence.resume", true),
 			[&](HttpResult value) { writePromise.set_value(std::move(value)); });
 		Check(writeSubmit.queued, "old-generation write queues behind active read");
 		transport.CancelView("22222222-2222-4222-8222-222222222222", "7", true);
@@ -563,7 +594,7 @@ using dql::http::Route;
 		Check(first.queued, "one request fits a one-entry pending bound");
 		Check(server.WaitForRequest(), "first bounded request becomes active");
 		std::atomic<bool> called{};
-		const auto second = transport.Submit(MakeRequest(server.BaseUrl(), "correspondence.compose", true),
+		const auto second = transport.Submit(MakeRequest(server.BaseUrl(), "correspondence.resume", true),
 			[&](HttpResult) { called = true; });
 		Check(!second.queued && second.errorCode == ErrorCode::queueFull,
 			"pending bound rejects a write synchronously before queue insertion");
@@ -582,7 +613,7 @@ using dql::http::Route;
 		std::promise<HttpResult> promise;
 		auto result = promise.get_future();
 		HttpTransport transport;
-		const auto submitted = transport.Submit(MakeRequest(server.BaseUrl(), "pcv.arm", true),
+		const auto submitted = transport.Submit(MakeRequest(server.BaseUrl(), "correspondence.resume", true),
 			[&](HttpResult value) { promise.set_value(std::move(value)); });
 		Check(submitted.queued, "shutdown write queues");
 		Check(server.WaitForRequest(), "fixture observes dispatched write before shutdown");
@@ -671,6 +702,7 @@ int main()
 	TestCanonicalCredentialDestination();
 	TestFixedConnectionRouteAndWriteTracking();
 	TestConnectionStatusIsNotAWrite();
+	TestPendingReadIsNotTrackedAsWrite();
 	TestInstallationPathPrefixIsPreserved();
 	TestUnauthenticatedBootstrapOmitsAuthorization();
 	TestResponseLimit();

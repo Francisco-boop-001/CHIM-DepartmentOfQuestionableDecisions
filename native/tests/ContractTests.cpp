@@ -82,6 +82,102 @@ int main(int argc, char** argv)
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.catalog.read", "\"scope-1\"", "{\"cursor\":\"" + std::string(513, 'c') + "\"}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.catalog.read", "\"scope-1\"", "{\"cursor\":false}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.catalog.read", "\"scope-1\"", "{\"search\":\"Lydia\"}")).envelope.has_value());
+	const std::string resumeAttemptId = "123e4567-e89b-12d3-a456-426614174001";
+	const auto resumePayload = "{\"operationId\":\"" + kToken + "\",\"attemptId\":\"" + resumeAttemptId + "\"}";
+	const auto resumeRequest = dql::contract::ParseRequest(MakeRequest("correspondence.resume", "\"scope-1\"", resumePayload));
+	CHECK(resumeRequest.envelope.has_value());
+	CHECK(resumeRequest.envelope->payload["operationId"] == kToken);
+	CHECK(resumeRequest.envelope->payload["attemptId"] == resumeAttemptId);
+	CHECK(dql::contract::ParseRequest(MakeRequest("correspondence.compose", "\"scope-1\"")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("correspondence.reconcile", "\"scope-1\"")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.resume", "\"scope-1\"",
+		"{\"operationId\":\"" + kToken + "\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.resume", "\"scope-1\"",
+		"{\"operationId\":\"" + kToken + "\",\"attemptId\":\"" + resumeAttemptId + "\",\"requestId\":\"" + kToken + "\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.resume", "\"scope-1\"",
+		"{\"operationId\":\"not-a-uuid\",\"attemptId\":\"" + resumeAttemptId + "\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.resume", "\"scope-1\"",
+		"{\"operationId\":\"" + kToken + "\",\"attemptId\":42}")).envelope.has_value());
+	const auto pendingRequest = dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\""));
+	CHECK(pendingRequest.envelope.has_value());
+	CHECK(pendingRequest.envelope->payload.empty());
+	const auto maxPendingCursor = std::string(512, 'c');
+	const auto pendingCursorRequest = dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"",
+		"{\"cursor\":\"" + maxPendingCursor + "\"}"));
+	CHECK(pendingCursorRequest.envelope.has_value());
+	CHECK(pendingCursorRequest.envelope->payload["cursor"] == maxPendingCursor);
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"", "{\"limit\":1}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"", "null")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"", "{\"cursor\":null}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"", "{\"cursor\":\"\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"", "{\"cursor\":42}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"",
+		"{\"cursor\":\"" + maxPendingCursor + "x\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"",
+		"{\"cursor\":\"next\",\"extra\":true}")).envelope.has_value());
+	const Json pendingOperation{
+		{ "operationId", kToken }, { "recipientLabel", "Lydia" }, { "state", "queued" },
+		{ "hasTransfer", true }, { "canResume", true }, { "queuedReason", "executor_unavailable" },
+		{ "operatorClosed", false }
+	};
+	const Json pendingData{ { "operations", Json::array({ pendingOperation }) }, { "limited", false }, { "nextCursor", nullptr } };
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	const Json pendingNextPageData{ { "operations", Json::array() }, { "limited", true }, { "nextCursor", "next-page-token" } };
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingNextPageData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	const Json pendingMaxCursorData{ { "operations", Json::array() }, { "limited", true }, { "nextCursor", maxPendingCursor } };
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingMaxCursorData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingMissingCursorData = pendingData;
+	pendingMissingCursorData.erase("nextCursor");
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingMissingCursorData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingUnexpectedRootData = pendingData;
+	pendingUnexpectedRootData["unexpected"] = true;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingUnexpectedRootData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingWrongCursorTypeData = pendingData;
+	pendingWrongCursorTypeData["nextCursor"] = 42;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingWrongCursorTypeData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingWrongLimitedTypeData = pendingData;
+	pendingWrongLimitedTypeData["limited"] = "false";
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingWrongLimitedTypeData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingEmptyCursorData = pendingNextPageData;
+	pendingEmptyCursorData["nextCursor"] = "";
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingEmptyCursorData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingTooLongCursorData = pendingNextPageData;
+	pendingTooLongCursorData["nextCursor"] = std::string(513, 'c');
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingTooLongCursorData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingLimitedMismatchData = pendingNextPageData;
+	pendingLimitedMismatchData["limited"] = false;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingLimitedMismatchData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingUnresumableMismatchData = pendingData;
+	pendingUnresumableMismatchData["limited"] = true;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingUnresumableMismatchData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingExtraData = pendingData;
+	pendingExtraData["operations"][0]["documentId"] = kToken;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingExtraData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingNullData = pendingData;
+	pendingNullData["operations"] = nullptr;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingNullData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingMalformedData = pendingData;
+	pendingMalformedData["operations"][0]["queuedReason"] = "private_exception";
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingMalformedData).dump(),
+		*pendingRequest.envelope).value.has_value());
+	auto pendingTooManyData = pendingData;
+	pendingTooManyData["operations"] = Json::array();
+	for (int i = 0; i < 26; ++i) pendingTooManyData["operations"].push_back(pendingOperation);
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*pendingRequest.envelope, pendingTooManyData).dump(),
+		*pendingRequest.envelope).value.has_value());
 
 	const std::string brainwashCatalog = MakeRequest("brainwash.catalog.read", "\"scope-1\"");
 	CHECK(dql::contract::ParseRequest(brainwashCatalog).envelope.has_value());
