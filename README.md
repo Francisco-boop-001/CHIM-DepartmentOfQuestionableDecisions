@@ -4,11 +4,13 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
-## Prealpha.28 release candidate — not yet published
+## Prealpha.28 queued-letter recovery
 
-This candidate adds an explicit **Resume** action for the same saved manual letter when its first attempt is still queued because the native executor was unavailable. Resume uses the stored letter body and attachments and keeps the original request and document identity. Refresh and pending-letter discovery remain read-only; queued means waiting, not delivered. Release assets are not published yet. See the [letter recovery guide](docs/LETTER-RECOVERY.md).
+This version adds an explicit **Resume** action for the same saved manual letter when its first attempt is still queued because the native executor was unavailable. Resume uses the stored letter body and attachments and keeps the original request and document identity. Refresh and pending-letter discovery remain read-only; queued means waiting, not delivered. See the [letter recovery guide](docs/LETTER-RECOVERY.md).
 
 The release pairs Private Conversation owner 0.1.25 with support companion 0.1.0-prealpha.13, Sealed Fates dev.30, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Malpractice Makes Perfect dev.4, and native 0.1.18.0. It starts from the exact prealpha.27 archive (SHA-256 `abb2fe3fb85859b26a26c251929a464e27c36d13179380e6ff491d15af2eb978`) and changes only the Department DWPkg, native DLL, `app.js`, and `index.html`; 18 of 22 installable payloads remain byte-identical. See the [prealpha.28 build contract](docs/BUILD.md).
+
+Focused verification: six PostgreSQL 15 adapter/service groups and 83 assertions passed in isolated TEST2; 16 recovery browser cases, six native host tests, and 15 package checks passed. Four freshly generated PHP bootstrap responses passed the emitted DLL validator, with an extra capability correctly rejected. The optional interaction gate is absent from the captured host fixture, so that reason has source/contract coverage only. No live server, installed game, or actual player letter was used.
 
 Release evidence is bound to the exact source commit and requires the native build/host-test receipt, x64 PE export/version verification, and root acceptance for native, UI, and PostgreSQL checks. It does not establish physical letter or gold delivery, provider behavior, live-server behavior, installed-game behavior, Skyrim gameplay, or a mouse fix.
 

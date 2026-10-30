@@ -1,10 +1,12 @@
 # Portable source build
 
-## Prealpha.28 queued-letter recovery candidate (not yet published)
+## Prealpha.28 queued-letter recovery
 
 Prealpha.28 adds a user-selected Resume path for an existing manual letter that remains queued after `executor_unavailable`. It retains the original request/document identity and saved body/attachments. Pending discovery and refresh are read-only. The package advances the Department DWPkg, native DLL to 0.1.18.0, and two UI files; the PCV companion 0.1.0-prealpha.13 is among the 18 of 22 installable payloads that retain their prealpha.27 bytes. User steps and limits are in [LETTER-RECOVERY.md](LETTER-RECOVERY.md).
 
 The build starts from the exact published prealpha.27 ZIP (SHA-256 `abb2fe3fb85859b26a26c251929a464e27c36d13179380e6ff491d15af2eb978`) and a clean committed source tree. It refuses to build unless all source paths match the selected Git commit, the source allowlist appends only the six declared .28 paths, the DWPkg delta is exact, the native build receipt matches the locked recipe and DLL, the source-binding and PE receipts bind that same commit/DLL, and root acceptance passes its source, owner, and native/UI/PostgreSQL gates. Root receipts are required inputs; synthetic unit-test fixtures cannot authorize release output.
+
+The native recipe completed before the final PHP-only ingress repair. All 27 native inputs remain byte-identical to that build. The final 14 PHP inputs were verified against Git and regenerated bootstrap responses were replayed through the emitted DLL; the source binding records this post-generation check. Documentation-only release commits reuse runtime evidence only after exact source-hash equivalence is verified.
 
 Set portable paths in PowerShell and build into a new directory outside the checkout:
 
