@@ -1,5 +1,25 @@
 # Portable source build
 
+## Prealpha.29 PCV receipt status
+
+Prealpha.29 updates the UI receipt status display. Build it from a clean checkout at the frozen release commit and the exact published prealpha.28 installable ZIP (SHA-256 `73665957569091e4cbd307bb85d65a3f236cafef5f55472fe82ccdb803c7c97b`). The builder requires the source commit to equal `HEAD`, reads every source file from that commit's explicit allowlist, and verifies the allowlist appends only the .29 builder and focused test. The server manifest may change only its version. Other server sources, native sources, PCV owner sources, and pinned package inputs must remain unchanged.
+
+The installable has 22 members. It replaces the Department DWPkg with prealpha.29 and updates the UI `app.js`; only the two Department version manifests and `checksums.sha256` change inside that DWPkg. The PCV companion 0.1.0-prealpha.13 and native DLL 0.1.18.0 remain the published prealpha.28 bytes, as do 20 of the 22 previous installable payloads. No native build, database, server, provider, installation, or Skyrim test is part of this package proof. Mouse control remains under investigation.
+
+Set the published baseline path and frozen commit, then build and audit into a new directory outside the checkout:
+
+```powershell
+$Baseline = 'path/to/downloaded-WorldOfDramaLlama-0.1.0-prealpha.28.zip'
+$Commit = (git -c "safe.directory=$PWD" rev-parse HEAD).Trim()
+$Output = 'path/to/new-prealpha29-output'
+py -3 -B packaging/build-installable-prealpha29.py build --baseline-zip $Baseline --source-commit $Commit --output-dir $Output
+py -3 -B packaging/build-installable-prealpha29.py audit --baseline-zip $Baseline --source-commit $Commit --output-dir $Output
+$env:DEPARTMENT_PREALPHA28_ZIP = $Baseline
+py -3 -B -m unittest discover -s packaging/tests -p test_installable_prealpha29.py -v
+```
+
+The focused test requires `DEPARTMENT_PREALPHA28_ZIP` to point to the actual public archive; it fails if the variable or file is missing. The release directory contains the installable ZIP, exact-allowlist source ZIP, package audit JSON, and `SHA256SUMS.txt` with LF-only checksums for all three assets. The checksum file excludes itself. This evidence binds source and package bytes; it is not a gameplay or live-server result.
+
 ## Prealpha.28 queued-letter recovery
 
 Prealpha.28 adds a user-selected Resume path for an existing manual letter that remains queued after `executor_unavailable`. It retains the original request/document identity and saved body/attachments. Pending discovery and refresh are read-only. The package advances the Department DWPkg, native DLL to 0.1.18.0, and two UI files; the PCV companion 0.1.0-prealpha.13 is among the 18 of 22 installable payloads that retain their prealpha.27 bytes. User steps and limits are in [LETTER-RECOVERY.md](LETTER-RECOVERY.md).

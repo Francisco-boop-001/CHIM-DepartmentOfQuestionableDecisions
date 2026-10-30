@@ -628,6 +628,146 @@ async function main() {
       await page.close();
     });
 
+    await test('PCV prepared input stays queued while status is polled; consumed refreshes owner scene only', async () => {
+      const page = await authenticatedPage(browser, 'scope-pcv-prepared', 'P'.repeat(43));
+      const { scene, activeId } = await prepareActivePcv(page, 'roster-pcv-prepared');
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+      await page.getByLabel('Your message').fill('Queued input only.');
+      await page.getByRole('button', { name: /^send message$/i }).click();
+      const send = await latestRequest(page, 'pcv.send');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'prepared', phase: 'vm_dispatched' });
+      let status = await latestRequest(page, 'pcv.send.status');
+      assert.ok(status, 'a prepared send is checked by its existing operation ID');
+      await page.waitForTimeout(2200);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 1,
+        'a slow status read does not overlap itself');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'prepared', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      let note = await page.locator('#pcv-send-note').innerText();
+      assert.match(note, /PCV has queued this input.*may not have been consumed.*Checking again/i);
+      assert.doesNotMatch(note, /failed|rejected|delivered|accepted/i, 'prepared is not failure or delivery');
+      const preparedScreenshot = process.env.UI_PCV_PREPARED_SCREENSHOT;
+      if (preparedScreenshot) {
+        fs.mkdirSync(path.dirname(preparedScreenshot), { recursive: true });
+        await page.locator('#panel-pcv').screenshot({ path: preparedScreenshot });
+      }
+
+      await waitForOperationCount(page, 'pcv.send.status', 2, 5000);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, null, { ok: false, error: { code: 'unavailable', message: 'Temporary read failure.' } });
+      await page.waitForFunction(() => /Automatic status checks will continue/i.test(document.getElementById('pcv-send-note').textContent));
+      await waitForOperationCount(page, 'pcv.send.status', 3, 5000);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'consumed', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await waitForOperationCount(page, 'pcv.status.read', 2);
+      const ownerRead = await latestRequest(page, 'pcv.status.read');
+      assert.deepEqual(ownerRead.payload, {}, 'terminal receipt triggers a scene-status read only');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.roster.read').length), 1,
+        'terminal receipt does not recapture the nearby roster');
+      await respond(page, ownerRead, { state: 'active', activeConfigId: activeId, pendingConfigId: null, active: scene, pending: null });
+      note = await page.locator('#pcv-send-note').innerText();
+      assert.match(note, /PCV accepted the player input.*NPC response and audio delivery are not confirmed/i);
+      assert.equal(await page.locator('#pcv-send-state').innerText(), 'ACTIVE');
+      const consumedScreenshot = process.env.UI_PCV_CONSUMED_SCREENSHOT;
+      if (consumedScreenshot) {
+        fs.mkdirSync(path.dirname(consumedScreenshot), { recursive: true });
+        await page.locator('#panel-pcv').screenshot({ path: consumedScreenshot });
+      }
+      await page.waitForTimeout(2100);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 3,
+        'terminal receipt cancels further automatic checks');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1,
+        'automatic recovery never resends input');
+      await page.close();
+    });
+
+    await test('PCV automatic status budget expires once and manual refresh remains available', async () => {
+      const page = await authenticatedPage(browser, 'scope-pcv-budget', 'B'.repeat(43));
+      const { activeId } = await prepareActivePcv(page, 'roster-pcv-budget');
+      await page.clock.install();
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+      await page.getByLabel('Your message').fill('Budget stays bounded.');
+      await page.getByRole('button', { name: /^send message$/i }).click();
+      const send = await latestRequest(page, 'pcv.send');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'prepared' });
+      let status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'prepared', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.clock.fastForward(30001);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 1,
+        'the expired deadline starts no poll at its boundary');
+      assert.match(await page.locator('#pcv-send-note').innerText(), /Automatic status checks paused after 30 seconds/i);
+      assert.equal(await page.locator('#pcv-send').isDisabled(), true, 'exhaustion keeps the operation locked');
+      assert.equal(await page.locator('#pcv-refresh-send').isDisabled(), false, 'manual status refresh remains available');
+
+      await page.getByRole('button', { name: 'Refresh send status' }).click();
+      await waitForOperationCount(page, 'pcv.send.status', 2);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'prepared', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      assert.match(await page.locator('#pcv-send-note').innerText(), /Automatic status checks paused after 30 seconds/i);
+      await page.clock.fastForward(3000);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 2,
+        'manual refresh does not restart the automatic budget');
+
+      await page.getByRole('button', { name: 'Refresh send status' }).click();
+      await waitForOperationCount(page, 'pcv.send.status', 3);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'consumed', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await waitForOperationCount(page, 'pcv.status.read', 2);
+      const ownerRead = await latestRequest(page, 'pcv.status.read');
+      await respond(page, ownerRead, { state: 'active', activeConfigId: activeId, pendingConfigId: null,
+        active: { enabled: true, scene_mode: 'pair', actor_a: 'npc:one', actor_b: 'npc:two', exclude_player: true, bystander_mode: 'exclude', pace: 'normal' }, pending: null });
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1);
+      await page.close();
+    });
+
+    await test('PCV polling stops on close and ignores late status responses', async () => {
+      const page = await authenticatedPage(browser, 'scope-pcv-close', 'C'.repeat(43));
+      const { activeId } = await prepareActivePcv(page, 'roster-pcv-close');
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+      await page.getByLabel('Your message').fill('Close stops polling.');
+      await page.getByRole('button', { name: /^send message$/i }).click();
+      const send = await latestRequest(page, 'pcv.send');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'prepared' });
+      const status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'prepared', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.getByRole('button', { name: 'Close' }).click();
+      assert.equal(await respond(page, status, { operationId: send.payload.operationId, state: 'consumed', expectedActiveConfigId: activeId, expectedPendingConfigId: null }), false,
+        'a late duplicate receipt is rejected after close');
+      await page.waitForTimeout(2200);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 1,
+        'close cancels the next automatic status read');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1);
+      await page.close();
+    });
+
+    await test('PCV polling cancels on authorization loss and a new native scope ignores the old receipt', async () => {
+      const scope = 'D'.repeat(43);
+      const page = await authenticatedPage(browser, 'scope-pcv-context', scope);
+      const { activeId } = await prepareActivePcv(page, 'roster-pcv-context');
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+      await page.getByLabel('Your message').fill('Scope stays pinned.');
+      await page.getByRole('button', { name: /^send message$/i }).click();
+      const send = await latestRequest(page, 'pcv.send');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'prepared' });
+      const status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'prepared', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.getByRole('button', { name: /refresh cast and status/i }).click();
+      const roster = await latestRequest(page, 'pcv.roster.read');
+      await latestRequest(page, 'pcv.status.read');
+      await respond(page, roster, null, { ok: false, error: { code: 'unauthorized', message: 'Authorization expired.' } });
+      await page.waitForTimeout(2200);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 1,
+        'authorization loss cancels the scheduled poll');
+
+      const reopened = await initialize(page, newUuid(), '2');
+      await respond(page, reopened, authenticatedData('scope-pcv-context-new', 'E'.repeat(43)));
+      assert.equal(await respond(page, status, { operationId: send.payload.operationId, state: 'consumed', expectedActiveConfigId: activeId, expectedPendingConfigId: null }), false,
+        'the old view and scope cannot accept a late receipt');
+      await page.waitForTimeout(2200);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 1,
+        'a changed scope clears the old status handle instead of polling it');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1);
+      await page.close();
+    });
     await test('initial unknown PCV send response is status-polled without acceptance language and terminal cancellation unlocks', async () => {
       const scope = 'C'.repeat(43);
       const page = await authenticatedPage(browser, 'scope-pcv-initial-unknown', scope);
@@ -654,8 +794,12 @@ async function main() {
       assert.match(await page.locator('#pcv-send-note').innerText(), /Checking recorded send status; do not resend\./i);
       assert.doesNotMatch(await page.locator('#pcv-send-note').innerText(), /Native accepted/i);
       await respond(page, status, { operationId: send.payload.operationId, state: 'cancelled', expectedActiveConfigId: activeId, expectedPendingConfigId: pendingId });
+      assert.equal(await page.locator('#pcv-send').isDisabled(), true, 'a terminal receipt waits for current owner scene status');
+      await waitForOperationCount(page, 'pcv.status.read', 2);
+      const ownerRead = await latestRequest(page, 'pcv.status.read');
+      await respond(page, ownerRead, { state: 'pending', activeConfigId: activeId, pendingConfigId: pendingId, active: scene, pending: scene });
       assert.match(await page.locator('#pcv-send-note').innerText(), /resolved this operation as cancelled/i);
-      assert.equal(await page.locator('#pcv-send').isDisabled(), false, 'a matching terminal cancellation releases the lock');
+      assert.equal(await page.locator('#pcv-send').isDisabled(), false, 'the matching terminal receipt and fresh owner scene release the lock');
       assert.equal(await page.getByLabel('Your message').inputValue(), 'One staged message.', 'cancellation retains the draft for review');
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1,
         'status resolution never resends the operation');

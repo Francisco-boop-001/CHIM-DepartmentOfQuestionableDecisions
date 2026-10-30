@@ -4,6 +4,14 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.29 candidate: PCV receipt status
+
+The [installable prealpha.29 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.29/WorldOfDramaLlama-0.1.0-prealpha.29.zip) updates the UI's PCV receipt status display. It starts from the exact published prealpha.28 ZIP and advances the Department DWPkg version plus `app.js`; inside the DWPkg, only its two version manifests and checksum file change. Twenty previous installable payloads remain byte-identical, including the PCV companion 0.1.0-prealpha.13 and native DLL 0.1.18.0. Department server runtime sources and PCV owner pins do not change. See the [prealpha.29 build contract](docs/BUILD.md).
+
+The source/package audit is offline evidence only. It does not establish server, database, provider, installed-game, or Skyrim behavior. Mouse control remains under investigation; this candidate makes no mouse-fix claim.
+
+A `prepared` receipt remains **queued / possibly not consumed** instead of appearing as a delivery failure. The UI checks the same operation ID read-only every two seconds for up to 30 seconds, then leaves manual refresh available. A terminal receipt refreshes the PCV owner scene status without repeating the send. **Consumed** means PCV accepted player input; it does not confirm an NPC response or audio delivery.
+
 ## Prealpha.28 queued-letter recovery
 
 [Download the installable prealpha.28 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.28/WorldOfDramaLlama-0.1.0-prealpha.28.zip). Exit Skyrim before updating; restart, then use Sealed Fates **Refresh waiting letters** and **Resume delivery** for the saved queued letter.

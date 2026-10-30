@@ -286,6 +286,8 @@
     { "path": "docs/superpowers/specs/2026-10-30-letter-resume-design.md" },
     { "path": "packaging/build-installable-prealpha28.py" },
     { "path": "packaging/tests/test_installable_prealpha28.py" },
-    { "path": "server/tests/correspondence/resume-contract.php" }
+    { "path": "server/tests/correspondence/resume-contract.php" },
+    { "path": "packaging/build-installable-prealpha29.py" },
+    { "path": "packaging/tests/test_installable_prealpha29.py" }
   ]
 }

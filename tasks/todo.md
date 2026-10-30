@@ -540,3 +540,18 @@ Final verification checkpoint: frozen29dca91 passed actual6PGgroups/83assertions
 Packaging closure: actualassemblycaughtR13oldPCV24validatoragainstcorrectpublic27PCV25stage. ReusedstrictPCV25auditoratall3calls; actualpublic27+committedsource regression androot16/16packagechecks pass. No runtime/native/PGinputs changed; archiveassembly/reproducibility/publication gates remainpending.
 
 Published prealpha.28 at2026-10-30T17:05:55Z, immutabletag sourceb66568de0b9411bacd114a15e99e118776e81764. Installable633379bytes SHA25673665957569091e4cbd307bb85d65a3f236cafef5f55472fe82ccdb803c7c97b; source285Git-exact,22payloads/18unchanged; all4clean/draft/anonymous assets match,3officialarchivesaccepted/noactivation,26oldreleases143assets52refs preserved. RootandSFownerindependent6PG/83/45childhash+namespace+shutdown proofs,16UI,6nativehost,16package and4PHP->DLL+negative pass. TEST2initialStoppedrestored; no CHIMcore/live/game/provider/actualplayer-letter change. Mousefault/physicaldelivery/gameplay remainunverified. Mainpromotion/docclosureonly; immutabletag/assets unchanged.
+
+# PCV receipt and mouse-input repair — 2026-10-30
+
+Goal: a queued input must be shown truthfully and followed automatically without replay; independently identify the text-edit mouse lock. TEST source/offline only; never alter CHIM core, live, installed files or the running game.
+
+- [x] Reuse clean isolated workspace at 8daa9c2; inspect captured evidence and receipt lifecycle.
+- [x] LUNA/max: reproduce early prepared receipt; implement bounded, context-fenced receipt polling and automatic owner scene read, preserving replay/draft locks.
+- [x] LUNA/max: trace native/PRISMA input lifecycle against captured source; no safe correction proved. Companion-only onset counters remain the missing TEST game gate; do not patch foreign/core input.
+- [x] Root review, focused verification and bug hunt; independently inspect queued/Active screenshots and real-interval older-owner-read race. PCV7/7 and connection4/4 pass; mouse remains unresolved.
+- [ ] Assemble next release from exact public28 baseline; verify unchanged owners/native unless a proved input correction needs native changes.
+- [ ] Commit, push, publish and verify public bytes; record limitations.
+
+Design: prepared means queued, never delivery failure/success. Poll read-only at 2-second intervals for at most 30 seconds per operation/view; no overlapping reads or automatic resends. Cancel stale view/auth/scope work. Refresh owner state after a terminal receipt, without recapturing nearby actors unnecessarily. Preserve manual refresh and unknown-operation locks.
+
+Review checkpoint: root independently reproduced the queued-receipt red error in Chromium (root-pcv-before.log); no CHIM/native/game execution. Mouse report reviewed and corrected to a companion-only future trace: no CHIM/PRISMA patches, hook or foreign sink reordering. Source evidence does not establish the private CHIM suppression flag at onset, so no speculative mouse fix will ship. Packaging review corrected checksum coverage to include the audit JSON as well as both ZIPs. All runtime/native/owner inputs remain fixed apart from app.js and Department version metadata.

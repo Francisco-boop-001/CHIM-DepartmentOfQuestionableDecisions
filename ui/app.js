@@ -19,6 +19,8 @@
   const CONNECTION_UNAUTHENTICATED_COPY = 'CHIM did not confirm the connection. Retry connection to try again.';
   const CONNECTION_MAX_POLLS = 12;
   const CONNECTION_POLL_INTERVAL_MS = 1000;
+  const PCV_SEND_STATUS_POLL_INTERVAL_MS = 2000;
+  const PCV_SEND_STATUS_POLL_BUDGET_MS = 30000;
   const OPS = new Set([
     'bootstrap', 'view.close', 'connection.begin', 'connection.status', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
@@ -118,7 +120,7 @@
     perspectives: { mp: [], sas: [] }, perspectiveLimited: { mp: false, sas: false },
     mp: { records: [], nextCursor: null, limited: false }, sas: { issues: [], nextCursor: null, limited: false },
     pending: new Map(), inFlight: new Set(),
-    pcv: { roster: null, status: null, mutationPending: false, mutationUnknown: false, mutationOperationId: null, sendPending: false, sendStatusPending: false, sendOperationId: null, sendUnknownId: null, sendSubmitted: null, sendDraftDiscardedId: null, draftText: '', lastFocusedControl: null },
+    pcv: { roster: null, status: null, mutationPending: false, mutationUnknown: false, mutationOperationId: null, sendPending: false, sendStatusPending: false, sendOperationId: null, sendUnknownId: null, sendSubmitted: null, sendDraftDiscardedId: null, sendStatusPoll: null, sendStatusRefreshAfterRead: null, draftText: '', lastFocusedControl: null },
     mail: { actors: [], catalogLimited: false, catalogRevision: null, catalogNextCursor: null, catalogError: null, inventory: null, inventoryLoaded: false, items: [], letters: [], selectedLetter: null, mailboxNextCursor: null,
       operations: [], currentOperationId: null, operationDraft: null, recoveryNotice: '', composeLocked: false, composePending: false,
       pendingReadStatus: 'required', pendingReadLimited: false, pendingReadCursor: null, pendingReadScanId: 0,
@@ -418,6 +420,7 @@
     });
   }
   function clearPending(reason = 'The game view changed.') {
+    clearPcvSendStatusPoll();
     if (state.connection.pollTimer !== null) {
       window.clearTimeout(state.connection.pollTimer);
       state.connection.pollTimer = null;
@@ -579,7 +582,7 @@
         renderBootstrap();
       }
       if (state.authenticated && state.access.compose && state.capabilities.correspondence) refreshPendingLetters();
-      if (state.authenticated && state.pcv.sendUnknownId) requestPcvSendStatus(state.pcv.sendUnknownId);
+      if (state.authenticated && state.pcv.sendUnknownId) requestPcvSendStatus(state.pcv.sendUnknownId, true);
       return true;
     }
     if (!exactContext(context, pending.context) || !exactContext(context, makeContext())) return false;
@@ -609,6 +612,7 @@
     return true;
   }
   function clearAuthorization(code = 'AUTH_REQUIRED') {
+    clearPcvSendStatusPoll();
     const wasAuthenticated = state.authenticated;
     if (wasAuthenticated && ['AUTH_REQUIRED', 'FORBIDDEN', 'CONTEXT_STALE'].includes(code)) {
       state.connection.retryAvailable = true;
@@ -656,6 +660,7 @@
   }
 
   function clearScopeBoundOperations() {
+    clearPcvSendStatusPoll();
     resetBrainwashEditor();
     state.pcv.mutationPending = false;
     state.pcv.mutationUnknown = false;
@@ -1214,13 +1219,87 @@
     }
     renderPcvAccess();
   }
+  function clearPcvSendStatusPoll() {
+    const poll = state.pcv.sendStatusPoll;
+    if (poll && poll.timer !== null) window.clearTimeout(poll.timer);
+    state.pcv.sendStatusPoll = null;
+    state.pcv.sendStatusRefreshAfterRead = null;
+  }
+  function isCurrentPcvSendStatusPoll(poll) {
+    return Boolean(poll && state.pcv.sendStatusPoll === poll && state.pcv.sendUnknownId === poll.operationId
+      && state.viewToken === poll.viewToken && state.nativeGeneration === poll.nativeGeneration
+      && state.authenticated && !state.closed && !state.closing
+      && state.lastAuthenticatedScopeToken === poll.scopeToken);
+  }
+  function ensurePcvSendStatusPoll(operationId) {
+    const submitted = state.pcv.sendSubmitted;
+    if (submitted && submitted.operationId === operationId && submitted.scopeToken !== state.lastAuthenticatedScopeToken) return null;
+    let poll = state.pcv.sendStatusPoll;
+    if (poll && poll.operationId === operationId && poll.viewToken === state.viewToken
+      && poll.nativeGeneration === state.nativeGeneration && poll.scopeToken === state.lastAuthenticatedScopeToken) return poll;
+    clearPcvSendStatusPoll();
+    poll = { operationId, viewToken: state.viewToken, nativeGeneration: state.nativeGeneration,
+      scopeToken: state.lastAuthenticatedScopeToken, deadline: performance.now() + PCV_SEND_STATUS_POLL_BUDGET_MS,
+      timer: null, lastState: null, exhausted: false };
+    state.pcv.sendStatusPoll = poll;
+    return poll;
+  }
+  function showPcvSendStatusBudgetExhausted(poll) {
+    const latest = poll.lastState === 'prepared'
+      ? 'PCV last reported this input as queued; consumption is not confirmed.'
+      : 'The operation remains unconfirmed.';
+    setStatus('pcv-send-note', 'Automatic status checks paused after 30 seconds. ' + latest
+      + ' Refresh send status to check again; do not resend.', 'waiting');
+  }
+  function exhaustPcvSendStatusPoll(poll) {
+    if (!isCurrentPcvSendStatusPoll(poll)) return;
+    poll.exhausted = true;
+    showPcvSendStatusBudgetExhausted(poll);
+  }
+  function schedulePcvSendStatusPoll(poll) {
+    if (!isCurrentPcvSendStatusPoll(poll)) return;
+    if (poll.exhausted) {
+      showPcvSendStatusBudgetExhausted(poll);
+      return;
+    }
+    const remaining = poll.deadline - performance.now();
+    if (remaining <= 0) {
+      exhaustPcvSendStatusPoll(poll);
+      return;
+    }
+    if (poll.timer !== null) return;
+    poll.timer = window.setTimeout(() => {
+      poll.timer = null;
+      if (!isCurrentPcvSendStatusPoll(poll)) return;
+      if (performance.now() >= poll.deadline) {
+        exhaustPcvSendStatusPoll(poll);
+        return;
+      }
+      if (remaining <= PCV_SEND_STATUS_POLL_INTERVAL_MS) {
+        schedulePcvSendStatusPoll(poll);
+        return;
+      }
+      void requestPcvSendStatus(poll.operationId, true);
+    }, Math.min(PCV_SEND_STATUS_POLL_INTERVAL_MS, remaining));
+  }
+
+  function startPendingPcvOwnerStatusRefresh() {
+    const pending = state.pcv.sendStatusRefreshAfterRead;
+    if (!pending || state.inFlight.has('pcv.status.read')) return;
+    state.pcv.sendStatusRefreshAfterRead = null;
+    if (isCurrentContext(pending.context) && state.authenticated
+      && state.lastAuthenticatedScopeToken === pending.scopeToken) {
+      void refreshPcvOwnerStatus(pending.context, pending.scopeToken);
+    }
+  }
   function applyPcvSendStatus(result) {
-    if (state.pcv.sendUnknownId !== result.operationId) return;
+    if (state.pcv.sendUnknownId !== result.operationId) return 'stale';
     if (result.state === 'unknown' || result.state === 'prepared') {
       setStatus('pcv-send-note', result.state === 'prepared'
-        ? 'Native still reports this operation as prepared. It remains locked; refresh status later and do not resend.'
-        : 'Native cannot currently resolve this operation. It remains locked; do not resend.', 'error');
-      return;
+        ? 'PCV has queued this input. It may not have been consumed yet; checking again in a moment. Do not resend.'
+        : 'PCV cannot confirm this operation yet. It remains unconfirmed and locked; checking status again. Do not resend.',
+      result.state === 'prepared' ? 'waiting' : 'error');
+      return 'pending';
     }
     const submitted = state.pcv.sendSubmitted;
     const matchesSubmitted = Boolean(submitted && submitted.operationId === result.operationId
@@ -1229,7 +1308,7 @@
       && submitted.expectedPendingConfigId === result.expectedPendingConfigId);
     if (!matchesSubmitted) {
       setStatus('pcv-send-note', 'Status does not match the original operation scope and scene. The handle remains locked; do not resend.', 'error');
-      return;
+      return 'mismatch';
     }
     const discarded = state.pcv.sendDraftDiscardedId === result.operationId;
     if (result.state === 'consumed') {
@@ -1250,29 +1329,86 @@
     state.pcv.sendUnknownId = null;
     state.pcv.sendSubmitted = null;
     state.pcv.sendDraftDiscardedId = null;
+    clearPcvSendStatusPoll();
+    state.pcv.status = null;
+    renderPcvStatus();
+    return 'terminal';
   }
-  async function requestPcvSendStatus(operationId = state.pcv.sendUnknownId) {
+  async function refreshPcvOwnerStatus(context, scopeToken) {
+    if (!isCurrentContext(context) || !state.authenticated || state.lastAuthenticatedScopeToken !== scopeToken) return;
+    state.pcv.status = null;
+    if (state.inFlight.has('pcv.status.read')) {
+      state.pcv.sendStatusRefreshAfterRead = { context, scopeToken };
+      renderPcvStatus();
+      return;
+    }
+    state.pcv.sendStatusRefreshAfterRead = null;
+    state.inFlight.add('pcv.status.read');
+    renderPcvStatus();
+    try {
+      requireCapability('pcv.status.read');
+      const data = await request('pcv.status.read', {});
+      if (!isCurrentContext(context) || state.lastAuthenticatedScopeToken !== scopeToken) return;
+      const status = validPcvStatus(data);
+      if (!status) throw failLocal('UNAVAILABLE');
+      state.pcv.status = status;
+      renderPcvStatus();
+    } catch (error) {
+      if (isCurrentContext(context) && state.lastAuthenticatedScopeToken === scopeToken) {
+        setStatus('pcv-state', localError(error) + ' PCV scene status was not refreshed; refresh owner status before another send.', 'error');
+      }
+    } finally {
+      if (isCurrentView(context.viewToken, context.nativeGeneration)) {
+        state.inFlight.delete('pcv.status.read');
+        renderPcvAccess();
+        startPendingPcvOwnerStatusRefresh();
+      }
+    }
+  }
+  async function requestPcvSendStatus(operationId = state.pcv.sendUnknownId, automatic = false) {
     if (!operationId || operationId !== state.pcv.sendUnknownId || state.pcv.sendStatusPending || !state.authenticated || state.closed) return;
+    const poll = ensurePcvSendStatusPoll(operationId);
+    if (!poll || !isCurrentPcvSendStatusPoll(poll)) return;
+    if (automatic && (poll.exhausted || performance.now() >= poll.deadline)) {
+      exhaustPcvSendStatusPoll(poll);
+      return;
+    }
+    if (poll.timer !== null) {
+      window.clearTimeout(poll.timer);
+      poll.timer = null;
+    }
     const context = makeContext();
+    const scopeToken = poll.scopeToken;
     state.pcv.sendStatusPending = true;
     renderPcvAccess();
+    let scheduleNext = false;
     try {
       requireCapability('pcv.send.status');
       const data = await request('pcv.send.status', { operationId });
-      if (!isCurrentContext(context)) return;
+      if (!isCurrentContext(context) || !isCurrentPcvSendStatusPoll(poll)) return;
       const result = validPcvSendStatus(data, operationId);
       if (!result) throw failLocal('UNAVAILABLE');
-      applyPcvSendStatus(result);
+      const resolution = applyPcvSendStatus(result);
+      if (resolution === 'pending') {
+        poll.lastState = result.state;
+        scheduleNext = true;
+      } else if (resolution === 'terminal') {
+        await refreshPcvOwnerStatus(context, scopeToken);
+      }
     } catch (error) {
-      if (!isCurrentContext(context)) return;
-      setStatus('pcv-send-note', `${localError(error)} The existing operation remains locked; do not resend it.`, 'error');
+      if (!isCurrentContext(context) || !isCurrentPcvSendStatusPoll(poll)) return;
+      setStatus('pcv-send-note', localError(error)
+        + ' Automatic status checks will continue; do not resend.', 'error');
+      scheduleNext = true;
     } finally {
       if (isCurrentView(context.viewToken, context.nativeGeneration)) {
         state.pcv.sendStatusPending = false;
         renderPcvAccess();
+        if (scheduleNext) schedulePcvSendStatusPoll(poll);
       }
     }
   }
+
   function renderPcvAccess() {
     const authorized = state.authenticated && state.capabilities.pcv && state.access.pcv && !state.closed;
     const rosterReady = state.pcv.roster && state.pcv.roster.state === 'ready' && state.pcv.roster.actors.some((actor) => actor.eligibility === 'eligible');
@@ -1392,6 +1528,7 @@
     Promise.allSettled(jobs).finally(() => {
       if (!isCurrentView(context.viewToken, context.nativeGeneration)) return;
       state.inFlight.delete('pcv.roster.read'); state.inFlight.delete('pcv.status.read');
+      startPendingPcvOwnerStatusRefresh();
       renderPcvAccess();
       if (resolvedMutationId) setStatus('pcv-state', `Current owner status refreshed after uncertain operation ${resolvedMutationId}; this status does not identify which operation caused it.`, 'success');
     });
@@ -1551,6 +1688,7 @@
     if ((!expectedActiveConfigId && !expectedPendingConfigId) || !payloadFieldsValid('pcv.send', payload)) {
       setStatus('pcv-send-note', 'A current confirmed PCV configuration, exact target, and valid message are required.', 'error'); return;
     }
+    clearPcvSendStatusPoll();
     const context = makeContext();
     state.pcv.sendPending = true;
     state.pcv.sendOperationId = operationId;
@@ -1569,13 +1707,13 @@
       dispatched = true;
       if (!validPcvSendStart(data, operationId)) throw failLocal('UNAVAILABLE');
       setStatus('pcv-send-note', 'Checking recorded send status; do not resend.', 'waiting');
-      await requestPcvSendStatus(operationId);
+      await requestPcvSendStatus(operationId, true);
     } catch (error) {
       if (!isCurrentContext(context)) return;
       if (dispatched || error.dispatched !== false) {
         state.pcv.sendUnknownId = operationId;
         setStatus('pcv-send-note', `${localError(error)} The operation may have been accepted; keep it locked and do not resend.`, 'error');
-        await requestPcvSendStatus(operationId);
+        await requestPcvSendStatus(operationId, true);
       } else {
         state.pcv.sendUnknownId = null;
         state.pcv.sendSubmitted = null;
