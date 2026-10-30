@@ -178,21 +178,24 @@ $document = [
     'operation_id' => null,
     'payer' => ['kind' => 'player'],
 ];
-resumeContractExpect(qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', true, false, false, false), 'an intact manual zero-operation SF30 letter should be resumable');
-foreach (['dispatched', 'unknown', 'partial', 'delivered', 'rejected'] as $state) {
-    resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, $state, true, false, false, false), 'non-queued state must refuse resume: ' . $state);
+foreach (['0.1.0-dev.30', '0.1.0-dev.31'] as $resumeVersion) {
+    resumeContractExpect(qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, false, false), 'an intact manual zero-operation letter should be resumable for ' . $resumeVersion);
+    foreach (['dispatched', 'unknown', 'partial', 'delivered', 'rejected'] as $state) {
+        resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, $state, true, false, false, false), 'non-queued state must refuse resume: ' . $state);
+    }
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', false, false, false, false), 'integrity failure must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, true, false, false), 'companion ownership must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, true, false), 'autonomy-child ownership must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, null, false), 'unknown autonomy ownership must fail closed');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document + ['operator_close' => []], 'queued', true, false, false, false), 'operator-closed letters must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, array_replace($document, ['operation_id' => $operationId]), 'queued', true, false, false, false), 'linked operations must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, false, true), 'orphan owner operation rows must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, false, false, true), 'orphan dispatch anchors must refuse resume');
+    resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, ['operation_id' => null, 'payer' => ['kind' => 'npc']], 'queued', true, false, false, false), 'non-player-paid letters must refuse resume');
 }
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.29', $document, 'queued', true, false, false, false), 'resume must remain pinned to SF30');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', false, false, false, false), 'integrity failure must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', true, true, false, false), 'companion ownership must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', true, false, true, false), 'autonomy-child ownership must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', true, false, null, false), 'unknown autonomy ownership must fail closed');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document + ['operator_close' => []], 'queued', true, false, false, false), 'operator-closed letters must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', array_replace($document, ['operation_id' => $operationId]), 'queued', true, false, false, false), 'linked operations must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', true, false, false, true), 'orphan owner operation rows must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', $document, 'queued', true, false, false, false, true), 'orphan dispatch anchors must refuse resume');
-resumeContractExpect(!qd_correspondence_resume_eligible('0.1.0-dev.30', ['operation_id' => null, 'payer' => ['kind' => 'npc']], 'queued', true, false, false, false), 'non-player-paid letters must refuse resume');
-
+foreach (['0.1.0-dev.29', '0.1.0-dev.32'] as $unsupportedVersion) {
+    resumeContractExpect(!qd_correspondence_resume_eligible($unsupportedVersion, $document, 'queued', true, false, false, false), 'resume must refuse unsupported owner version: ' . $unsupportedVersion);
+}
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_content_overflow')) === 'renderer_unavailable', 'known renderer failures must map to a fixed renderer code');
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_unavailable')) === 'renderer_unavailable', 'pinned owner renderer failure must map to its fixed renderer code');
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('actor_identity_changed')) === 'identity_changed', 'known identity failures must map to a fixed identity code');

@@ -269,6 +269,29 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
         'migrations/006_history_indexes.sql' => '9691b8ae97f60981e4baca883aecd8d2d615ddbb77c0b90ea1f6efd6c1f58a66',
     ],
+    '0.1.0-dev.31' => [
+        'manifest.json' => '5673071e13f3c9a3d11165567374d224de820194579a17b6633dbc1f4776399a',
+        'lib/runtime.php' => 'ffb9a97a4f2549bfd7251389d65fd916beb01a734f557ece794f81efbde45153',
+        'lib/store.php' => 'bcdfccc71c388c7bebaa57734a9a06820c5eed888f2a818f73930982148b8426',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => 'efb6d191e876fe2d10043afe2bdf2dc5e7c931ee3fc60e24cb57cc0623b1ed66',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => 'c163243334c8a558c800fd946d27564acf2f49d8df51ddf914899d784809a795',
+        'lib/autonomy_host.php' => 'b0ce613ebc7d02d6b3dc539b003022981a07e808208070554a68a105f42fcf12',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => '26f9f9a31844bfb433d7d6bf2c996e8ad6e0c9f6c15c5a054d96cb3630e0f439',
+        'lib/offscreen_host.php' => '7ae21d2db282d9de0f1d37ca27a43624343fefd5e371b671a5f543177e1a2155',
+        'lib/companion.php' => 'ce3c2c0c40c10f23d60e1604dafc38901832be8ef528b53b515269d42ce82e32',
+        'lib/companion_policy.php' => 'b245767ef4764e82e4fd945f0ab0508993b4095b3bba6012ebeb3a1f09754be5',
+        'lib/companion_host.php' => 'eb94e158b0c0e3bb1497d2efc68c483a01ffd371d1534187e0b054c102561403',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/002_autonomy.sql' => '20e0ba2901f9ff352311e00a706c976c793e1e1185c224afcb599f426acb63d3',
+        'migrations/003_offscreen.sql' => '245ae41800da5d9d291cf25df9e4766059677710241a086c15ca6999d7500855',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+        'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
+        'migrations/006_history_indexes.sql' => '9691b8ae97f60981e4baca883aecd8d2d615ddbb77c0b90ea1f6efd6c1f58a66',
+        'preprocessing.php' => '31fc70b865da5f5db27c5f8187c3b614df4de6b3b1a9ac04578470dfe7ddea1e',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -373,7 +396,7 @@ function qd_correspondence_loaded_source_version(): string
 
 function qd_correspondence_version_uses_restore_fence(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true);
+    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'], true);
 }
 
 function qd_correspondence_uses_restore_fence(): bool
@@ -383,17 +406,22 @@ function qd_correspondence_uses_restore_fence(): bool
 
 function qd_correspondence_version_supports_signed_unknown(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true);
+    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'], true);
 }
 
 function qd_correspondence_version_supports_operator_close(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true);
+    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'], true);
 }
 
 function qd_correspondence_version_supports_companion_scheduler(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'], true);
+    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'], true);
+}
+
+function qd_correspondence_version_supports_pending_resume(string $version): bool
+{
+    return in_array($version, ['0.1.0-dev.30', '0.1.0-dev.31'], true);
 }
 
 function qd_correspondence_runtime_ready(): bool
@@ -1092,7 +1120,7 @@ function qd_correspondence_pending_read(stdClass $payload, array $context): arra
     $assertCurrent = qd_correspondence_assertion($context);
     $assertCurrent();
     qd_correspondence_load_sources();
-    if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.30' || !qd_correspondence_uses_restore_fence()) {
+    if (!qd_correspondence_version_supports_pending_resume(qd_correspondence_loaded_source_version()) || !qd_correspondence_uses_restore_fence()) {
         throw new QDServerFault('unavailable');
     }
 
@@ -1102,7 +1130,7 @@ function qd_correspondence_pending_read(stdClass $payload, array $context): arra
         $macKey = $context['pendingReadMacKey'] ?? null;
         if (!is_string($macKey) || preg_match('/\A[a-f0-9]{64}\z/D', $macKey) !== 1) throw new QDServerFault('stale_context');
         $sourceIdentity = qd_correspondence_loaded_source_identity();
-        if (!is_array($sourceIdentity) || ($sourceIdentity['version'] ?? null) !== '0.1.0-dev.30'
+        if (!is_array($sourceIdentity) || !is_string($sourceIdentity['version'] ?? null) || !qd_correspondence_version_supports_pending_resume($sourceIdentity['version'])
             || !is_string($sourceIdentity['manifestHash'] ?? null)) throw new QDServerFault('unavailable');
         $result = qd_correspondence_read_snapshot($scopeKey, static function ($connection, array $active) use ($context, $scopeKey, $cursor, $macKey, $sourceIdentity): array {
             $scope = (string)$active['profileId'];
@@ -1302,7 +1330,7 @@ function qd_correspondence_resume(stdClass $payload, array $context): array
     if (!is_callable($context['withCurrentContext'] ?? null) || !is_callable($beginCommit)) throw new QDServerFault('unavailable');
     $assertCurrent();
     qd_correspondence_load_sources();
-    if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.30' || !qd_correspondence_uses_restore_fence()) {
+    if (!qd_correspondence_version_supports_pending_resume(qd_correspondence_loaded_source_version()) || !qd_correspondence_uses_restore_fence()) {
         throw new QDServerFault('unavailable');
     }
     $authority = qd_correspondence_dev18_authority($context);
@@ -1383,7 +1411,7 @@ function qd_correspondence_resume(stdClass $payload, array $context): array
 
 function qd_correspondence_resume_eligible(string $version, array $doc, string $state, bool $integrity, bool $companionOwned, ?bool $autonomyChild, ?bool $hasOperation, ?bool $hasDispatchAnchor = false): bool
 {
-    return $version === '0.1.0-dev.30'
+    return qd_correspondence_version_supports_pending_resume($version)
         && $state === 'queued'
         && $integrity
         && !$companionOwned
@@ -1559,7 +1587,7 @@ function qd_correspondence_project_result(CorrespondenceService $service, object
     try {
         $status = $service->get($documentId);
     } catch (Throwable $error) {
-        if ($includeResumeMetadata && $version === '0.1.0-dev.30' && ($doc['operation_id'] ?? null) === null
+        if ($includeResumeMetadata && qd_correspondence_version_supports_pending_resume($version) && ($doc['operation_id'] ?? null) === null
             && $documentIntegrity && qd_correspondence_safe_queue_reason($error) === 'identity_changed') {
             $status = ['state' => 'queued'];
             $identityReason = 'identity_changed';
@@ -1575,7 +1603,7 @@ function qd_correspondence_project_result(CorrespondenceService $service, object
         'dispatched' => 'dispatched',
         default => 'unknown',
     };
-    if ($includeResumeMetadata && $version === '0.1.0-dev.30') {
+    if ($includeResumeMetadata && qd_correspondence_version_supports_pending_resume($version)) {
         $canResume = false;
         $reason = null;
         if ($state === 'queued') {
@@ -1993,7 +2021,7 @@ function qd_correspondence_pending_binding(array $context, string $scopeKey, str
     if (!qd_is_uuid($principalId) || !qd_is_uuid($viewToken) || !is_string($serverContext) || $serverContext === ''
         || !is_string($scopeHash) || preg_match('/\A[a-f0-9]{64}\z/D', $scopeHash) !== 1
         || $scopeKey === '' || $restoreToken === '' || !qd_valid_string($generation, 128, true)
-        || !is_string($version) || $version !== '0.1.0-dev.30'
+        || !is_string($version) || !qd_correspondence_version_supports_pending_resume($version)
         || !is_string($manifestHash) || preg_match('/\A[a-f0-9]{64}\z/D', $manifestHash) !== 1) {
         throw new QDServerFault('stale_context');
     }

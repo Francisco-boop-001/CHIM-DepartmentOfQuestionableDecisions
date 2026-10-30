@@ -441,32 +441,32 @@ try {
         dev23Expect(qd_correspondence_runtime_ready(), 'The exact owner source did not recover after the dev.23 manifest replacement fixture was restored.');
     }
 
-    foreach (['0.1.0-dev.14', '0.1.0-dev.15', '0.1.0-dev.16', '0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
+    foreach (['0.1.0-dev.14', '0.1.0-dev.15', '0.1.0-dev.16', '0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'] as $version) {
         dev23Expect(isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$version]), 'An existing pinned owner version was removed: ' . $version);
     }
     dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.19']), 'The intentionally unsupported dev.19 pin was added.');
-    dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.31']), 'An unsupported owner version was added.');
-    foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
+    dev23Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION['0.1.0-dev.32']), 'An unsupported owner version was added.');
+    foreach (['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'] as $version) {
         dev23Expect(qd_correspondence_version_uses_restore_fence($version), 'The restore fence is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.19'), 'The unsupported dev.19 source was enabled.');
-    dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.31'), 'An unsupported owner restore fence was enabled.');
-    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
+    dev23Expect(!qd_correspondence_version_uses_restore_fence('0.1.0-dev.32'), 'An unsupported owner restore fence was enabled.');
+    foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'] as $version) {
         dev23Expect(qd_correspondence_version_supports_signed_unknown($version), 'Signed-unknown support is missing for ' . $version . '.');
     }
-    dev23Expect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19') && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.31'), 'An unsupported owner signed-unknown capability was enabled.');
-    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
+    dev23Expect(!qd_correspondence_version_supports_signed_unknown('0.1.0-dev.19') && !qd_correspondence_version_supports_signed_unknown('0.1.0-dev.32'), 'An unsupported owner signed-unknown capability was enabled.');
+    foreach (['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'] as $version) {
         dev23Expect(qd_correspondence_version_supports_operator_close($version), 'Operator-close support is missing for ' . $version . '.');
     }
     foreach (['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.19'] as $version) {
         dev23Expect(!qd_correspondence_version_supports_operator_close($version), 'Operator-close support was broadened to ' . $version . '.');
     }
-    dev23Expect(!qd_correspondence_version_supports_operator_close('0.1.0-dev.19') && !qd_correspondence_version_supports_operator_close('0.1.0-dev.31'), 'An unsupported owner operator-close capability was enabled.');
-    foreach (['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30'] as $version) {
+    dev23Expect(!qd_correspondence_version_supports_operator_close('0.1.0-dev.19') && !qd_correspondence_version_supports_operator_close('0.1.0-dev.32'), 'An unsupported owner operator-close capability was enabled.');
+    foreach (['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31'] as $version) {
         dev23Expect(qd_correspondence_version_supports_companion_scheduler($version), 'Companion scheduler support is missing for ' . $version . '.');
     }
     dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.22'), 'Companion scheduler support was broadened before dev.23.');
-    dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.31'), 'The unpinned dev.31 companion scheduler was enabled.');
+    dev23Expect(!qd_correspondence_version_supports_companion_scheduler('0.1.0-dev.32'), 'The unpinned dev.32 companion scheduler was enabled.');
 
     $unsupportedRoot = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev19';
     if (!@mkdir($unsupportedRoot, 0700, true)
@@ -475,12 +475,12 @@ try {
     }
     dev23Expect(qd_correspondence_source_files($unsupportedRoot) === [] && !qd_correspondence_manifest_ready($unsupportedRoot), 'An unpinned dev.19 source was accepted.');
 
-    $unsupported31Root = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev31';
-    if (!@mkdir($unsupported31Root, 0700, true)
-        || @file_put_contents($unsupported31Root . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.31"}', LOCK_EX) === false) {
+    $unsupported32Root = $tempRoot . DIRECTORY_SEPARATOR . 'unsupported-dev32';
+    if (!@mkdir($unsupported32Root, 0700, true)
+        || @file_put_contents($unsupported32Root . DIRECTORY_SEPARATOR . 'manifest.json', '{"name":"correspondence","version":"0.1.0-dev.32"}', LOCK_EX) === false) {
         throw new RuntimeException('Could not create the unsupported-version fixture.');
     }
-    dev23Expect(qd_correspondence_source_files($unsupported31Root) === [] && !qd_correspondence_manifest_ready($unsupported31Root), 'An unpinned dev.31 source was accepted.');
+    dev23Expect(qd_correspondence_source_files($unsupported32Root) === [] && !qd_correspondence_manifest_ready($unsupported32Root), 'An unpinned dev.32 source was accepted.');
 
     dev23Expect(qd_correspondence_loaded_source_version() === $ownerVersion, 'The exact staged owner source did not load.');
     $revisionDocA = '11111111-1111-4111-8111-111111111111';

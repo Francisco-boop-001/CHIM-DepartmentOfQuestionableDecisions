@@ -15,6 +15,7 @@ const fifthTabFixturePath = path.join(__dirname, 'fixtures', 'fifth-tab.html');
 const resultPath = process.env.UI_TEST_RESULTS;
 const screenshotPath = process.env.UI_TEST_SCREENSHOT;
 const testFilter = process.env.UI_TEST_FILTER || '';
+const executorUnavailableGuidance = 'CHIM delivery is waiting for fresh game activity. With Sealed Fates dev.31, leave Skyrim unpaused so normal CHIM polling can update it. Earlier supported versions need a recent managed-NPC report. Keep CHIM Interaction On where that setting is available. Resume this same saved letter; do not send a new copy.';
 const connectionPendingScreenshotPath = process.env.UI_CONNECTION_PENDING_SCREENSHOT;
 const connectionSetupErrorScreenshotPath = process.env.UI_CONNECTION_SETUP_ERROR_SCREENSHOT;
 const nativeRefusalScreenshotPath = process.env.UI_NATIVE_REFUSAL_SCREENSHOT;
@@ -1777,7 +1778,7 @@ async function main() {
 
     await test('letter resume shows fixed queued reasons and only offers an owner-eligible retry', async () => {
       const cases = [
-        { code: 'executor_unavailable', copy: /delivery service is unavailable/i, canResume: true },
+        { code: 'executor_unavailable', copy: /CHIM delivery is waiting for fresh game activity/i, canResume: true },
         { code: 'renderer_unavailable', copy: /cannot prepare this letter for delivery/i },
         { code: 'identity_changed', copy: /character no longer matches the one for this letter/i },
         { code: 'mapping_unavailable', copy: /cannot confirm which character this letter is addressed to/i },
@@ -1805,8 +1806,17 @@ async function main() {
           operationId, state: 'queued', canResume: item.canResume || false, queuedReason: item.code,
           companionSchedulerOwned: item.code === 'companion_owned', operatorClosed: item.code === 'operator_closed',
         });
-        await page.locator('#letter-recovery-status').getByText(item.copy).waitFor();
-        assert.doesNotMatch(await page.locator('#letter-recovery-status').innerText(), /executor_unavailable|renderer_unavailable|identity_changed|mapping_unavailable|companion_owned|operator_closed|interaction_unavailable|integrity_unavailable|not_dispatched|operation_unavailable/i,
+        const recoveryStatus = page.locator('#letter-recovery-status');
+        await recoveryStatus.getByText(item.copy).waitFor();
+        const statusText = await recoveryStatus.innerText();
+        if (item.code === 'executor_unavailable') {
+          assert.ok(statusText.includes(executorUnavailableGuidance), 'compose shows the full version-specific, non-resending guidance');
+          await page.getByRole('button', { name: /reconcile same operation/i }).click();
+          const executorReconcile = await latestRequest(page, 'correspondence.reconcile');
+          await respond(page, executorReconcile, { operationId, state: 'queued', canResume: true, queuedReason: 'executor_unavailable' });
+          assert.ok((await recoveryStatus.innerText()).includes(executorUnavailableGuidance), 'reconcile shows the same guidance without auto-resuming');
+        }
+        assert.doesNotMatch(statusText, /executor_unavailable|renderer_unavailable|identity_changed|mapping_unavailable|companion_owned|operator_closed|interaction_unavailable|integrity_unavailable|not_dispatched|operation_unavailable/i,
           'fixed codes are never shown to players');
         assert.equal(await resume.isVisible(), item.canResume === true, item.code + ' eligibility is controlled by the server and ownership guards');
         assert.equal(await page.locator('#letter-send').isDisabled(), true);
@@ -1893,7 +1903,8 @@ async function main() {
       assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)), [operationId]);
       assert.equal(await page.locator('#letter-operation').inputValue(), operationId, 'the discovered original ID is selected');
       assert.match(await page.locator('#letter-operation option:checked').innerText(), /Restart recipient.*queued/i);
-      assert.match(await page.locator('#letter-recovery-status').innerText(), /delivery service is unavailable/i);
+      assert.ok((await page.locator('#letter-recovery-status').innerText()).includes(executorUnavailableGuidance),
+        'a cold recovered pending operation shows the same explicit dev.31 and earlier-version guidance');
       assert.match(await page.locator('#letter-recovery-status').innerText(), /Resume uses the saved letter and its original attachments; the current draft is not used\./);
       assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'restart discovery restores no private body text');
       assert.equal(await page.evaluate(() => window.__bridgeRequests.some((request) => request.operation === 'correspondence.compose')), false);

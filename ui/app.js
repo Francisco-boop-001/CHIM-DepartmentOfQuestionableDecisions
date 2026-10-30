@@ -86,7 +86,7 @@
     'connection_setup_required', 'connection_secure_storage_failed',
   ]);
   const QUEUED_REASON_COPY = {
-    executor_unavailable: "CHIM's delivery service is unavailable. Resume delivery will retry this same letter when you choose it.",
+    executor_unavailable: 'CHIM delivery is waiting for fresh game activity. With Sealed Fates dev.31, leave Skyrim unpaused so normal CHIM polling can update it. Earlier supported versions need a recent managed-NPC report. Keep CHIM Interaction On where that setting is available. Resume this same saved letter; do not send a new copy.',
     renderer_unavailable: 'CHIM cannot prepare this letter for delivery right now. Refresh its status before continuing.',
     identity_changed: 'The character no longer matches the one for this letter. Refresh status before continuing.',
     mapping_unavailable: 'CHIM cannot confirm which character this letter is addressed to. Refresh status before continuing.',

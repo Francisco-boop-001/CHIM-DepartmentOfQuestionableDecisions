@@ -2,14 +2,17 @@
 declare(strict_types=1);
 
 $ownerRoot = '';
+$ownerVersion = '0.1.0-dev.30';
 $adapterPath = dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . 'adapters' . DIRECTORY_SEPARATOR . 'correspondence.php';
 for ($i = 1; $i < $argc; $i++) {
     if ($argv[$i] === '--owner-root' && isset($argv[$i + 1])) {
         $ownerRoot = $argv[++$i];
+    } elseif ($argv[$i] === '--owner-version' && isset($argv[$i + 1])) {
+        $ownerVersion = $argv[++$i];
     } elseif ($argv[$i] === '--adapter' && isset($argv[$i + 1])) {
         $adapterPath = $argv[++$i];
     } else {
-        fwrite(STDERR, "usage: php -n dev30-adapter-interface.php --owner-root OWNER_SERVER_DIR [--adapter PATH]\n");
+        fwrite(STDERR, "usage: php -n dev30-adapter-interface.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.30|0.1.0-dev.31] [--adapter PATH]\n");
         exit(2);
     }
 }
@@ -17,8 +20,8 @@ for ($i = 1; $i < $argc; $i++) {
 $ownerRoot = realpath($ownerRoot) ?: '';
 $adapterPath = realpath($adapterPath) ?: '';
 $manifest = $ownerRoot !== '' ? json_decode((string)@file_get_contents($ownerRoot . DIRECTORY_SEPARATOR . 'manifest.json'), true) : null;
-if ($ownerRoot === '' || !is_array($manifest) || ($manifest['version'] ?? null) !== '0.1.0-dev.30' || $adapterPath === '') {
-    fwrite(STDERR, "A frozen dev.30 owner source root and adapter are required.\n");
+if ($ownerRoot === '' || !is_array($manifest) || !in_array($ownerVersion, ['0.1.0-dev.30', '0.1.0-dev.31'], true) || ($manifest['version'] ?? null) !== $ownerVersion || $adapterPath === '') {
+    fwrite(STDERR, "A frozen dev.30/dev.31 owner source root and adapter are required.\n");
     exit(2);
 }
 if (function_exists('pg_query')) {
@@ -68,14 +71,14 @@ require_once $ownerRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'r
 require_once $ownerRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'store.php';
 require_once $ownerRoot . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'boundaries.php';
 require_once $adapterPath;
-dev30Expect(qd_correspondence_manifest_ready($ownerRoot), 'The read/commit interface fixture requires the exact pinned dev.30 closure.');
+dev30Expect(qd_correspondence_manifest_ready($ownerRoot), 'The read/commit interface fixture requires the exact pinned ' . $ownerVersion . ' closure.');
 
 $expectedActors = [
     ['key' => 'player', 'kind' => 'player', 'id' => null, 'name' => 'Dragonborn'],
     ['key' => 'npc:42', 'kind' => 'npc', 'id' => 42, 'name' => 'Lydia'],
 ];
 $reader = qd_correspondence_read_store('fixture-connection', ['profileId' => 41]);
-dev30Expect($reader instanceof CorrespondenceStore, 'The actual dev.30 read adapter must implement the owner store interface.');
+dev30Expect($reader instanceof CorrespondenceStore, 'The actual ' . $ownerVersion . ' read adapter must implement the owner store interface.');
 $readerService = new CorrespondenceService($reader);
 $readerActors = $reader->readTransaction(static function () use ($reader, $readerService): array {
     $first = $readerService->actors();
@@ -83,7 +86,7 @@ $readerActors = $reader->readTransaction(static function () use ($reader, $reade
     $nested = $reader->transaction(static fn(): array => $readerService->actors());
     return [$first, $second, $nested];
 });
-dev30Expect($readerActors === [$expectedActors, $expectedActors, $expectedActors], 'The actual dev.30 service must work through nested read-store callbacks.');
+dev30Expect($readerActors === [$expectedActors, $expectedActors, $expectedActors], 'The actual ' . $ownerVersion . ' service must work through nested read-store callbacks.');
 
 $commitEntries = 0;
 $commitBaseStore = qd_correspondence_read_store('fixture-connection', ['profileId' => 41]);
@@ -95,7 +98,7 @@ $commitActors = $commitStore->readTransaction(static function () use ($commitSto
     $nested = $commitStore->transaction(static fn(): array => $commitService->actors());
     return [$first, $nested];
 });
-dev30Expect($commitActors === [$expectedActors, $expectedActors], 'The actual dev.30 service must work through nested commit-wrapper read callbacks.');
+dev30Expect($commitActors === [$expectedActors, $expectedActors], 'The actual ' . $ownerVersion . ' service must work through nested commit-wrapper read callbacks.');
 dev30Expect($commitEntries === 0, 'Read-only service callbacks must not enter the commit boundary.');
 
 $queries = $GLOBALS['qdDev30AdapterQueries'];
@@ -107,4 +110,4 @@ foreach ($queries as $query) {
         'Adapter interface compatibility must not add nested transaction or write SQL.');
 }
 
-fwrite(STDOUT, "PASS: dev.30 service with read/commit adapters; nested callbacks preserve memo behavior without transaction SQL\n");
+fwrite(STDOUT, "PASS: read/commit adapters with nested callbacks preserve memo behavior without transaction SQL\n");

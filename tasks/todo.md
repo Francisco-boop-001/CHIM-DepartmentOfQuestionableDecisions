@@ -557,3 +557,20 @@ Design: prepared means queued, never delivery failure/success. Poll read-only at
 Review checkpoint: root independently reproduced the queued-receipt red error in Chromium (root-pcv-before.log); no CHIM/native/game execution. Mouse report reviewed and corrected to a companion-only future trace: no CHIM/PRISMA patches, hook or foreign sink reordering. Source evidence does not establish the private CHIM suppression flag at onset, so no speculative mouse fix will ship. Packaging review corrected checksum coverage to include the audit JSON as well as both ZIPs. All runtime/native/owner inputs remain fixed apart from app.js and Department version metadata.
 
 Review: published prealpha.29 at 2026-10-30T21:23:51Z, source 6f540338f9910b7e24127a961c41ceeda55a9547. Root independently inspected queued/Active rendering, real 2s follow-up, exactly one send and older-owner-read race; PCV7/7, connection4/4, package5/5 pass. Source287Git-exact, native18/PCV13/owner contracts unchanged, all four clean/draft/anonymous assets exact; 27 old releases/147 assets/54 tag refs preserved. No DLL recompilation, CHIM core/live/game/installed modlist/server/DB/provider changes. Mouse lock remains unresolved, requiring companion-only TEST onset evidence; this documentation closure does not change tagged runtime bytes.
+
+# Sealed Fates dev.31 consumer port — offline preparation
+
+Authorization: the human request in “Sealed fates plugin” explicitly asks for coordinated NPC-independent delivery, safeguarded TEST2 verification, and publication. No live server, installed files, running game, provider or CHIM core access. Any server run requires the coordinating chat to warn the human and agree an exclusive TEST2 window first.
+
+- [x] Reuse the clean isolated branch from published prealpha.29; verify the direct human authorization and owner handoff.
+- [x] Add the exact dev.31 closure of 21 files, including preprocessing.php. Preserve all 16 older maps and extend the explicit capability and pending/resume gates.
+- [x] Keep the existing native protocol. Use one fixed hint that explains dev.31 polling and earlier versions' NPC reports; make Interaction On conditional where that control exists.
+- [x] Independently verify all 21 source members in the anonymous public owner DWPkg against the handoff and tagged Git bytes.
+- [x] Review the production adapter and UI changes. Run the source, interface and resume checks; inspect the rendered cold-recovery panel.
+- [ ] Prepare and lint the opt-in dev.31 API/PG harness: 11 groups, actual cold helper initialization, unprofiled zero-nearby-NPC saved-500 recovery, concurrency, refusals and existing relevant controls.
+- [ ] Freeze the candidate, obtain owner review of the runner, then run only after the coordinated warning/window. Verify namespace, source, database and child identities; prove owned cleanup and initial stopped-state restoration.
+- [ ] Verify reproducible packages, exact source bytes, the host archive consumer, checksums and public downloads; then commit, push and publish the paired consumer release.
+
+Review: all 21 public owner archive members match the public handoff; all 16 older map bodies are preserved. Native18, PCV25/companion13 and the other owner pins remain unchanged. Root explicitly invoked the PHP source/interface/resume scripts: three PASS results, with two Linux-only bootstrap/fsync gates still deferred. Both focused UI cases passed; root also reran and inspected cold recovery. The worker's initial no-script PHP invocation is retained as INVALID_NOT_EXECUTED and is not verification.
+
+The cold write path reaches qd_runtime_with_owned_connection → correspondenceNativeConnection → correspondenceEnterRuntime before observedExecutor. The positive cold API fixture must stage the real helper and owned state without preloading the helper. This source trace does not replace the pending actual API/PG run. The mouse lock and Skyrim/native delivery remain unverified.
