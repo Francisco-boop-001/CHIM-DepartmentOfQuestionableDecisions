@@ -617,7 +617,7 @@ def _read_prealpha27_baseline(data: bytes) -> tuple[dict[str, bytes], dict[str, 
     files = BASE.read_zip_bytes(data, "published prealpha.27 ZIP")
     if set(files) != set(EXPECTED_BASELINE_MEMBERS) or len(files) != 22:
         raise PackageError("published prealpha.27 ZIP member set differs")
-    department = P24._audit_department_component(files[BASELINE_DPKG_MEMBER], BASELINE_VERSION)
+    department = PCV._audit_department(files[BASELINE_DPKG_MEMBER], BASELINE_VERSION, pcv25=True)
     pcv = P20._audit_component(files[PCV_MEMBER], "pcv_companion", PCV_VERSION)
     return files, department, pcv
 
@@ -627,7 +627,7 @@ def _build_department_package(
     read_source,
     old_server_manifest: bytes,
 ) -> tuple[bytes, dict[str, bytes]]:
-    old_package = P24._audit_department_component(old_package_bytes, BASELINE_VERSION)
+    old_package = PCV._audit_department(old_package_bytes, BASELINE_VERSION, pcv25=True)
     if old_package["server/manifest.json"] != old_server_manifest:
         raise PackageError("prealpha.27 DWPkg server manifest differs from its pinned source commit")
     current = dict(old_package)
@@ -657,7 +657,7 @@ def _build_department_package(
     payload = {path: content for path, content in current.items() if path != "checksums.sha256"}
     current["checksums.sha256"] = BASE.make_checksums(payload)
     package = _stable_zip_bytes(current)
-    verified = P24._audit_department_component(package, VERSION)
+    verified = PCV._audit_department(package, VERSION, pcv25=True)
     changed = {
         path for path in old_package.keys() | verified.keys()
         if old_package.get(path) != verified.get(path)

@@ -5,6 +5,7 @@ import importlib.util
 import hashlib
 import io
 import json
+import os
 import struct
 import tempfile
 import unittest
@@ -352,6 +353,42 @@ class Prealpha28ReleaseBuilderTests(unittest.TestCase):
         tampered_bytes = (json.dumps(tampered, indent=2) + "\n").encode("utf-8")
         with self.assertRaisesRegex(builder.PackageError, "version-only"):
             builder.validate_manifest_transition(old_bytes, tampered_bytes)
+
+    def test_published_prealpha27_and_committed_sources_build_the_expected_department_delta(self):
+        builder = _load_builder()
+        self.assertIsNotNone(builder, "prealpha.28 release builder is missing")
+        baseline_path = Path(os.environ.get(
+            "DEPARTMENT_PREALPHA27_ZIP",
+            ROOT.parents[1] / "artifacts" / "department-pcv25-release-20261029" / "public-download"
+            / "WorldOfDramaLlama-0.1.0-prealpha.27.zip",
+        ))
+        if not baseline_path.is_file():
+            self.skipTest("set DEPARTMENT_PREALPHA27_ZIP to the public prealpha.27 ZIP")
+
+        baseline_bytes = baseline_path.read_bytes()
+        baseline_files, old_department, old_pcv = builder._read_prealpha27_baseline(baseline_bytes)
+        self.assertEqual(old_pcv, builder.P20._audit_component(
+            baseline_files[builder.PCV_MEMBER], "pcv_companion", builder.PCV_VERSION
+        ))
+        self.assertEqual(old_department["server/manifest.json"], builder.BASE.git_blob(
+            "git", builder.BASELINE_SOURCE_COMMIT, builder.SERVER_MANIFEST
+        ))
+
+        read_committed_source = lambda path: builder.BASE.git_blob("git", "HEAD", path)
+        package_bytes, department = builder._build_department_package(
+            baseline_files[builder.BASELINE_DPKG_MEMBER],
+            read_committed_source,
+            old_department["server/manifest.json"],
+        )
+
+        self.assertEqual(department["server/manifest.json"], read_committed_source(builder.SERVER_MANIFEST))
+        self.assertEqual(builder.PCV._audit_department(
+            package_bytes, builder.VERSION, pcv25=True
+        ), department)
+        self.assertEqual(set(builder.DEPARTMENT_DPKG_CHANGED_MEMBERS), {
+            path for path in old_department.keys() | department.keys()
+            if old_department.get(path) != department.get(path)
+        })
 
     def test_output_inventory_requires_exact_three_archives_and_checksums(self):
         builder = _load_builder()
