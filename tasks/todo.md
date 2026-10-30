@@ -523,18 +523,20 @@ Goal: explicit safe recovery of an existing queued manual letter with truthful r
 
 - [x] Confirm human authorization and component ownership; isolate worktree at 3342e2d, preserve mouse records.
 - [x] Trace owner dispatch, exact protocol, native transport, journal and UI; coordinate short design.
-- [ ] Backend LUNA/max RED/GREEN: explicit resume mutation/attempt identity, transaction/ownership/fence, bounded reason+canResume projection, unchanged read-only reconcile.
-- [ ] UI LUNA/max RED/GREEN: explicit same-letter action, truthful reasons, legacy absence, duplicate/unknown/closed/ownership/context guards.
-- [ ] Native LUNA/max RED/GREEN: exact operation allowlist/payload, true write/access handling, emitted binary/source receipts; no input/mouse changes.
-- [ ] Root review and focused independent bughunt; fix findings and rerun affected checks only.
-- [ ] Coordinate isolated TEST2 owner integration/concurrency/read-only trace and cleanup; obtain owner acceptance.
-- [ ] Build fresh prealpha28 package, exact source/current pins/archive/checksum/clean rebuild verification and publication workflow.
-- [ ] Commit/push/publish after both reviews; anonymous public bytes and historical asset preservation, task/doc closure.
+- [x] Backend LUNA/max RED/GREEN: explicit resume mutation/attempt identity, transaction/ownership/fence, bounded reason+canResume projection, unchanged read-only reconcile.
+- [x] UI LUNA/max RED/GREEN: explicit same-letter action, truthful reasons, legacy absence, duplicate/unknown/closed/ownership/context guards.
+- [x] Native LUNA/max RED/GREEN: exact operation allowlist/payload, true write/access handling, emitted binary/source receipts; no input/mouse changes.
+- [x] Root review and focused independent bughunt; fix findings and rerun affected checks only.
+- [x] Coordinate isolated TEST2 owner integration/concurrency/read-only trace and cleanup; obtain owner acceptance.
+- [x] Build fresh prealpha28 package, exact source/current pins/archive/checksum/clean rebuild verification and publication workflow.
+- [x] Commit/push/publish after both reviews; anonymous public bytes and historical asset preservation, task/doc closure.
 
-Review: pending. Primary/old worktree clean product baseline preserved; live/game/core untouched. Runtime mouse fix is outside this change.
+Review: complete at the stated source/runtime/archive/publication authority. Primary/old worktree clean product baseline preserved; live/game/core untouched. Runtime mouse fix is outside this change.
 
 Checkpoint: root independently verified UI15/15, nativecursor1/1 and package15/15, reviewed actual recovery screenshots. Independent owner found late-committed backdated manual insert can evade maximum-tuple pagination fence; minimal scopedcount cursor correction/regression is required before finalsource/PGfreeze. Native18 build alreadyinflight, no input/mouse changes; finalPHPfixture replay will transparently rebind corrected14PHPsource without needlessDLLrecompile if wire fixtures match. Publication/PG/owneracceptance remainpending.
 
 Final verification checkpoint: frozen29dca91 passed actual6PGgroups/83assertions with45independently hash-checked children,22Department sources,20ownerpins,11coreinputs; ownedPGstopped/scratchremoved andTEST2initialStopped restored. Prior0casefixtureidentityfailure and5casefailedintegrationrun remainpreserved. R12fresh-ingress andbackdatedcursor issues repaired withoutweakeningrestore/replay. RootUI16/package15/nativehost6 andactual4PHPbootstrap->emittedDLL plusnegative pass. Mouse/game/provider/physicaldelivery remainunverified; finalowneracceptance/archive/publication stillpending.
 
 Packaging closure: actualassemblycaughtR13oldPCV24validatoragainstcorrectpublic27PCV25stage. ReusedstrictPCV25auditoratall3calls; actualpublic27+committedsource regression androot16/16packagechecks pass. No runtime/native/PGinputs changed; archiveassembly/reproducibility/publication gates remainpending.
+
+Published prealpha.28 at2026-10-30T17:05:55Z, immutabletag sourceb66568de0b9411bacd114a15e99e118776e81764. Installable633379bytes SHA25673665957569091e4cbd307bb85d65a3f236cafef5f55472fe82ccdb803c7c97b; source285Git-exact,22payloads/18unchanged; all4clean/draft/anonymous assets match,3officialarchivesaccepted/noactivation,26oldreleases143assets52refs preserved. RootandSFownerindependent6PG/83/45childhash+namespace+shutdown proofs,16UI,6nativehost,16package and4PHP->DLL+negative pass. TEST2initialStoppedrestored; no CHIMcore/live/game/provider/actualplayer-letter change. Mousefault/physicaldelivery/gameplay remainunverified. Mainpromotion/docclosureonly; immutabletag/assets unchanged.

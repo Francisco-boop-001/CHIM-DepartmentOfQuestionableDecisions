@@ -8,10 +8,10 @@ Goal: explicit safe recovery of an existing queued manual letter with truthful r
 - [x] UI LUNA/max RED/GREEN: restart discovery and failed/limited transfer fence, explicit same-letter action, truthful reasons, legacy absence, duplicate/unknown/closed/ownership/context guards.
 - [x] Native LUNA/max RED/GREEN: exact operation allowlist/payload, true write/access handling, emitted binary/source receipts; no input/mouse changes.
 - [x] Root review and focused independent bughunt; fix findings and rerun affected checks only.
-- [ ] Coordinate isolated TEST2 owner integration/concurrency/read-only trace and cleanup; obtain owner acceptance.
-- [ ] Build fresh prealpha28 package, exact source/current pins/archive/checksum/clean rebuild verification and publication workflow.
-- [ ] Commit/push/publish after both reviews; anonymous public bytes and historical asset preservation, task/doc closure.
+- [x] Coordinate isolated TEST2 owner integration/concurrency/read-only trace and cleanup; obtain owner acceptance.
+- [x] Build fresh prealpha28 package, exact source/current pins/archive/checksum/clean rebuild verification and publication workflow.
+- [x] Commit/push/publish after both reviews; anonymous public bytes and historical asset preservation, task/doc closure.
 
-Review: focused runtime/source verification passed; final owner acceptance, archive verification and publication remain gated. Primary/old worktree clean product baseline preserved; live/game/core untouched. Runtime mouse fix is outside this change.
+Review: complete at the stated authority. Owner review, 6 PostgreSQL groups/83 assertions, 16 UI cases, 6 native host tests, 16 package checks, official archive acceptance, clean rebuilds and anonymous public bytes passed. Runtime mouse/gameplay/provider/physical-delivery acceptance remains excluded. Primary/old worktree clean product baseline preserved; live/game/core untouched. Runtime mouse fix is outside this change.
 
-Replan: owner rejected permanent first-N-history transfer block. Add bounded explicit cursor continuation, private per-context bootstrap MAC key, end-of-scan transfer gate, >26 resolved/older500-gold tests. First native emission is preserved prototype only. Final build waits for all14bootstrapfixture inputs and final cursor/native boundary tests.
+Historical replan (completed): owner rejected permanent first-N-history transfer block. Add bounded explicit cursor continuation, private per-context bootstrap MAC key, end-of-scan transfer gate, >26 resolved/older500-gold tests. First native emission is preserved prototype only. Final build and post-generation PHP validation closed all14bootstrapfixture inputs and final cursor/native boundary tests.

@@ -6,6 +6,10 @@ An experimental companion mod that puts the World of Drama Llama plugins in thei
 
 ## Prealpha.28 queued-letter recovery
 
+[Download the installable prealpha.28 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.28/WorldOfDramaLlama-0.1.0-prealpha.28.zip). Exit Skyrim before updating; restart, then use Sealed Fates **Refresh waiting letters** and **Resume delivery** for the saved queued letter.
+
+Published 2026-10-30T17:05:55Z from immutable source `b66568de0b9411bacd114a15e99e118776e81764`. Installable: 633379 bytes, SHA-256 `73665957569091e4cbd307bb85d65a3f236cafef5f55472fe82ccdb803c7c97b`. All four clean-rebuilt, draft and anonymous public downloads match. The unchanged official archive consumer accepted all three DWPkgs without activation; all 285 public source members equal Git. All 26 older releases, 143 assets and 52 old tag refs remain unchanged. This publication does not establish physical Skyrim delivery or fix the separate mouse-control problem.
+
 This version adds an explicit **Resume** action for the same saved manual letter when its first attempt is still queued because the native executor was unavailable. Resume uses the stored letter body and attachments and keeps the original request and document identity. Refresh and pending-letter discovery remain read-only; queued means waiting, not delivered. See the [letter recovery guide](docs/LETTER-RECOVERY.md).
 
 The release pairs Private Conversation owner 0.1.25 with support companion 0.1.0-prealpha.13, Sealed Fates dev.30, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Malpractice Makes Perfect dev.4, and native 0.1.18.0. It starts from the exact prealpha.27 archive (SHA-256 `abb2fe3fb85859b26a26c251929a464e27c36d13179380e6ff491d15af2eb978`) and changes only the Department DWPkg, native DLL, `app.js`, and `index.html`; 18 of 22 installable payloads remain byte-identical. See the [prealpha.28 build contract](docs/BUILD.md).
