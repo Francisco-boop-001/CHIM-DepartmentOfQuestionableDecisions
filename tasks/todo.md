@@ -549,9 +549,11 @@ Goal: a queued input must be shown truthfully and followed automatically without
 - [x] LUNA/max: reproduce early prepared receipt; implement bounded, context-fenced receipt polling and automatic owner scene read, preserving replay/draft locks.
 - [x] LUNA/max: trace native/PRISMA input lifecycle against captured source; no safe correction proved. Companion-only onset counters remain the missing TEST game gate; do not patch foreign/core input.
 - [x] Root review, focused verification and bug hunt; independently inspect queued/Active screenshots and real-interval older-owner-read race. PCV7/7 and connection4/4 pass; mouse remains unresolved.
-- [ ] Assemble next release from exact public28 baseline; verify unchanged owners/native unless a proved input correction needs native changes.
-- [ ] Commit, push, publish and verify public bytes; record limitations.
+- [x] Assemble prealpha29 from exact public28 baseline; 20 payloads including native18 and PCV13 unchanged; official consumer/checksums/clean rebuild pass.
+- [x] Commit, push, publish and verify all four public assets; mouse and Skyrim acceptance remain open.
 
 Design: prepared means queued, never delivery failure/success. Poll read-only at 2-second intervals for at most 30 seconds per operation/view; no overlapping reads or automatic resends. Cancel stale view/auth/scope work. Refresh owner state after a terminal receipt, without recapturing nearby actors unnecessarily. Preserve manual refresh and unknown-operation locks.
 
 Review checkpoint: root independently reproduced the queued-receipt red error in Chromium (root-pcv-before.log); no CHIM/native/game execution. Mouse report reviewed and corrected to a companion-only future trace: no CHIM/PRISMA patches, hook or foreign sink reordering. Source evidence does not establish the private CHIM suppression flag at onset, so no speculative mouse fix will ship. Packaging review corrected checksum coverage to include the audit JSON as well as both ZIPs. All runtime/native/owner inputs remain fixed apart from app.js and Department version metadata.
+
+Review: published prealpha.29 at 2026-10-30T21:23:51Z, source 6f540338f9910b7e24127a961c41ceeda55a9547. Root independently inspected queued/Active rendering, real 2s follow-up, exactly one send and older-owner-read race; PCV7/7, connection4/4, package5/5 pass. Source287Git-exact, native18/PCV13/owner contracts unchanged, all four clean/draft/anonymous assets exact; 27 old releases/147 assets/54 tag refs preserved. No DLL recompilation, CHIM core/live/game/installed modlist/server/DB/provider changes. Mouse lock remains unresolved, requiring companion-only TEST onset evidence; this documentation closure does not change tagged runtime bytes.
