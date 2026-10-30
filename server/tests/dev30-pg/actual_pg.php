@@ -1862,9 +1862,41 @@ try {
             $backdatedRelease = null;
             try {
                 $backdatedRelease = dev30_wait_for_pending_page($ctx, 'pending_backdated_manual_insert');
+                $scope = $backdatedHistory[0]['scope'];
+                $pageOneRows = dev30_pg($admin,
+                    "SELECT d.created_at::text AS created_at,d.document_id::text AS document_id FROM plugins.correspondence_documents d "
+                        . "WHERE d.playthrough_id=$1 AND d.payload->'payer'->>'kind'='player' "
+                        . "ORDER BY d.created_at DESC,d.document_id DESC LIMIT 25",
+                    [$scope]);
+                $manualCountBeforeLateInsert = dev30_scalar($admin,
+                    "SELECT count(*)::text FROM plugins.correspondence_documents d "
+                        . "WHERE d.playthrough_id=$1 AND d.payload->'payer'->>'kind'='player'",
+                    [$scope]);
+                if (count($pageOneRows) !== 25 || !is_string($manualCountBeforeLateInsert)
+                    || ($pageOneRows[0]['document_id'] ?? null) !== $backdatedHistory[25]['documentId']
+                    || ($pageOneRows[24]['document_id'] ?? null) !== $backdatedHistory[1]['documentId']) {
+                    throw new RuntimeException('backdated_fixture_page_tuples_invalid');
+                }
+                $upperTuple = $pageOneRows[0];
+                $lastScannedTuple = $pageOneRows[24];
                 $late = dev30_seed_manual_letter($ctx, 'A late committing manual request falls inside the already-scanned keyset range.');
                 dev30_pg($admin, 'UPDATE plugins.correspondence_documents SET created_at=$1::timestamptz WHERE document_id=$2::uuid',
                     ['2200-01-01 00:00:02.500000+00', $late['documentId']]);
+                $lateInterval = dev30_pg($admin,
+                    "SELECT CASE WHEN (late.created_at,late.document_id)<($3::timestamptz,$4::uuid) THEN 1 ELSE 0 END AS below_upper,"
+                        . "CASE WHEN (late.created_at,late.document_id)>($5::timestamptz,$6::uuid) THEN 1 ELSE 0 END AS above_last_scanned,"
+                        . "(SELECT top.document_id::text FROM plugins.correspondence_documents top WHERE top.playthrough_id=$2 "
+                        . "AND top.payload->'payer'->>'kind'='player' ORDER BY top.created_at DESC,top.document_id DESC LIMIT 1) AS current_upper_id,"
+                        . "(SELECT count(*)::text FROM plugins.correspondence_documents d WHERE d.playthrough_id=$2 "
+                        . "AND d.payload->'payer'->>'kind'='player') AS manual_count "
+                        . "FROM plugins.correspondence_documents late WHERE late.document_id=$1::uuid AND late.playthrough_id=$2",
+                    [$late['documentId'], $scope, $upperTuple['created_at'], $upperTuple['document_id'],
+                        $lastScannedTuple['created_at'], $lastScannedTuple['document_id']]);
+                dev30_assert(count($lateInterval) === 1 && ($lateInterval[0]['below_upper'] ?? null) === '1'
+                    && ($lateInterval[0]['above_last_scanned'] ?? null) === '1'
+                    && ($lateInterval[0]['current_upper_id'] ?? null) === $upperTuple['document_id']
+                    && ($lateInterval[0]['manual_count'] ?? null) === (string)((int)$manualCountBeforeLateInsert + 1),
+                    'backdated_fixture_insert_is_not_inside_the_actual_scanned_interval');
                 $beforeBackdatedContinuation = dev30_count_snapshot($admin);
                 dev30_release_pending_page($backdatedRelease);
                 $backdatedRead = dev30_api_result($ctx, 'correspondence.pending.read', $backdatedOffset, dev30_finish_child($ctx, $backdatedChild));
