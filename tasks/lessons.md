@@ -51,3 +51,5 @@ Preserve UTF-8 and existing per-file line endings during documentation edits. Sc
 - A native dependency convenience helper may dereference engine memory incorrectly despite compiling. For a crash, match the emitted DLL instructions to the stack and trace actual inline-array semantics before choosing a narrow replacement; verify every caller, including fresh funds checks.
 
 - A prepared native/Papyrus receipt is scheduling evidence, not a failed conversation. When the player confirms ongoing dialogue, keep send acceptance, owner scene status and audible/gameplay delivery distinct; reconcile the exact operation automatically without replaying it, and never leave an early queued snapshot displayed as a permanent error.
+
+- Versioned test suites can reuse an older fixture protocol. Compare the actual producer schema literal, exact key shape, paths and environment mapping with the reused guard before freezing; do not rename its marker with the suite version. PostgreSQL inet::text may include /32: validate the canonical host() result at the identity boundary while retaining raw metadata and strict role/database/namespace ownership checks.

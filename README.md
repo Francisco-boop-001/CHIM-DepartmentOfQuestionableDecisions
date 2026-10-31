@@ -10,7 +10,9 @@ The [installable prealpha.30 ZIP](https://github.com/Francisco-boop-001/CHIM-Dep
 
 When a saved letter is waiting because CHIM lacks fresh game activity, leave Skyrim unpaused so normal CHIM polling can refresh activity. Keep CHIM Interaction On where that setting is available. Earlier supported Sealed Fates versions still need a recent managed-NPC report. Choose **Resume** for this same saved letter; do not send a new copy. See the [dev.31 compatibility note](docs/DEV31-COMPATIBILITY.md) and [prealpha.30 build contract](docs/BUILD.md).
 
-The package check compares all 21 dev.31 pins with the actual public owner DWPkg and preserves all 16 previously supported owner-version maps. This source/package evidence does not establish Department PostgreSQL integration, HTTP/provider behavior, installation, or Skyrim behavior. Mouse control remains unresolved; this candidate makes no mouse-fix claim.
+The package check compares all 21 dev.31 pins with the actual public owner DWPkg and preserves all 16 previously supported owner-version maps. Separately, the actual Department API/PostgreSQL 15 TEST2 run passed 11 targeted groups and 137 assertions, including cold same-letter recovery, concurrency, expiry and restore refusal. This is synthetic API/database evidence, not HTTP, native, provider, installation or Skyrim proof. Mouse control remains unresolved.
+
+Published 2026-10-31T00:55:07Z from immutable source `496f816356ce0af8d6b4fb67e720f90e9bba0ebe`. Installable: 634948 bytes, SHA-256 `d8ae8a87cea4f18e41f723a7ea404e5cc16fbb2d1fed5491bde3ffd9d90f0d47`. All four clean-rebuilt, draft and anonymous public assets match. The official archive consumer accepted the changed Department package without activation; all 297 public source members equal Git. All 28 older releases, 151 assets and 56 tag refs remain unchanged.
 
 ## Prealpha.29: PCV receipt status
 
