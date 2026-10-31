@@ -254,6 +254,27 @@
       || config.actions.some((action) => !['personal', 'physical', 'intimate'].includes(action)) || new Set(config.actions).size !== config.actions.length)) return false;
     return true;
   }
+  function validBrainwashAuthoring(value) {
+    if (!exactKeys(value, ['workingCard', 'conversation', 'historyLimit']) || !exactKeys(value.workingCard, BRAINWASH_FIELDS)
+      || !validBrainwashFields(value.workingCard, true) || !Array.isArray(value.conversation) || value.conversation.length > 8
+      || !Number.isInteger(value.historyLimit) || value.historyLimit < 0 || value.historyLimit > 200) return false;
+    let size = 0;
+    return value.conversation.every((turn) => {
+      if (!exactKeys(turn, ['role', 'content']) || !['user', 'assistant'].includes(turn.role) || !boundedString(turn.content, 2000)) return false;
+      size += bytes(turn.content);
+      return size <= 12000;
+    });
+  }
+  function validBrainwashAuthoringResult(value) {
+    if (!exactKeys(value, ['reply', 'evidence', 'historyCount', 'historyTruncated']) || !boundedString(value.reply, 2000)
+      || !Array.isArray(value.evidence) || value.evidence.length > 20 || !Number.isInteger(value.historyCount)
+      || value.historyCount < 0 || value.historyCount > 200 || typeof value.historyTruncated !== 'boolean') return false;
+    const seen = new Set();
+    return value.evidence.every((item) => exactKeys(item, ['eventId', 'reason', 'excerpt'])
+      && typeof item.eventId === 'string' && /^[1-9][0-9]{0,19}$/.test(item.eventId)
+      && boundedString(item.reason, 256) && boundedString(item.excerpt, 256)
+      && !seen.has(item.eventId) && seen.add(item.eventId));
+  }
   function payloadFieldsValid(operation, payload) {
     const fields = {
       bootstrap: [], 'view.close': [], 'connection.begin': [], 'connection.status': [], 'pcv.roster.read': [], 'pcv.status.read': [],
@@ -268,8 +289,8 @@
       'correspondence.reconcile': ['operationId'],
       'correspondence.resume': ['operationId', 'attemptId'],
       'correspondence.pending.read': ['cursor'],
-      'brainwash.catalog.read': ['query'], 'brainwash.card.read': ['actorKey'],
-      'brainwash.draft': ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction', 'beliefs'],
+      'brainwash.catalog.read': ['query', 'nearby'], 'brainwash.card.read': ['actorKey'],
+      'brainwash.draft': ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction', 'beliefs', 'authoring'],
       'brainwash.apply': ['actorKey', 'draftId', 'operationId', 'acceptedFields', 'acceptBeliefs'],
       'brainwash.undo': ['actorKey', 'operationId', 'appliedOperationId'],
     }[operation];
@@ -303,14 +324,16 @@
     if (operation === 'correspondence.pending.read' && (!exactKeys(payload, [], ['cursor'])
       || (Object.prototype.hasOwnProperty.call(payload, 'cursor')
         && (!boundedString(payload.cursor, 512) || payload.cursor.length === 0)))) return false;
-    if (operation === 'brainwash.catalog.read' && (!exactKeys(payload, [], ['query'])
-      || (payload.query !== undefined && !boundedString(payload.query, 128)))) return false;
+    if (operation === 'brainwash.catalog.read' && (!exactKeys(payload, [], ['query', 'nearby'])
+      || (payload.query !== undefined && !boundedString(payload.query, 128))
+      || (payload.nearby !== undefined && typeof payload.nearby !== 'boolean'))) return false;
     if (operation === 'brainwash.card.read' && (!exactKeys(payload, ['actorKey']) || !validBrainwashActorKey(payload.actorKey))) return false;
     if (operation === 'brainwash.draft') {
-      if (!exactKeys(payload, ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction'], ['beliefs'])
+      if (!exactKeys(payload, ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction'], ['beliefs', 'authoring'])
         || !validBrainwashActorKey(payload.actorKey) || !validBrainwashRevision(payload.expectedRevision) || !validUuid(payload.operationId)
         || !['manual', 'ai'].includes(payload.mode) || !validBrainwashFields(payload.changes, true)
         || !boundedString(payload.instruction, 2000) || (payload.beliefs !== undefined && !boundedString(payload.beliefs, 4000))
+        || (payload.authoring !== undefined && (payload.mode !== 'ai' || !validBrainwashAuthoring(payload.authoring)))
         || (Object.keys(payload.changes).length === 0 && payload.beliefs === undefined)) return false;
     }
     if (operation === 'brainwash.apply') {
@@ -345,17 +368,24 @@
       && ['applied', 'undone'].includes(value.lastOperation.state);
   }
   function validBrainwashDraft(value) {
-    if (!exactKeys(value, ['actorKey', 'scope', 'revision', 'draftId', 'origin', 'before', 'changes'], ['beliefsBefore', 'beliefs'])
+    if (!exactKeys(value, ['actorKey', 'scope', 'revision', 'draftId', 'origin', 'before', 'changes'], ['beliefsBefore', 'beliefs', 'authoring'])
       || !validBrainwashActorKey(value.actorKey) || !boundedString(value.scope, 1024) || !value.scope
       || !validBrainwashRevision(value.revision) || !validUuid(value.draftId) || !['manual', 'ai'].includes(value.origin)
       || !validBrainwashFields(value.before, true) || !validBrainwashFields(value.changes, true)
       || (value.beliefsBefore !== undefined && !boundedString(value.beliefsBefore, 4000))
-      || (value.beliefs !== undefined && !boundedString(value.beliefs, 4000))) return false;
+      || (value.beliefs !== undefined && !boundedString(value.beliefs, 4000))
+      || (value.authoring !== undefined && (value.origin !== 'ai' || !validBrainwashAuthoringResult(value.authoring)))) return false;
     return Object.keys(value.changes).length > 0 || value.beliefs !== undefined;
   }
   function validBrainwashResponse(operation, value) {
     if (operation === 'brainwash.catalog.read') {
-      if (!exactKeys(value, ['actors', 'limited']) || !Array.isArray(value.actors) || value.actors.length > 64 || typeof value.limited !== 'boolean') return false;
+      const discovery = isPlainObject(value) && ['source', 'state', 'observedAt'].some((key) => Object.prototype.hasOwnProperty.call(value, key));
+      if (!exactKeys(value, discovery ? ['actors', 'limited', 'source', 'state', 'observedAt'] : ['actors', 'limited'])
+        || !Array.isArray(value.actors) || value.actors.length > 64 || typeof value.limited !== 'boolean') return false;
+      if (discovery && (!['nearby', 'catalog'].includes(value.source) || !['ready', 'empty', 'missing', 'stale', 'unavailable'].includes(value.state)
+        || !(value.observedAt === null || (Number.isSafeInteger(value.observedAt) && value.observedAt >= 0))
+        || (value.state !== 'ready' && value.actors.length > 0)
+        || (value.source === 'catalog' && !['ready', 'empty'].includes(value.state)))) return false;
       const seen = new Set();
       return value.actors.every((actor) => exactKeys(actor, ['actorKey', 'label']) && validBrainwashActorKey(actor.actorKey)
         && boundedString(actor.label, 512) && actor.label && !seen.has(actor.actorKey) && seen.add(actor.actorKey));
@@ -405,7 +435,7 @@
         error.timedOut = true;
         error.dispatched = true;
         reject(error);
-      }, 20000);
+      }, operation === 'brainwash.draft' && payload.mode === 'ai' ? 125000 : 20000);
       state.pending.set(envelope.requestId, { envelope, context, resolve, reject, timer });
       try { window.departmentRequest(serialized); }
       catch {

@@ -284,6 +284,22 @@ function qd_validate_pcv_configuration(mixed $configuration): bool
     return true;
 }
 
+function qd_brainwash_valid_authoring(mixed $value): bool
+{
+    if (!is_object($value) || !qd_exact_properties($value, ['workingCard','conversation','historyLimit'])
+        || !qd_brainwash_valid_changes($value->workingCard, true) || count(get_object_vars($value->workingCard)) !== 8
+        || !is_array($value->conversation) || !array_is_list($value->conversation) || count($value->conversation) > 8
+        || !is_int($value->historyLimit) || $value->historyLimit < 0 || $value->historyLimit > 200) return false;
+    $bytes = 0;
+    foreach ($value->conversation as $turn) {
+        if (!is_object($turn) || !qd_exact_properties($turn, ['role','content'])
+            || !in_array($turn->role, ['user','assistant'], true) || !qd_valid_string($turn->content, 2000, true)) return false;
+        $bytes += strlen($turn->content);
+        if ($bytes > 12000) return false;
+    }
+    return true;
+}
+
 function qd_validate_payload(string $operation, object $payload): string
 {
     switch ($operation) {
@@ -419,8 +435,9 @@ function qd_validate_payload(string $operation, object $payload): string
                 ? 'ok' : 'invalid_request';
 
         case 'brainwash.catalog.read':
-            return qd_exact_properties($payload, [], ['query'])
+            return qd_exact_properties($payload, [], ['query','nearby'])
                 && (!property_exists($payload, 'query') || qd_valid_string($payload->query, 128, true))
+                && (!property_exists($payload, 'nearby') || is_bool($payload->nearby))
                 ? 'ok' : 'invalid_request';
 
         case 'brainwash.card.read':
@@ -428,7 +445,7 @@ function qd_validate_payload(string $operation, object $payload): string
                 ? 'ok' : 'invalid_request';
 
         case 'brainwash.draft':
-            return qd_exact_properties($payload, ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction'], ['beliefs'])
+            return qd_exact_properties($payload, ['actorKey', 'expectedRevision', 'operationId', 'mode', 'changes', 'instruction'], ['beliefs','authoring'])
                 && qd_valid_brainwash_actor_key($payload->actorKey)
                 && qd_brainwash_valid_revision($payload->expectedRevision)
                 && qd_is_uuid($payload->operationId)
@@ -436,6 +453,7 @@ function qd_validate_payload(string $operation, object $payload): string
                 && qd_brainwash_valid_changes($payload->changes, true)
                 && qd_valid_string($payload->instruction, 2000, true)
                 && (!property_exists($payload, 'beliefs') || qd_valid_string($payload->beliefs, 4000, true))
+                && (!property_exists($payload, 'authoring') || ($payload->mode === 'ai' && qd_brainwash_valid_authoring($payload->authoring)))
                 && (get_object_vars($payload->changes) !== [] || property_exists($payload, 'beliefs')) ? 'ok' : 'invalid_request';
 
         case 'brainwash.apply':

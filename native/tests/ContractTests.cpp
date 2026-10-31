@@ -192,6 +192,40 @@ int main(int argc, char** argv)
 		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
 		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"Brusque.\"},\"instruction\":\"\"}");
 	CHECK(dql::contract::ParseRequest(draftRequest).envelope.has_value());
+
+	// The authoring request must cross the real native boundary with unsaved card text intact.
+	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.catalog.read", "\"scope-1\"", "{\"nearby\":true}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.catalog.read", "\"scope-1\"", "{\"nearby\":\"yes\"}")).envelope.has_value());
+	auto authoringRequest = Json::parse(draftRequest);
+	authoringRequest["payload"]["mode"] = "ai";
+	authoringRequest["payload"]["authoring"] = Json{
+		{"workingCard", MakeBrainwashCardData()["fields"]},
+		{"conversation", Json::array({Json{{"role", "user"}, {"content", "Keep her dry humour."}}})},
+		{"historyLimit", 200}
+	};
+	CHECK(dql::contract::ParseRequest(authoringRequest.dump()).envelope.has_value());
+	auto invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["authoring"]["conversation"][0]["role"] = "system";
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+	invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["authoring"]["historyLimit"] = 201;
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+	invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["authoring"]["historyLimit"] = true;
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+	invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["authoring"]["workingCard"].erase("core");
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+	invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["authoring"]["scopeKey"] = "untrusted";
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+	invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["mode"] = "manual";
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+	invalidAuthoring = authoringRequest;
+	invalidAuthoring["payload"]["authoring"]["conversation"][0]["content"] = std::string(2001, 'x');
+	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
+
 	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
 		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
 		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"identity\":\"Lydia\"},\"instruction\":\"\"}")).envelope.has_value());
@@ -229,6 +263,17 @@ int main(int argc, char** argv)
 	const Json brainwashCatalogData = {{"actors", Json::array({Json{{"actorKey", "npc:42"}, {"label", "Lydia"}}})}, {"limited", false}};
 	const auto brainwashCatalogResponse = dql::contract::MakeResponse(*brainwashCatalogRequest.envelope, brainwashCatalogData);
 	CHECK(dql::contract::ParseServerResponse(brainwashCatalogResponse.dump(), *brainwashCatalogRequest.envelope).value.has_value());
+
+	auto nearbyResponse = brainwashCatalogResponse;
+	nearbyResponse["data"]["source"] = "nearby";
+	nearbyResponse["data"]["state"] = "ready";
+	nearbyResponse["data"]["observedAt"] = 1793450000;
+	CHECK(dql::contract::ParseServerResponse(nearbyResponse.dump(), *brainwashCatalogRequest.envelope).value.has_value());
+	nearbyResponse["data"]["state"] = "stale";
+	CHECK(!dql::contract::ParseServerResponse(nearbyResponse.dump(), *brainwashCatalogRequest.envelope).value.has_value());
+	nearbyResponse["data"]["actors"] = Json::array();
+	CHECK(dql::contract::ParseServerResponse(nearbyResponse.dump(), *brainwashCatalogRequest.envelope).value.has_value());
+
 	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*brainwashCatalogRequest.envelope,
 		Json{{"actors", Json::array({Json{{"actorKey", "npc:042"}, {"label", "Lydia"}}})}, {"limited", false}}).dump(),
 		*brainwashCatalogRequest.envelope).value.has_value());
@@ -262,6 +307,22 @@ int main(int argc, char** argv)
 	};
 	const auto beliefOnlyDraftResponse = dql::contract::MakeResponse(*brainwashDraftRequest.envelope, beliefOnlyDraftData);
 	CHECK(dql::contract::ParseServerResponse(beliefOnlyDraftResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+
+	auto authoringResponse = brainwashDraftResponse;
+	authoringResponse["data"]["origin"] = "ai";
+	authoringResponse["data"]["authoring"] = Json{
+		{"reply", "Kept her voice; proposed a change to her motives."},
+		{"evidence", Json::array({Json{{"eventId", "12"}, {"reason", "She witnessed it."}, {"excerpt", "Lydia agreed to help."}}})},
+		{"historyCount", 1}, {"historyTruncated", false}
+	};
+	CHECK(dql::contract::ParseServerResponse(authoringResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto invalidAuthoringResponse = authoringResponse;
+	invalidAuthoringResponse["data"]["authoring"]["evidence"][0]["excerpt"] = std::string(257, 'x');
+	CHECK(!dql::contract::ParseServerResponse(invalidAuthoringResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	invalidAuthoringResponse = authoringResponse;
+	invalidAuthoringResponse["data"]["authoring"]["historyCount"] = 201;
+	CHECK(!dql::contract::ParseServerResponse(invalidAuthoringResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+
 	auto badBrainwashDraft = brainwashDraftResponse;
 	badBrainwashDraft["data"]["identity"] = "Lydia";
 	CHECK(!dql::contract::ParseServerResponse(badBrainwashDraft.dump(), *brainwashDraftRequest.envelope).value.has_value());
@@ -329,6 +390,20 @@ int main(int argc, char** argv)
 	const dql::policy::NativeAccessState composeAccess{
 		.serverContext = "scope-current", .authenticated = true, .compose = true, .correspondenceReady = true
 	};
+	const dql::policy::NativeAccessState brainwashAccess{
+		.serverContext = "scope-current", .authenticated = true, .brainwash = true, .brainwashReady = true
+	};
+	CHECK(dql::policy::CanUseBrainwash(brainwashAccess, "scope-current"));
+	CHECK(!dql::policy::CanUseBrainwash(brainwashAccess, "scope-old"));
+	auto deniedBrainwash = brainwashAccess;
+	deniedBrainwash.brainwash = false;
+	CHECK(!dql::policy::CanUseBrainwash(deniedBrainwash, "scope-current"));
+	deniedBrainwash = brainwashAccess;
+	deniedBrainwash.brainwashReady = false;
+	CHECK(!dql::policy::CanUseBrainwash(deniedBrainwash, "scope-current"));
+	deniedBrainwash = brainwashAccess;
+	deniedBrainwash.authenticated = false;
+	CHECK(!dql::policy::CanUseBrainwash(deniedBrainwash, "scope-current"));
 	CHECK(dql::policy::CanUseCorrespondence(composeAccess, "scope-current"));
 	CHECK(!dql::policy::CanUseCorrespondence(composeAccess, "scope-old"));
 	CHECK(!dql::policy::CanUseCorrespondence(composeAccess, ""));

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.4';
+const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.5';
 const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
     '0.1.0-dev.3' => [
         'api.php' => ['lf' => 'b26658695d86654d10ab2d8c38df0b4ebbf5e37c0d3d42a5cf64ba489f7ff20c', 'windowsCrlf' => '1bdcd95cc3e9b3305d2aa374fcc64b7329e998e2b537879043bbb7d18e502eae'],
@@ -20,6 +20,19 @@ const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
         'lib/web.php' => ['lf' => '4ec97fc191fa72b4ff488032cec0286141ff94c9bc3545bb01e2043cd40c1073', 'windowsCrlf' => '2701a2825fd2839d035962e18daa37ea4e3d1dff370609b972d48a33e321a1a2'],
         'manifest.json' => ['lf' => '0205b5a1c401de1650ce9c4fe895e6cc6b9d09c5e311ecef45c9da3be7a55410', 'windowsCrlf' => '936d19bec3a0f56dcca7b5b895a29bd673435cefb0cb56fc0a051ab85f3df7c7'],
         'runtime.php' => ['lf' => '4cf0692bcc8034d2d9e69da9b6a7e8013e02b71cddfd5f173059397dd8fa34a1', 'windowsCrlf' => '675c6d78947ccba3dc1395a12cc62498a0f2d7b3f18abd362f174fc67d3ff2e7'],
+    ],
+    '0.1.0-dev.5' => [
+        'api.php' => ['lf' => '4ae15803dcaa27ca5a20651fae42842125f1df40f5fc65dcfc678217827e23e3', 'windowsCrlf' => 'f5714a2232d31ffcc35961c07a8ded567e20d7b1ae90e47a3e4b9c6da3ff7352'],
+        'assets/editor.css' => ['lf' => '2cc0bf0494f2cb447a9b1177d718dbd13c34c0658745e23413646aba9b7935d1', 'windowsCrlf' => '9ee6f77cfca09c548f6e4d80d1f1f276dc315030da04779e9b7058aed7227796'],
+        'assets/editor.js' => ['lf' => '297e1f517c5b8854b65564500480fb874f7c490bd2e6ba41f9c5f5b201776883', 'windowsCrlf' => 'f79034933f6ccfcdb0e78afaecb202b39319a0578e1e8ea3ad32853959b9bc80'],
+        'assets/web.js' => ['lf' => 'e7cd45f6664a7ba0ec92a3dd7d65917fadc7f672689d7b847e303b1ca92288dc', 'windowsCrlf' => '12eab2fe1c7cc75d30cc34b180a40c51facf10bdda4d2db3edc974d19f567e46'],
+        'context_pre.php' => ['lf' => '67f73134e4818ca513b1269ee1b2365f7696f737793ff6d48ee57b4cebd9120a', 'windowsCrlf' => '2604c771b6c57c0020495f68ed15606a3469b9dedc853f8ebaf163f6d5e75d5f'],
+        'index.php' => ['lf' => '81678c8fe10d67606d50c99cc9755976316ba90b75419e125c9a8c6aa8b65a38', 'windowsCrlf' => '35c784b42f792f0c8e448f50c5c9d35df88df201103f865a75d7b7b9965961c2'],
+        'lib/authoring.php' => ['lf' => 'fafaa1a19b196cc7829757b7e8075b62c574b990977478ce579420f8c07dfb71', 'windowsCrlf' => '1818623a2a9b6eec3cf5b501b5e7253eafbaeac4f5695a05ad2d250ad3a4e055'],
+        'lib/service.php' => ['lf' => '018b57b06bc11546bed83e8683c13e298062ed61f862a79a864eec96e587b9e8', 'windowsCrlf' => '4553eda3a74bb9c1002183ea6f8a8d80ce801aac8de80a894f7c030376292be8'],
+        'lib/web.php' => ['lf' => '8590ce5e45ff75d990117e00901dcf240b9d0708d304d2aa3e72fa1a69fd46cd', 'windowsCrlf' => 'b7439ab843b1bc6a1cc5d26c3a16cc9726a839cce9dede85e9790498cfc75d91'],
+        'manifest.json' => ['lf' => '910cea30d4e19d32abc2c54733c9bcc3cb17eec026901dd915f2e2f554777376', 'windowsCrlf' => '3000444c39fcc7e1b90669ab9d81d78244f4995afc76b4a12a125ab209582d39'],
+        'runtime.php' => ['lf' => '3cf5af02bff7cd423d6d0fd226011c8726200a438c6e469881c16181fd72d3fb', 'windowsCrlf' => 'a5548f50f8cf4facd28e8226e71ec31eefe739f4db8d1dcef11321ea61d7a50a'],
     ],
 ];
 const QD_BRAINWASH_OPERATIONS = [

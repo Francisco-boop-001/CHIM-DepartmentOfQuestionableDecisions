@@ -825,10 +825,12 @@ namespace
 			serverAccessInspector_ = false;
 			serverAccessCompose_ = false;
 			serverAccessAuthorDetail_ = false;
+			serverAccessBrainwash_ = false;
 			serverCapabilityPcv_ = false;
 			serverCapabilityMp_ = false;
 			serverCapabilitySas_ = false;
 			serverCapabilityCorrespondence_ = false;
+			serverCapabilityBrainwash_ = false;
 		}
 
 		void LoadBridgeConfiguration()
@@ -1710,7 +1712,8 @@ namespace
 		static bool IsServerWriteOperation(std::string_view operation) noexcept
 		{
 			return operation == "pcv.arm" || operation == "pcv.end" || operation == "correspondence.compose" ||
-				operation == "correspondence.resume";
+				operation == "correspondence.resume" || operation == "brainwash.draft" ||
+				operation == "brainwash.apply" || operation == "brainwash.undo";
 		}
 
 		bool IsCurrentRequest(const dql::contract::Envelope& request) const
@@ -1730,7 +1733,9 @@ namespace
 				.compose = serverAccessCompose_,
 				.correspondenceReady = serverCapabilityCorrespondence_,
 				.pcv = serverAccessPcv_,
-				.pcvReady = serverCapabilityPcv_
+				.pcvReady = serverCapabilityPcv_,
+				.brainwash = serverAccessBrainwash_,
+				.brainwashReady = serverCapabilityBrainwash_
 			};
 		}
 
@@ -1748,10 +1753,12 @@ namespace
 			serverAccessInspector_ = data["access"]["inspector"].get<bool>();
 			serverAccessCompose_ = data["access"]["compose"].get<bool>();
 			serverAccessAuthorDetail_ = data["access"]["authorDetail"].get<bool>();
+			serverAccessBrainwash_ = data["access"]["brainwash"].get<bool>();
 			serverCapabilityPcv_ = data["capabilities"]["pcv"].get<bool>();
 			serverCapabilityMp_ = data["capabilities"]["mp"].get<bool>();
 			serverCapabilitySas_ = data["capabilities"]["sas"].get<bool>();
 			serverCapabilityCorrespondence_ = data["capabilities"]["correspondence"].get<bool>();
+			serverCapabilityBrainwash_ = data["capabilities"]["brainwash"].get<bool>();
 		}
 
 		void RespondRaw(const dql::contract::Envelope& request, std::string_view raw)
@@ -2724,6 +2731,11 @@ namespace
 				}
 				return;
 			}
+			if (request.operation.starts_with("brainwash.") && !dql::policy::CanUseBrainwash(AccessState(), *request.serverContext)) {
+				RespondPreDispatchError(request, serverAccessBrainwash_ ? "unavailable" : "forbidden",
+					"The current CHIM session does not allow Malpractice Makes Perfect authoring.");
+				return;
+			}
 			const bool isPcvOperation = request.operation == "pcv.roster.read" || request.operation == "pcv.status.read" ||
 				request.operation == "pcv.arm" || request.operation == "pcv.end" || request.operation == "pcv.send" ||
 				request.operation == "pcv.send.status";
@@ -2836,10 +2848,12 @@ namespace
 		bool serverAccessInspector_{ false };
 		bool serverAccessCompose_{ false };
 		bool serverAccessAuthorDetail_{ false };
+		bool serverAccessBrainwash_{ false };
 		bool serverCapabilityPcv_{ false };
 		bool serverCapabilityMp_{ false };
 		bool serverCapabilitySas_{ false };
 		bool serverCapabilityCorrespondence_{ false };
+		bool serverCapabilityBrainwash_{ false };
 		bool pluginsLoaded_{ false };
 		bool inputRegistered_{ false };
 		bool creatingView_{ false };
@@ -2931,7 +2945,7 @@ extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.19.0"_v,
+SKSEPluginInfo(.Version = "0.1.20.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)

@@ -250,13 +250,13 @@ namespace dql::http
 		{
 			return operation == "pcv.arm" || operation == "pcv.end" || operation == "pcv.companion.stage" ||
 				operation == "pcv.companion.cancel" || operation == "correspondence.compose" ||
-				operation == "correspondence.resume" ||
-				operation == "connection.begin";
+				operation == "correspondence.resume" || operation == "brainwash.draft" ||
+				operation == "brainwash.apply" || operation == "brainwash.undo" || operation == "connection.begin";
 		}
 
 		[[nodiscard]] bool IsAllowedOperation(std::string_view operation) noexcept
 		{
-			static constexpr std::array<std::string_view, 19> allowed{
+			static constexpr std::array<std::string_view, 24> allowed{
 				"bootstrap",
 				"pcv.roster.read",
 				"pcv.status.read",
@@ -274,6 +274,7 @@ namespace dql::http
 				"correspondence.reconcile",
 				"correspondence.pending.read",
 				"correspondence.resume",
+				"brainwash.catalog.read", "brainwash.card.read", "brainwash.draft", "brainwash.apply", "brainwash.undo",
 				"connection.begin",
 				"connection.status"
 			};
@@ -582,18 +583,18 @@ namespace dql::http
 				return false;
 			}
 			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds>(deadline - now).count();
-			timeoutMs = static_cast<DWORD>(std::clamp<std::int64_t>(remaining + 1, 1, 30'000));
+			timeoutMs = static_cast<DWORD>(std::clamp<std::int64_t>(remaining + 1, 1, 120'000));
 			return true;
 		}
 
 		[[nodiscard]] bool SetRemainingTimeouts(HINTERNET handle,
-			std::chrono::steady_clock::time_point deadline) noexcept
+			std::chrono::steady_clock::time_point deadline, bool modelResponse = false) noexcept
 		{
 			DWORD remainingMs = 0;
 			if (!GetRemainingTimeoutMs(deadline, remainingMs)) return false;
 			const int timeoutMs = static_cast<int>(std::min<DWORD>(remainingMs, kMaxPhaseTimeoutMs));
 			if (!WinHttpSetTimeouts(handle, static_cast<int>(timeoutMs), static_cast<int>(timeoutMs),
-				static_cast<int>(timeoutMs), static_cast<int>(timeoutMs))) {
+				static_cast<int>(timeoutMs), modelResponse ? static_cast<int>(remainingMs) : static_cast<int>(timeoutMs))) {
 				return false;
 			}
 			return true;
@@ -716,8 +717,8 @@ namespace dql::http
 
 		[[nodiscard]] HttpResult Execute(const std::shared_ptr<Job>& job)
 		{
-			const auto deadline = std::chrono::steady_clock::now() + kTransactionTimeout;
 			auto& request = job->request;
+			const auto deadline = std::chrono::steady_clock::now() + (request.operation == "brainwash.draft" ? std::chrono::seconds(120) : kTransactionTimeout);
 			WipeWideString wipeBearer(request.bearerToken);
 			if (IsCancelled(job)) return CancelledResult(false, request.isWrite);
 
@@ -875,7 +876,7 @@ namespace dql::http
 			if (!GetRemainingTimeoutMs(deadline, receiveResponseTimeoutMs) ||
 				!WinHttpSetOption(httpRequest.get(), WINHTTP_OPTION_RECEIVE_RESPONSE_TIMEOUT,
 					&receiveResponseTimeoutMs, sizeof(receiveResponseTimeoutMs)) ||
-				!SetRemainingTimeouts(httpRequest.get(), deadline)) {
+				!SetRemainingTimeouts(httpRequest.get(), deadline, request.operation == "brainwash.draft")) {
 				return failAsync(AsyncWaitResult::completed, GetLastError());
 			}
 			auto receive = waitFor(WINHTTP_CALLBACK_STATUS_HEADERS_AVAILABLE, [&] {

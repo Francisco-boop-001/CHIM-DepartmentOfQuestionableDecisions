@@ -65,6 +65,8 @@ namespace dql::policy
 		bool correspondenceReady{};
 		bool pcv{};
 		bool pcvReady{};
+		bool brainwash{};
+		bool brainwashReady{};
 	};
 
 	struct ManagedNameSet
@@ -142,6 +144,8 @@ namespace dql::policy
 	[[nodiscard]] bool IsTransferableStack(const InventoryTraits& traits) noexcept;
 	[[nodiscard]] bool ValidateTransferLines(std::span<const TransferLine> lines, std::int64_t goldAmount,
 		std::int64_t availableGold) noexcept;
+	[[nodiscard]] bool CanUseBrainwash(const NativeAccessState& access,
+		std::string_view requestServerContext) noexcept;
 	[[nodiscard]] bool CanUseCorrespondence(const NativeAccessState& access,
 		std::string_view requestServerContext) noexcept;
 	[[nodiscard]] bool CanSendCompanionPcv(const NativeAccessState& access,

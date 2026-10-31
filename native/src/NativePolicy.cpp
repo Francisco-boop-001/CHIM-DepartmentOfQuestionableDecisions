@@ -358,6 +358,12 @@ namespace dql::policy
 		return true;
 	}
 
+	bool CanUseBrainwash(const NativeAccessState& access, std::string_view requestServerContext) noexcept
+	{
+		return !access.serverContext.empty() && requestServerContext == access.serverContext &&
+			access.authenticated && access.brainwash && access.brainwashReady;
+	}
+
 	bool CanUseCorrespondence(const NativeAccessState& access, std::string_view requestServerContext) noexcept
 	{
 		return !access.serverContext.empty() && requestServerContext == access.serverContext &&

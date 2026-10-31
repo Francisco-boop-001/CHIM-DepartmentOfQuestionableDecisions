@@ -307,17 +307,52 @@ namespace dql::contract
 			return true;
 		}
 
+		bool IsBrainwashAuthoringInput(const Json& value)
+		{
+			if (!HasOnlyKeys(value, { "workingCard", "conversation", "historyLimit" })
+				|| !IsBrainwashFields(value["workingCard"], true) || value["workingCard"].size() != 8
+				|| !value["conversation"].is_array() || value["conversation"].size() > 8
+				|| !value["historyLimit"].is_number_integer() || value["historyLimit"] < 0 || value["historyLimit"] > 200) return false;
+			std::size_t bytes = 0;
+			for (const auto& turn : value["conversation"]) {
+				if (!HasOnlyKeys(turn, { "role", "content" }) || !turn["role"].is_string()
+					|| (turn["role"] != "user" && turn["role"] != "assistant") || !IsBrainwashText(turn["content"], 2000)) return false;
+				bytes += turn["content"].get_ref<const std::string&>().size();
+				if (bytes > 12000) return false;
+			}
+			return true;
+		}
+
+		bool IsBrainwashAuthoringResult(const Json& value)
+		{
+			if (!HasOnlyKeys(value, { "reply", "evidence", "historyCount", "historyTruncated" })
+				|| !IsBrainwashText(value["reply"], 2000) || !value["evidence"].is_array() || value["evidence"].size() > 20
+				|| !value["historyCount"].is_number_integer() || value["historyCount"] < 0 || value["historyCount"] > 200
+				|| !value["historyTruncated"].is_boolean()) return false;
+			std::unordered_set<std::string> seen;
+			for (const auto& item : value["evidence"]) {
+				if (!HasOnlyKeys(item, { "eventId", "reason", "excerpt" }) || !IsBrainwashText(item["eventId"], 20, false)
+					|| !IsBrainwashText(item["reason"], 256) || !IsBrainwashText(item["excerpt"], 256)) return false;
+				const auto& id = item["eventId"].get_ref<const std::string&>();
+				if (id.front() < '1' || id.front() > '9' || !std::all_of(id.begin(), id.end(), [](char c) { return c >= '0' && c <= '9'; })
+					|| !seen.emplace(id).second) return false;
+			}
+			return true;
+		}
+
 		bool IsBrainwashRequestPayload(std::string_view operation, const Json& payload)
 		{
 			constexpr std::array fields{ "core", "npc_static_bio", "personality", "appearance", "occupation", "skills", "speechstyle", "goals" };
 			if (operation == "brainwash.catalog.read") {
 				if (!payload.is_object()) return false;
-				return payload.empty() || (HasOnlyKeys(payload, { "query" }) && IsBrainwashText(payload["query"], 128));
+				for (const auto& [key, _] : payload.items()) if (key != "query" && key != "nearby") return false;
+				return (!payload.contains("query") || IsBrainwashText(payload["query"], 128))
+					&& (!payload.contains("nearby") || payload["nearby"].is_boolean());
 			}
 			if (operation == "brainwash.card.read") return HasOnlyKeys(payload, { "actorKey" }) && IsBrainwashActorKey(payload["actorKey"]);
 			if (operation == "brainwash.draft") {
-				constexpr std::array allowed{ "actorKey", "expectedRevision", "operationId", "mode", "changes", "instruction", "beliefs" };
-				if (!payload.is_object() || (payload.size() != 6 && payload.size() != 7)
+				constexpr std::array allowed{ "actorKey", "expectedRevision", "operationId", "mode", "changes", "instruction", "beliefs", "authoring" };
+				if (!payload.is_object() || payload.size() < 6 || payload.size() > 8
 					|| !payload.contains("actorKey") || !payload.contains("expectedRevision") || !payload.contains("operationId")
 					|| !payload.contains("mode") || !payload.contains("changes") || !payload.contains("instruction")
 					|| !IsBrainwashActorKey(payload["actorKey"]) || !IsBrainwashRevision(payload["expectedRevision"])
@@ -328,6 +363,7 @@ namespace dql::contract
 					if (std::find(allowed.begin(), allowed.end(), key) == allowed.end()) return false;
 				}
 				if (payload.contains("beliefs") && !IsBrainwashText(payload["beliefs"], 4000)) return false;
+				if (payload.contains("authoring") && (payload["mode"] != "ai" || !IsBrainwashAuthoringInput(payload["authoring"]))) return false;
 				return !payload["changes"].empty() || payload.contains("beliefs");
 			}
 			if (operation == "brainwash.apply") {
@@ -366,7 +402,7 @@ namespace dql::contract
 
 		bool IsBrainwashDraft(const Json& data)
 		{
-			constexpr std::array allowed{ "actorKey", "scope", "revision", "draftId", "origin", "before", "changes", "beliefsBefore", "beliefs" };
+			constexpr std::array allowed{ "actorKey", "scope", "revision", "draftId", "origin", "before", "changes", "beliefsBefore", "beliefs", "authoring" };
 			if (!data.is_object() || data.size() < 7 || data.size() > allowed.size()) return false;
 			for (const auto& [key, _] : data.items()) {
 				if (std::find(allowed.begin(), allowed.end(), key) == allowed.end()) return false;
@@ -379,14 +415,24 @@ namespace dql::contract
 				|| !IsBrainwashFields(data["before"], true) || !IsBrainwashFields(data["changes"], true)) return false;
 			if (data.contains("beliefsBefore") && !IsBrainwashText(data["beliefsBefore"], 4000)) return false;
 			if (data.contains("beliefs") && !IsBrainwashText(data["beliefs"], 4000)) return false;
+			if (data.contains("authoring") && (data["origin"] != "ai" || !IsBrainwashAuthoringResult(data["authoring"]))) return false;
 			return !data["changes"].empty() || data.contains("beliefs");
 		}
 
 		bool IsBrainwashResponseData(std::string_view operation, const Json& data)
 		{
 			if (operation == "brainwash.catalog.read") {
-				if (!HasOnlyKeys(data, { "actors", "limited" }) || !data["actors"].is_array() || data["actors"].size() > 64
-					|| !data["limited"].is_boolean()) return false;
+				const bool discovery = data.is_object() && (data.contains("source") || data.contains("state") || data.contains("observedAt"));
+				if (!(discovery ? HasOnlyKeys(data, { "actors", "limited", "source", "state", "observedAt" }) : HasOnlyKeys(data, { "actors", "limited" }))
+					|| !data["actors"].is_array() || data["actors"].size() > 64 || !data["limited"].is_boolean()) return false;
+				if (discovery) {
+					if (!data["source"].is_string() || (data["source"] != "nearby" && data["source"] != "catalog")
+						|| !data["state"].is_string() || (data["state"] != "ready" && data["state"] != "empty" && data["state"] != "missing" && data["state"] != "stale" && data["state"] != "unavailable")
+						|| !(data["observedAt"].is_null() || (data["observedAt"].is_number_integer() && data["observedAt"] >= 0 && data["observedAt"] <= 9007199254740991LL))) return false;
+					if (data["state"] != "ready" && !data["actors"].empty()) return false;
+					if (data["source"] == "catalog" && (data["state"] != "ready" && data["state"] != "empty")) return false;
+				}
+
 				std::unordered_set<std::string> seen;
 				for (const auto& actor : data["actors"]) {
 					if (!HasOnlyKeys(actor, { "actorKey", "label" }) || !IsBrainwashActorKey(actor["actorKey"])

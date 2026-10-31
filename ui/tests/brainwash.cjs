@@ -150,6 +150,48 @@ async function main() {
     assert.deepEqual(invalidCatalogRequests, { results: ['INVALID_INPUT', 'INVALID_INPUT'], dispatched: 0 },
       'invalid catalog query types and UTF-8 byte overflow fail before native dispatch');
 
+    const nearbyCount = await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'brainwash.catalog.read').length);
+    await page.evaluate(() => { window.__nearbyPromise = window.__brainwashEditorSpy.request('brainwash.catalog.read', { nearby: true }).catch((error) => ({ error: error.code })); });
+    const nearbyRequest = await waitForRequest(page, 'brainwash.catalog.read', nearbyCount);
+    assert.deepEqual(nearbyRequest.payload, { nearby: true });
+    await respond(page, nearbyRequest, { actors: [{ actorKey: 'npc:42', label: 'Lydia' }], limited: false, source: 'nearby', state: 'ready', observedAt: 1793450000 });
+    assert.equal((await page.evaluate(() => window.__nearbyPromise)).state, 'ready', 'actual shell accepts nearby metadata');
+    const authoringCount = await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'brainwash.draft').length);
+    await page.evaluate(() => {
+      const fields = Object.fromEntries(['core','npc_static_bio','personality','appearance','occupation','skills','speechstyle','goals'].map((field) => [field, `Unsaved ${field}`]));
+      window.__authoringTimers = [];
+      const originalTimer = window.setTimeout;
+      window.setTimeout = (callback, delay, ...args) => { window.__authoringTimers.push(delay); return originalTimer(callback, delay, ...args); };
+      window.__authoringPromise = window.__brainwashEditorSpy.request('brainwash.draft', {
+        actorKey: 'npc:42', expectedRevision: 'a'.repeat(64), operationId: '123e4567-e89b-12d3-a456-426614174012',
+        mode: 'ai', changes: { personality: fields.personality }, instruction: 'Keep her dry humour.',
+        authoring: { workingCard: fields, conversation: [{ role: 'user', content: 'Keep her dry humour.' }], historyLimit: 200 },
+      }).catch((error) => ({ error: error.code }));
+    });
+    const authoringRequest = await waitForRequest(page, 'brainwash.draft', authoringCount);
+    assert.equal(authoringRequest.payload.authoring.workingCard.goals, 'Unsaved goals', 'unselected authored context crosses the shell unchanged');
+    assert.equal(authoringRequest.payload.authoring.historyLimit, 200);
+    assert.ok((await page.evaluate(() => window.__authoringTimers)).includes(125000), 'AI requests get bounded model wait rather than the ordinary UI timeout');
+    await respond(page, authoringRequest, {
+      actorKey: 'npc:42', scope: 'profile:1|restore:2', revision: 'a'.repeat(64), draftId: '123e4567-e89b-12d3-a456-426614174013', origin: 'ai',
+      before: { personality: 'Original' }, changes: { personality: 'Dry humour with hidden doubt.' },
+      authoring: { reply: 'Kept her voice.', evidence: [{ eventId: '12', reason: 'She agreed.', excerpt: 'Lydia agreed to help.' }], historyCount: 1, historyTruncated: false },
+    });
+    const authoringResult = await page.evaluate(() => window.__authoringPromise);
+    assert.equal(authoringResult.authoring.evidence[0].excerpt, 'Lydia agreed to help.', 'source excerpts cross the real response validator');
+    const authoringRefusals = await page.evaluate(async () => {
+      const base = window.__bridgeRequests.find((request) => request.payload.authoring).payload;
+      const before = window.__bridgeRequests.length;
+      const results = [];
+      for (const change of [payload => { payload.authoring.conversation[0].role = 'system'; }, payload => { payload.authoring.historyLimit = 201; }, payload => { payload.mode = 'manual'; }]) {
+        const payload = JSON.parse(JSON.stringify(base)); change(payload);
+        try { await window.__brainwashEditorSpy.request('brainwash.draft', payload); results.push('accepted'); }
+        catch (error) { results.push(error.code); }
+      }
+      return { results, dispatched: window.__bridgeRequests.length - before };
+    });
+    assert.deepEqual(authoringRefusals, { results: ['INVALID_INPUT','INVALID_INPUT','INVALID_INPUT'], dispatched: 0 });
+
     const beforeDeniedRead = await page.evaluate(() => window.__bridgeRequests.length);
     const deniedAttempt = await page.evaluate(async (before) => {
       let rejection = null;

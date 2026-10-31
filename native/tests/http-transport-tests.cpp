@@ -264,6 +264,38 @@ using dql::http::Route;
 		return result.get();
 	}
 
+	void TestBrainwashOperationsReachTransport()
+	{
+		for (const auto operation : { "brainwash.catalog.read", "brainwash.card.read", "brainwash.draft", "brainwash.apply", "brainwash.undo" }) {
+			LocalServer server(Response(200, "OK", "{}"));
+			std::promise<HttpResult> promise;
+			auto result = promise.get_future();
+			HttpTransport transport;
+			const bool isWrite = std::string_view(operation) != "brainwash.catalog.read" && std::string_view(operation) != "brainwash.card.read";
+			Check(transport.Submit(MakeRequest(server.BaseUrl(), operation, isWrite),
+				[&](HttpResult value) { promise.set_value(std::move(value)); }).queued, "all five MMP operations queue");
+			Check(AwaitResult(result).outcome == Outcome::completed, "all five MMP operations reach loopback transport");
+			transport.Shutdown();
+		}
+	}
+
+	void TestBrainwashWaitsForModelResponse()
+	{
+		LocalServer server(Response(200, "OK", "{}"), true);
+		std::promise<HttpResult> promise;
+		auto result = promise.get_future();
+		HttpTransport transport;
+		Check(transport.Submit(MakeRequest(server.BaseUrl(), "brainwash.draft", true),
+			[&](HttpResult value) { promise.set_value(std::move(value)); }).queued, "authoring queues");
+		Check(server.WaitForRequest(), "authoring reached its fixture");
+		std::thread release([&] { std::this_thread::sleep_for(17s); server.Release(); });
+		const auto response = AwaitResult(result, 22s);
+		release.join();
+		Check(response.outcome == Outcome::completed && response.statusCode == 200,
+			"authoring waits for a model response beyond the ordinary 15-second deadline");
+		transport.Shutdown();
+	}
+
 	void TestFixedPostAndRedirectPolicy()
 	{
 		LocalServer redirected(Response(200, "OK", "should-not-be-read"));
@@ -696,6 +728,8 @@ using dql::http::Route;
 
 int main()
 {
+	TestBrainwashOperationsReachTransport();
+	TestBrainwashWaitsForModelResponse();
 	TestFixedPostAndRedirectPolicy();
 	TestRejectsUnsafeRequestInputsBeforeNetwork();
 	TestNonLiteralHttpRequiresExactNativeDestination();

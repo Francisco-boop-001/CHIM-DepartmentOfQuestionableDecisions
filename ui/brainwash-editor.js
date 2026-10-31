@@ -35,6 +35,10 @@
       actors: [],
       actorKey: '',
       query: '',
+      nearby: true,
+      conversation: [],
+      historyLimit: 50,
+      historyEnabled: false,
       card: null,
       scope: null,
       draft: null,
@@ -64,6 +68,9 @@
       state.beliefs = '';
       state.beliefsSelected = false;
       state.instruction = '';
+      state.conversation = [];
+      state.historyEnabled = false;
+      state.historyLimit = 50;
       state.accepted = {};
       state.acceptBeliefs = false;
       state.uncertain = null;
@@ -121,7 +128,7 @@
       state.query = query;
       state.status = 'Loading NPCs…';
       try {
-        const result = await startRequest('brainwash.catalog.read', query ? { query } : {}, token);
+        const result = await startRequest('brainwash.catalog.read', query ? { query, nearby: state.nearby } : { nearby: state.nearby }, token);
         if (!result || !current(token)) return;
         state.actors = Array.isArray(result.actors) ? result.actors : [];
         const found = state.actors.some((actor) => actor.actorKey === state.actorKey);
@@ -129,7 +136,9 @@
           state.actorKey = '';
           clearActorData();
         }
-        state.status = result.limited ? 'NPC list is limited. Search by name to find more actors.' : `${state.actors.length} NPCs loaded.`;
+        state.status = state.nearby
+          ? `Nearby roster: ${result.state || 'unavailable'}. ${state.actors.length} NPCs resolved.${result.limited ? ' Some names could not be resolved uniquely.' : ''} Use All stored NPCs for explicit fallback.`
+          : (result.limited ? 'Stored list limited to 64. Search by name.' : `${state.actors.length} stored NPCs loaded.`);
         render();
         if (initial && !state.actorKey && state.actors.length > 0) {
           state.actorKey = state.actors[0].actorKey;
@@ -147,6 +156,10 @@
       const savedDraft = state.draft;
       const pendingMutation = state.uncertain;
       const previousScope = state.scope;
+      const previousCard = state.card;
+      const previousEdits = { ...state.edits };
+      const previousSelected = { ...state.selected };
+      const previousBeliefs = state.beliefs;
       state.card = null;
       state.status = 'Reading NPC…';
       render();
@@ -159,16 +172,20 @@
         state.uncertain = scopeChanged ? null : pendingMutation;
         state.draft = !scopeChanged && savedDraft && card.draftId === savedDraft.draftId ? savedDraft : null;
         state.card = card;
-        state.edits = Object.assign({}, card.fields);
-        state.selected = Object.fromEntries(FIELDS.map((field) => [field, false]));
-        state.beliefs = card.beliefs || '';
+        const preserve = !scopeChanged && previousCard && previousCard.actorKey === card.actorKey && previousCard.revision === card.revision;
+        state.edits = preserve ? previousEdits : Object.assign({}, card.fields);
+        state.selected = preserve ? previousSelected : Object.fromEntries(FIELDS.map((field) => [field, true]));
+        state.beliefs = preserve ? previousBeliefs : (card.beliefs || '');
         state.status = scopeChanged
           ? `The timeline changed. Loaded ${card.label}; previous draft and operation state were cleared.`
           : `Loaded ${card.label}.`;
         if (state.uncertain) reconcile(card);
         render();
       } catch (_) {
-        if (current(token, actorKey)) render();
+        if (current(token, actorKey)) {
+          state.card = previousCard;
+          render();
+        }
       }
     }
 
@@ -215,7 +232,7 @@
     function selectionPayload(mode) {
       const changes = {};
       for (const field of FIELDS) {
-        if (state.selected[field]) changes[field] = mode === 'ai' ? '' : (state.edits[field] || '');
+        if (state.selected[field]) changes[field] = state.edits[field] || '';
       }
       const payload = {
         actorKey: state.actorKey,
@@ -225,6 +242,7 @@
         changes,
         instruction: state.instruction,
       };
+      if (mode === 'ai') payload.authoring = { workingCard: { ...state.edits }, conversation: state.conversation.map((turn) => ({ ...turn })), historyLimit: state.historyEnabled ? state.historyLimit : 0 };
       if (state.beliefsSelected) payload.beliefs = mode === 'ai' ? '' : state.beliefs;
       return payload;
     }
@@ -236,14 +254,28 @@
         return;
       }
       const payload = selectionPayload(mode);
+      const bytes = (text) => new TextEncoder().encode(text).length;
+      if (bytes(state.instruction) > 2000 || FIELDS.some((field) => bytes(state.edits[field] || '') > 8192) || FIELDS.reduce((sum, field) => sum + bytes(state.edits[field] || ''), 0) > 20000 || bytes(state.beliefs) > 4000) {
+        setStatus('Input exceeds the UTF-8 byte limit. Shorten it explicitly; your text is retained.'); return;
+      }
+      if (mode === 'ai' && (state.conversation.length > 8 || state.conversation.some((turn) => bytes(turn.content) > 2000) || state.conversation.reduce((sum, turn) => sum + bytes(turn.content), 0) > 12000)) {
+        setStatus('Conversation exceeds the 8-turn / 2000-byte per turn / 12000-byte total limit. Edit or clear conversation explicitly.'); return;
+      }
+      if (bytes(JSON.stringify({ operation: 'brainwash.draft', payload })) > 65536) { setStatus('Request exceeds 65536 UTF-8 bytes. Shorten input explicitly; all text is retained.'); return; }
       const token = epoch;
       const actorKey = state.actorKey;
       try {
         const draft = await startRequest('brainwash.draft', payload, token, actorKey);
         if (!draft || !current(token, actorKey)) return;
         state.draft = draft;
-        state.accepted = Object.fromEntries(Object.keys(draft.changes || {}).map((field) => [field, true]));
-        state.acceptBeliefs = Object.prototype.hasOwnProperty.call(draft, 'beliefs');
+        if (mode === 'ai') {
+          for (const field of Object.keys(draft.changes || {})) state.edits[field] = draft.changes[field];
+          if (draft.authoring) {
+            state.conversation.push({ role: 'user', content: state.instruction }, { role: 'assistant', content: draft.authoring.reply });
+          }
+        }
+        state.accepted = Object.fromEntries(Object.keys(draft.changes || {}).filter((field) => draft.before?.[field] !== draft.changes[field]).map((field) => [field, true]));
+        state.acceptBeliefs = Object.prototype.hasOwnProperty.call(draft, 'beliefs') && draft.beliefsBefore !== draft.beliefs;
         state.uncertain = null;
         state.status = 'Draft ready for review. No NPC fields were changed.';
         render();
@@ -276,8 +308,8 @@
         const result = await startRequest('brainwash.apply', payload, token, actorKey);
         if (!result || !current(token, actorKey)) return;
         state.card = result.card;
-        state.edits = Object.assign({}, result.card.fields);
-        state.beliefs = result.card.beliefs;
+        for (const field of acceptedFields) state.edits[field] = result.card.fields[field];
+        if (payload.acceptBeliefs) state.beliefs = result.card.beliefs;
         state.draft = null;
         state.uncertain = null;
         state.status = 'Accepted changes were applied. The returned card is current.';
@@ -328,7 +360,9 @@
 
       const catalog = element(doc, 'section');
       catalog.className = 'brainwash-panel';
-      catalog.appendChild(element(doc, 'h2', 'NPC'));
+      catalog.appendChild(element(doc, 'h2', state.nearby ? 'Nearby NPCs' : 'All stored NPCs'));
+      button(catalog, 'Refresh nearby NPCs', () => { state.nearby = true; return loadCatalog('', false); }, !state.available || state.busy || Boolean(state.uncertain));
+      button(catalog, 'All stored NPCs', () => { state.nearby = false; return loadCatalog('', false); }, !state.available || state.busy || Boolean(state.uncertain));
       const searchLabel = element(doc, 'label', 'Search NPC names');
       const search = element(doc, 'input');
       search.type = 'search';
@@ -365,9 +399,39 @@
       page.appendChild(catalog);
 
       if (state.card) {
-        const fields = element(doc, 'section');
+        const workbench = element(doc, 'section');
+        workbench.className = 'brainwash-panel';
+        workbench.appendChild(element(doc, 'h2', `Develop ${state.card.label}`));
+        workbench.appendChild(element(doc, 'p', 'Give creative direction, develop a proposal, then refine it. All unsaved card fields are context. Only selected fields can change.'));
+        const historyCheck = element(doc, 'input');
+        historyCheck.type = 'checkbox'; historyCheck.checked = state.historyEnabled;
+        historyCheck.disabled = state.busy || Boolean(state.uncertain);
+        historyCheck.addEventListener('change', () => { state.historyEnabled = historyCheck.checked; });
+        labeled(workbench, 'Use recent relevant witnessed interactions (optional)', historyCheck);
+        const historySelect = element(doc, 'select');
+        historySelect.setAttribute('aria-label', 'Recent interaction count');
+        for (const count of [50, 100, 200]) { const option = element(doc, 'option', `Last ${count}`); option.value = String(count); option.selected = count === state.historyLimit; historySelect.appendChild(option); }
+        historySelect.disabled = state.busy || Boolean(state.uncertain);
+        historySelect.addEventListener('change', () => { state.historyLimit = Number(historySelect.value); });
+        workbench.appendChild(historySelect);
+        const conversation = element(doc, 'section');
+        conversation.appendChild(element(doc, 'h3', 'Current conversation'));
+        for (const turn of state.conversation) {
+          const text = element(doc, 'textarea'); text.value = turn.content; text.rows = 3;
+          text.setAttribute('aria-label', `${turn.role} conversation turn`);
+          text.disabled = state.busy || Boolean(state.uncertain);
+          text.addEventListener('input', () => { turn.content = text.value; });
+          labeled(conversation, turn.role, text);
+        }
+        button(conversation, 'Clear conversation', () => { state.conversation = []; render(); }, state.busy || Boolean(state.uncertain));
+        workbench.appendChild(conversation);
+        page.appendChild(workbench);
+        const fields = element(doc, 'details');
+        fields.open = false;
         fields.className = 'brainwash-panel brainwash-fields';
+        fields.appendChild(element(doc, 'summary', 'Optional manual fields and AI field selection'));
         fields.appendChild(element(doc, 'h2', `Current card: ${state.card.label}`));
+        fields.appendChild(element(doc, 'p', 'Optional manual fields — edit directly or deselect fields to preserve them during AI development.'));
         for (const field of FIELDS) {
           const group = element(doc, 'fieldset');
           const legend = element(doc, 'legend', field.replaceAll('_', ' '));
@@ -382,7 +446,6 @@
           group.appendChild(selectLabel);
           const textarea = element(doc, 'textarea');
           textarea.rows = 4;
-          textarea.maxLength = 8192;
           textarea.value = state.edits[field] || '';
           textarea.setAttribute('aria-label', `${field.replaceAll('_', ' ')} text`);
           textarea.disabled = !state.available || state.busy || Boolean(state.uncertain);
@@ -403,7 +466,6 @@
         beliefGroup.appendChild(beliefLabel);
         const beliefText = element(doc, 'textarea');
         beliefText.rows = 3;
-        beliefText.maxLength = 4000;
         beliefText.value = state.beliefs;
         beliefText.setAttribute('aria-label', 'User-authored fictional belief text');
         beliefText.disabled = !state.available || state.busy || Boolean(state.uncertain);
@@ -411,17 +473,17 @@
         beliefGroup.appendChild(beliefText);
         fields.appendChild(beliefGroup);
 
-        const instructionLabel = element(doc, 'label', 'Draft instruction (optional)');
+        const instructionLabel = element(doc, 'label', 'Creative direction / refinement instruction');
         const instruction = element(doc, 'textarea');
         instruction.rows = 3;
-        instruction.maxLength = 2000;
+        instruction.setAttribute('aria-label', 'Creative direction');
         instruction.value = state.instruction;
         instruction.disabled = !state.available || state.busy || Boolean(state.uncertain);
         instruction.addEventListener('input', () => { state.instruction = instruction.value; });
         instructionLabel.appendChild(instruction);
-        fields.appendChild(instructionLabel);
+        workbench.appendChild(instructionLabel);
         button(fields, 'Create manual draft', () => createDraft('manual'), !state.available || state.busy || Boolean(state.uncertain));
-        button(fields, 'Create AI draft', () => createDraft('ai'), !state.available || state.busy || Boolean(state.uncertain));
+        button(workbench, state.draft ? 'Refine proposal' : 'Develop card with AI', () => createDraft('ai'), !state.available || state.busy || Boolean(state.uncertain));
         page.appendChild(fields);
       }
 
@@ -429,8 +491,20 @@
         const review = element(doc, 'section');
         review.className = 'brainwash-panel';
         review.appendChild(element(doc, 'h2', 'Review draft'));
+        if (state.draft.authoring) {
+          const authoring = state.draft.authoring;
+          review.appendChild(element(doc, 'p', authoring.reply));
+          review.appendChild(element(doc, 'p', `Recorded history supplied: ${authoring.historyCount} interactions.${authoring.historyTruncated ? ' Some events or excerpts were omitted/truncated by the context bounds.' : ''}`));
+          for (const citation of authoring.evidence) {
+            review.appendChild(element(doc, 'p', `Event ${citation.eventId}: ${citation.reason}`));
+            const excerpt = element(doc, 'blockquote', citation.excerpt || ''); excerpt.className = 'brainwash-review-text'; review.appendChild(excerpt);
+          }
+        }
         review.appendChild(element(doc, 'p', `Origin: ${state.draft.origin}. Nothing is applied until you accept it.`));
-        for (const field of Object.keys(state.draft.changes || {})) {
+        const changedFields = Object.keys(state.draft.changes || {}).filter((field) => state.draft.before?.[field] !== state.draft.changes[field]);
+        const beliefsChanged = Object.prototype.hasOwnProperty.call(state.draft, 'beliefs') && state.draft.beliefsBefore !== state.draft.beliefs;
+        if (changedFields.length === 0 && !beliefsChanged) review.appendChild(element(doc, 'p', 'No field changes proposed. Refine the proposal to develop it further.'));
+        for (const field of changedFields) {
           const group = element(doc, 'fieldset');
           group.appendChild(element(doc, 'legend', field.replaceAll('_', ' ')));
           const checkLabel = element(doc, 'label', 'Accept this field');
@@ -438,7 +512,7 @@
           check.type = 'checkbox';
           check.checked = Boolean(state.accepted[field]);
           check.disabled = !state.available || state.busy || Boolean(state.uncertain);
-          check.addEventListener('change', () => { state.accepted[field] = check.checked; });
+          check.addEventListener('change', () => { state.accepted[field] = check.checked; render(); });
           checkLabel.appendChild(check);
           group.appendChild(checkLabel);
           const before = element(doc, 'p', `Before: ${state.draft.before?.[field] ?? ''}`);
@@ -449,7 +523,7 @@
           group.appendChild(after);
           review.appendChild(group);
         }
-        if (Object.prototype.hasOwnProperty.call(state.draft, 'beliefs')) {
+        if (beliefsChanged) {
           const group = element(doc, 'fieldset');
           group.appendChild(element(doc, 'legend', 'Fictional belief'));
           const checkLabel = element(doc, 'label', 'Accept this beliefs change');
@@ -457,14 +531,14 @@
           check.type = 'checkbox';
           check.checked = state.acceptBeliefs;
           check.disabled = !state.available || state.busy || Boolean(state.uncertain);
-          check.addEventListener('change', () => { state.acceptBeliefs = check.checked; });
+          check.addEventListener('change', () => { state.acceptBeliefs = check.checked; render(); });
           checkLabel.appendChild(check);
           group.appendChild(checkLabel);
           group.appendChild(element(doc, 'p', `Before: ${state.draft.beliefsBefore || ''}`));
           group.appendChild(element(doc, 'p', `Proposed: ${state.draft.beliefs}`));
           review.appendChild(group);
         }
-        button(review, 'Apply accepted changes', applyDraft, !state.available || state.busy || Boolean(state.uncertain));
+        button(review, 'Apply accepted changes', applyDraft, !state.available || state.busy || Boolean(state.uncertain) || (!Object.values(state.accepted).some(Boolean) && !state.acceptBeliefs));
         page.appendChild(review);
       }
 
@@ -490,6 +564,7 @@
       state.actors = [];
       state.actorKey = '';
       state.query = '';
+      state.nearby = true;
       clearActorData();
       state.status = 'Editor reset. Refresh to load NPCs.';
       render();
@@ -503,6 +578,7 @@
       state.actors = [];
       state.actorKey = '';
       state.query = '';
+      state.nearby = true;
       clearActorData();
       state.status = state.available ? 'Loading NPCs…' : 'Malpractice Makes Perfect is unavailable.';
       render();
