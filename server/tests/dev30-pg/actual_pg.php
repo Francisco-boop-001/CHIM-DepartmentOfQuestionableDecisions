@@ -324,6 +324,428 @@ function dev30_install_fixture_logger(string $coreRoot, string $expectedHash): s
     return $logPath;
 }
 
+function dev31_write_interaction_state(array &$ctx, bool $enabled, int $generation): string
+{
+    $path = $ctx['interactionStatePath'] ?? null;
+    if (!is_string($path) || $generation < 0 || is_link($path)
+        || realpath(dirname($path)) !== dirname($path)
+        || dirname($path) !== $ctx['coreRoot'] . DIRECTORY_SEPARATOR . 'conf' . DIRECTORY_SEPARATOR . 'chim_interaction') {
+        throw new RuntimeException('interaction_fixture_path_invalid');
+    }
+    $bytes = json_encode(['enabled' => $enabled, 'generation' => $generation], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n";
+    if (file_exists($path)) {
+        if (!is_file($path)) throw new RuntimeException('interaction_fixture_file_invalid');
+        $written = @file_put_contents($path, $bytes, LOCK_EX);
+    } else {
+        $handle = @fopen($path, 'x+b');
+        if (!is_resource($handle)) throw new RuntimeException('interaction_fixture_create_failed');
+        try {
+            $written = fwrite($handle, $bytes);
+            if (!fflush($handle)) throw new RuntimeException('interaction_fixture_write_failed');
+        } finally { fclose($handle); }
+    }
+    if (!is_int($written) || $written !== strlen($bytes)) throw new RuntimeException('interaction_fixture_write_failed');
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0
+        && (!@chown($path, 'www-data') || !@chgrp($path, 'www-data'))) throw new RuntimeException('interaction_fixture_owner_failed');
+    if (!@chmod($path, 0664) || file_get_contents($path) !== $bytes || is_link($path)) {
+        throw new RuntimeException('interaction_fixture_verification_failed');
+    }
+    $hash = strtolower((string)hash_file('sha256', $path));
+    if (preg_match('/\A[a-f0-9]{64}\z/D', $hash) !== 1) throw new RuntimeException('interaction_fixture_hash_failed');
+    $fixtureEvidence = [
+        'path' => 'conf/chim_interaction/state.json', 'enabled' => $enabled,
+        'generation' => $generation, 'bytes' => strlen($bytes), 'sha256' => $hash,
+        'provenance' => 'synthetic owned per-run scratch fixture',
+    ];
+    if (!isset($ctx['interactionFixtureInitial'])) $ctx['interactionFixtureInitial'] = $fixtureEvidence;
+    $ctx['interactionFixture'] = $fixtureEvidence;
+    $ctx['interactionStateTransitions'][] = $fixtureEvidence;
+    return $hash;
+}
+
+function dev31_prepare_responselog_generation_column(mixed $admin): void
+{
+    dev30_pg($admin, 'ALTER TABLE public.responselog ADD COLUMN IF NOT EXISTS interaction_generation BIGINT');
+    $columns = dev30_pg($admin,
+        "SELECT data_type,udt_name FROM information_schema.columns "
+            . "WHERE table_schema='public' AND table_name='responselog' AND column_name='interaction_generation'");
+    if (count($columns) !== 1 || ($columns[0]['data_type'] ?? null) !== 'bigint'
+        || ($columns[0]['udt_name'] ?? null) !== 'int8') {
+        throw new RuntimeException('interaction_generation_fixture_column_invalid');
+    }
+}
+
+function dev31_stage_interaction_helper(array &$ctx, array $input, string $sourcePath): void
+{
+    $entry = $input['files']['lib/chim_interaction.php'] ?? null;
+    $expected = is_array($entry) ? ($entry['sha256'] ?? null) : null;
+    if (($input['schemaVersion'] ?? null) !== 1 || ($input['hostCommit'] ?? null) !== null
+        || ($input['hostTree'] ?? null) !== null
+        || ($input['provenance'] ?? null) !== 'Captured core helper; no independent Git mapping was recorded.'
+        || !is_array($input['files'] ?? null) || array_keys($input['files']) !== ['lib/chim_interaction.php']
+        || !is_array($entry) || ($entry['source'] ?? null) !== 'artifacts/department-maintainer-audit-20261026/host/server-dev/lib/chim_interaction.php'
+        || !is_string($expected) || preg_match('/\A[a-f0-9]{64}\z/D', $expected) !== 1
+        || !is_string($sourcePath) || is_link($sourcePath) || !is_file($sourcePath)) {
+        throw new RuntimeException('interaction_core_input_manifest_invalid');
+    }
+    $sourceReal = realpath($sourcePath);
+    $sourceBytes = is_string($sourceReal) ? @file_get_contents($sourceReal) : false;
+    $expectedSource = $ctx['scratchRoot'] . DIRECTORY_SEPARATOR . 'inputs' . DIRECTORY_SEPARATOR . 'chim_interaction.php';
+    $sourceParent = dirname($expectedSource);
+    if ($sourcePath !== $expectedSource || is_link($sourceParent) || realpath($sourceParent) !== $sourceParent
+        || !is_string($sourceReal) || $sourceReal !== $expectedSource || !is_string($sourceBytes)
+        || strlen($sourceBytes) < 256 || strlen($sourceBytes) > 65536
+        || !hash_equals($expected, strtolower(hash('sha256', $sourceBytes)))) {
+        throw new RuntimeException('interaction_source_pin_mismatch');
+    }
+    $destination = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'chim_interaction.php';
+    if (is_link($destination) || file_exists($destination) || realpath(dirname($destination)) !== dirname($destination)) {
+        throw new RuntimeException('interaction_stage_destination_not_fresh');
+    }
+    $handle = @fopen($destination, 'x+b');
+    if (!is_resource($handle)) throw new RuntimeException('interaction_stage_create_failed');
+    try {
+        $written = fwrite($handle, $sourceBytes);
+        if (!is_int($written) || $written !== strlen($sourceBytes) || !fflush($handle)) {
+            throw new RuntimeException('interaction_stage_write_failed');
+        }
+    } finally { fclose($handle); }
+    if (!@chmod($destination, 0644) || is_link($destination) || realpath($destination) !== $destination
+        || !hash_equals($expected, strtolower((string)hash_file('sha256', $destination)))) {
+        throw new RuntimeException('interaction_stage_verification_failed');
+    }
+    $ctx['corePins']['lib/chim_interaction.php'] = $expected;
+    $ctx['interactionSourceEvidence'] = [
+        'source' => $entry['source'], 'sourcePath' => 'inputs/chim_interaction.php', 'sha256' => $expected,
+        'hostCommit' => null, 'hostTree' => null, 'destination' => 'lib/chim_interaction.php',
+        'copyMode' => 'captured bytes copied into owned scratch core; capture artifact read only',
+    ];
+}
+
+function dev31_prepare_interaction_fixture(array &$ctx, array $fixture): void
+{
+    $conf = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . 'conf';
+    $interaction = $conf . DIRECTORY_SEPARATOR . 'chim_interaction';
+    if (is_link($conf) || is_link($interaction) || (file_exists($conf) && !is_dir($conf))
+        || (file_exists($interaction) && !is_dir($interaction))) throw new RuntimeException('interaction_fixture_directory_invalid');
+    if (!is_dir($conf) && !@mkdir($conf, 0755)) throw new RuntimeException('interaction_fixture_conf_create_failed');
+    $confEntries = @scandir($conf);
+    $expectedConfEntries = is_dir($interaction) ? ['.', '..', 'chim_interaction'] : ['.', '..'];
+    if (!is_array($confEntries)) throw new RuntimeException('interaction_fixture_conf_unreadable');
+    sort($confEntries, SORT_STRING); sort($expectedConfEntries, SORT_STRING);
+    if ($confEntries !== $expectedConfEntries) throw new RuntimeException('interaction_fixture_conf_not_scratch_only');
+    if (!is_dir($interaction) && !@mkdir($interaction, 02775)) throw new RuntimeException('interaction_fixture_directory_create_failed');
+    $entries = @scandir($interaction);
+    if (!is_array($entries) || array_values(array_diff($entries, ['.', '..'])) !== []) {
+        throw new RuntimeException('interaction_fixture_directory_not_empty');
+    }
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0
+        && (!@chown($interaction, 'www-data') || !@chgrp($interaction, 'www-data'))) throw new RuntimeException('interaction_fixture_directory_owner_failed');
+    if (!@chmod($interaction, 02775) || realpath($interaction) !== $interaction) throw new RuntimeException('interaction_fixture_directory_identity_invalid');
+    $state = $fixture['initial'] ?? null;
+    if (($fixture['path'] ?? null) !== 'conf/chim_interaction/state.json'
+        || !is_array($state) || ($state['enabled'] ?? null) !== true || ($state['generation'] ?? null) !== 7
+        || ($fixture['ownership'] ?? null) !== 'synthetic state created only beneath the owned per-run scratch core'
+        || ($fixture['captureArtifactWrites'] ?? null) !== false) throw new RuntimeException('interaction_fixture_manifest_invalid');
+    $ctx['interactionStatePath'] = $interaction . DIRECTORY_SEPARATOR . 'state.json';
+    if (file_exists($ctx['interactionStatePath']) || is_link($ctx['interactionStatePath'])) throw new RuntimeException('interaction_fixture_not_fresh');
+    dev31_write_interaction_state($ctx, true, 7);
+}
+
+function dev31_interaction_trace(array &$ctx, array $child, bool $enabled, int $stateGeneration, bool $allowed): array
+{
+    $path = $child['traceFile'] ?? null;
+    if (!is_string($path) || is_link($path) || !is_file($path)) throw new RuntimeException('interaction_child_trace_missing');
+    $raw = @file_get_contents($path);
+    $trace = is_string($raw) ? json_decode($raw, true, 32) : null;
+    $evidence = is_array($trace) ? ($trace['interactionEvidence'] ?? null) : null;
+    $helperPath = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'chim_interaction.php';
+    $expectedHash = $ctx['corePins']['lib/chim_interaction.php'] ?? null;
+    if (!is_array($evidence) || !is_array($trace['includedFiles'] ?? null)
+        || ($evidence['loadedAtEntry'] ?? null) !== false || ($evidence['loadedAtShutdown'] ?? null) !== true
+        || ($evidence['helperPath'] ?? null) !== $helperPath || !is_string($expectedHash)
+        || ($evidence['helperSha256'] ?? null) !== $expectedHash
+        || !in_array($helperPath, $trace['includedFiles'], true)
+        || ($evidence['capturedGeneration'] ?? null) !== 7
+        || ($evidence['state'] ?? null) !== ['enabled' => $enabled, 'generation' => $stateGeneration]
+        || ($evidence['allowed'] ?? null) !== $allowed) throw new Dev30PgFailure('interaction_cold_boot_trace_invalid');
+    dev30_assert(true, 'interaction_cold_boot_trace_invalid');
+    $ctx['interactionChildTraces'][] = [
+        'caseId' => $child['caseId'] ?? null, 'app' => $child['app'] ?? null,
+        'sourceTraceSha256' => strtolower((string)hash_file('sha256', $path)), 'evidence' => $evidence,
+    ];
+    return $evidence;
+}
+
+function dev31_observe_native_activity(array &$ctx, mixed $admin, bool $passive): array
+{
+    dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+    $helperPath = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'chim_interaction.php';
+    if (!function_exists('chimInteractionState') || !function_exists('chimInteractionAllowed')
+        || realpath($helperPath) !== $helperPath
+        || !hash_equals($ctx['corePins']['lib/chim_interaction.php'], strtolower((string)hash_file('sha256', $helperPath)))
+        || ($GLOBALS['chim_interaction_generation'] ?? null) !== 7) {
+        throw new RuntimeException('interaction_owner_hook_helper_not_captured');
+    }
+    $hadPassive = array_key_exists('HTTP_X_CHIM_PASSIVE', $_SERVER);
+    $oldPassive = $_SERVER['HTTP_X_CHIM_PASSIVE'] ?? null;
+    if ($passive) $_SERVER['HTTP_X_CHIM_PASSIVE'] = '1';
+    else unset($_SERVER['HTTP_X_CHIM_PASSIVE']);
+    try {
+        $evidence = dev23_companion_with_owner_runtime($ctx, static function ($store) use ($passive): array {
+            $scope = $store->scope()['playthrough_id'] ?? null;
+            if ($scope !== 'unprofiled') throw new RuntimeException('interaction_fixture_scope_invalid');
+            $clock = $store->query('SELECT ts::text AS ts,gamets::text AS gamets FROM public.eventlog ORDER BY rowid DESC LIMIT 1');
+            if (count($clock) !== 1 || !is_string($clock[0]['ts'] ?? null) || !is_string($clock[0]['gamets'] ?? null)) {
+                throw new RuntimeException('interaction_native_request_clock_missing');
+            }
+            $request = [0 => 'request', 1 => $clock[0]['ts'], 2 => $clock[0]['gamets']];
+            $observed = correspondenceManualDeliveryObserveNativeRequest($request, static fn(): array => ['store' => $store]);
+            $rows = $store->query('SELECT payload::text AS payload FROM plugins.correspondence_presence WHERE playthrough_id=$1', [$scope]);
+            $payload = count($rows) === 1 && is_string($rows[0]['payload'] ?? null)
+                ? json_decode($rows[0]['payload'], true, 32, JSON_THROW_ON_ERROR) : null;
+            $activity = is_array($payload) ? ($payload['activity'] ?? null) : null;
+            $legacyManagedPresenceAbsent = is_array($payload)
+                && !array_key_exists('observed_at', $payload) && !array_key_exists('raw', $payload)
+                && !array_key_exists('anchor', $payload);
+            if (($observed['status'] ?? null) !== 'observed' || !is_array($payload)
+                || array_keys($payload) !== ['activity'] || !is_array($activity) || !$legacyManagedPresenceAbsent) {
+                throw new RuntimeException('interaction_native_activity_fixture_invalid');
+            }
+            $requestHash = hash('sha256', correspondenceCanonicalJson(['request', $clock[0]['ts'], $clock[0]['gamets']]));
+            $anchor = $activity['anchor'] ?? null;
+            $anchorValid = is_array($anchor) && $store->eventMatches($anchor)
+                && ($anchor['type'] ?? null) === 'info' && ($anchor['sess'] ?? null) === 'correspondence_v1'
+                && ($anchor['ts'] ?? null) === $clock[0]['ts'] && ($anchor['gamets'] ?? null) === $clock[0]['gamets'];
+            $receivedAt = $activity['received_at'] ?? null;
+            $activityCurrent = ($activity['playthrough_id'] ?? null) === $scope
+                && ($activity['native_type'] ?? null) === 'request'
+                && ($activity['native_ts'] ?? null) === $clock[0]['ts']
+                && ($activity['gamets'] ?? null) === $clock[0]['gamets']
+                && ($activity['request_sha256'] ?? null) === $requestHash
+                && ($activity['interaction_generation'] ?? null) === 7
+                && is_string($activity['restore_generation'] ?? null) && $activity['restore_generation'] !== ''
+                && is_int($receivedAt) && $receivedAt <= time() && time() - $receivedAt <= 45
+                && ($activity['active'] ?? null) === !$passive && $anchorValid;
+            $executor = $store->observedExecutor();
+            $nativeActivityFullyAnchoredCurrent = $activityCurrent
+                && ($passive ? $executor === null : $executor === 'The Narrator');
+            return [
+                'scope' => $scope, 'requestTs' => $clock[0]['ts'], 'gameTs' => $clock[0]['gamets'],
+                'producer' => 'correspondenceManualDeliveryObserveNativeRequest',
+                'observationStatus' => $observed['status'], 'gameplayObserved' => false,
+                'callerFreshnessProof' => 'current anchored owner native request; legacy managed presence absent',
+                'legacyManagedPresenceAbsent' => $legacyManagedPresenceAbsent,
+                'nativeActivityFullyAnchoredCurrent' => $nativeActivityFullyAnchoredCurrent,
+                'passiveProbe' => $passive, 'active' => $activity['active'] ?? null,
+                'interactionGeneration' => $activity['interaction_generation'] ?? null,
+                'nearbyActorReport' => false, 'nearbyActorCount' => 0,
+                'managedExecutorObservation' => false, 'legacyNpcFallback' => false,
+                'executor' => $executor,
+            ];
+        });
+        $expectedExecutor = $passive ? null : 'The Narrator';
+        if (($evidence['executor'] ?? null) !== $expectedExecutor || ($evidence['active'] ?? null) !== !$passive
+            || ($evidence['interactionGeneration'] ?? null) !== 7
+            || ($evidence['legacyManagedPresenceAbsent'] ?? null) !== true
+            || ($evidence['nativeActivityFullyAnchoredCurrent'] ?? null) !== true
+            || ($evidence['nearbyActorCount'] ?? null) !== 0 || ($evidence['managedExecutorObservation'] ?? null) !== false) {
+            throw new Dev30PgFailure('interaction_owner_observation_invalid');
+        }
+        $ctx['nativeActivityFixtures'][] = $evidence;
+        return $evidence;
+    } finally {
+        if ($hadPassive) $_SERVER['HTTP_X_CHIM_PASSIVE'] = $oldPassive;
+        else unset($_SERVER['HTTP_X_CHIM_PASSIVE']);
+    }
+}
+
+function dev31_compose_saved_500(array &$ctx, mixed $admin, string $caseId): array
+{
+    $requestId = dev30_uuid();
+    $compose = dev30_api($ctx, $caseId, 'correspondence.compose', [
+        'operationId' => $requestId, 'writerActorKey' => 'player', 'signatureActorKey' => 'player',
+        'recipientActorKey' => 'npc:900003', 'body' => 'A synthetic saved letter carrying five hundred gold.',
+        'inventoryRevision' => 'dev31-zero-nearby-npc-500-gold', 'attachments' => [], 'goldAmount' => 500,
+    ], ['operationRequestId' => $requestId, 'authScopes' => ['compose']]);
+    $response = dev30_response($compose);
+    $document = dev30_document($admin, $requestId);
+    $gold = array_values(array_filter($document['payload']['attachments'] ?? [], static fn(array $item): bool => ($item['kind'] ?? null) === 'gold'));
+    dev30_assert(($response['ok'] ?? null) === true && ($response['data']['operationId'] ?? null) === $requestId
+        && ($response['data']['state'] ?? null) === 'queued' && ($response['data']['canResume'] ?? null) === true
+        && ($document['payload']['playthrough_id'] ?? null) === 'unprofiled'
+        && count($gold) === 1 && ($gold[0]['quantity'] ?? null) === 500,
+        'saved_500_gold_letter_not_queued_in_ordinary_chim_scope');
+    dev30_assert(dev30_delivery_counts($admin, $document['id']) === ['documents' => 1, 'operations' => 0, 'commands' => 0],
+        'saved_500_gold_letter_dispatched_before_explicit_resume');
+    return ['documentId' => $document['id'], 'requestId' => $requestId, 'payload' => $document['payload']];
+}
+
+function dev31_queued_letter_with_activity(array &$ctx, mixed $admin, string $caseId, bool $passive = false): array
+{
+    dev31_write_interaction_state($ctx, true, 7);
+    dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+    dev30_seed_case_clock($admin);
+    $letter = dev31_compose_saved_500($ctx, $admin, $caseId . '_compose');
+    $observation = dev31_observe_native_activity($ctx, $admin, $passive);
+    return ['letter' => $letter, 'observation' => $observation];
+}
+
+function dev31_assert_unchanged_queued_letter(mixed $admin, array $letter, array $before): void
+{
+    dev30_assert($before === dev30_delivery_counts($admin, $letter['documentId'])
+        && $before === ['documents' => 1, 'operations' => 0, 'commands' => 0], 'native_refusal_mutated_saved_letter_or_created_operation');
+    $document = dev30_document($admin, $letter['requestId']);
+    $gold = array_values(array_filter($document['payload']['attachments'] ?? [], static fn(array $item): bool => ($item['kind'] ?? null) === 'gold'));
+    dev30_assert($document['id'] === $letter['documentId'] && ($document['payload']['operation_id'] ?? null) === null
+        && $document['payload'] === ($letter['payload'] ?? null)
+        && count($gold) === 1 && ($gold[0]['quantity'] ?? null) === 500, 'native_refusal_changed_saved_500_document');
+}
+
+function dev31_assert_executor_unavailable_response(array $result, array $letter): array
+{
+    $response = dev30_response($result);
+    dev30_assert(($response['ok'] ?? null) === true && ($response['data']['state'] ?? null) === 'queued'
+        && ($response['data']['queuedReason'] ?? null) === 'executor_unavailable'
+        && ($response['data']['canResume'] ?? null) === true
+        && ($response['data']['operationId'] ?? null) === $letter['requestId'],
+        'native_context_refusal_not_executor_unavailable');
+    return $response;
+}
+
+function dev31_restore_preflight_trace(array &$ctx, array $child, string $variant): array
+{
+    $path = $child['traceFile'] ?? null;
+    if (!is_string($path) || is_link($path) || !is_file($path)) throw new RuntimeException('interaction_child_trace_missing');
+    $raw = @file_get_contents($path);
+    $trace = is_string($raw) ? json_decode($raw, true, 32) : null;
+    $evidence = is_array($trace) ? ($trace['interactionEvidence'] ?? null) : null;
+    $helperPath = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'chim_interaction.php';
+    $expectedHash = $ctx['corePins']['lib/chim_interaction.php'] ?? null;
+    if (!is_array($evidence) || !is_array($trace['includedFiles'] ?? null)
+        || ($evidence['loadedAtEntry'] ?? null) !== false || ($evidence['helperPath'] ?? null) !== $helperPath
+        || !is_string($expectedHash) || ($evidence['helperSha256'] ?? null) !== $expectedHash) {
+        throw new Dev30PgFailure('restore_preflight_trace_invalid');
+    }
+    $loaded = ($evidence['loadedAtShutdown'] ?? null) === true;
+    if (($loaded && !in_array($helperPath, $trace['includedFiles'], true))
+        || (!$loaded && in_array($helperPath, $trace['includedFiles'], true))) {
+        throw new Dev30PgFailure('restore_preflight_helper_boundary_invalid');
+    }
+    $boundary = $loaded ? 'owner_bootstrap_entered_before_restore_refusal' : 'adapter_restore_preflight_before_owner_bootstrap';
+    $record = [
+        'caseId' => $child['caseId'] ?? null, 'variant' => $variant, 'boundary' => $boundary,
+        'sourceTraceSha256' => strtolower((string)hash_file('sha256', $path)), 'evidence' => $evidence,
+    ];
+    $ctx['interactionChildTraces'][] = $record;
+    return $record;
+}
+
+function dev31_assert_expired_activity_anchor(mixed $admin, int $minimumAge): array
+{
+    $rows = dev30_pg($admin,
+        'SELECT payload::text AS payload FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+    if (count($rows) !== 1 || !is_string($rows[0]['payload'] ?? null)) throw new RuntimeException('expired_native_activity_missing');
+    $payload = json_decode($rows[0]['payload'], true, 32, JSON_THROW_ON_ERROR);
+    $activity = is_array($payload) ? ($payload['activity'] ?? null) : null;
+    $anchor = is_array($activity) ? ($activity['anchor'] ?? null) : null;
+    $receivedAt = is_array($activity) ? ($activity['received_at'] ?? null) : null;
+    if (!is_array($payload) || array_keys($payload) !== ['activity'] || !is_array($activity) || !is_array($anchor)
+        || ($activity['active'] ?? null) !== true || ($activity['interaction_generation'] ?? null) !== 7
+        || !is_int($receivedAt) || time() - $receivedAt < $minimumAge
+        || ($anchor['type'] ?? null) !== 'info' || ($anchor['sess'] ?? null) !== 'correspondence_v1') {
+        throw new Dev30PgFailure('expired_native_activity_fixture_invalid');
+    }
+    $eventRows = dev30_pg($admin,
+        'SELECT rowid::text AS rowid,ts::text AS ts,gamets::text AS gamets,type,data,sess,localts::text AS localts,people '
+            . 'FROM public.eventlog WHERE rowid=$1::bigint', [(string)($anchor['rowid'] ?? '')]);
+    if (count($eventRows) !== 1) throw new Dev30PgFailure('expired_activity_anchor_event_missing');
+    $event = $eventRows[0];
+    $expectedFields = array_intersect_key($activity, array_flip([
+        'playthrough_id','native_type','native_ts','gamets','request_sha256','interaction_generation',
+        'restore_generation','received_at','active',
+    ]));
+    $expectedData = ['kind' => 'manual_delivery_activity'] + $expectedFields;
+    $anchorData = json_decode((string)($event['data'] ?? ''), true, 16, JSON_THROW_ON_ERROR);
+    if (!is_array($anchorData)) throw new Dev30PgFailure('expired_activity_anchor_data_invalid');
+    ksort($anchorData, SORT_STRING); ksort($expectedData, SORT_STRING);
+    if ((string)($event['rowid'] ?? '') !== (string)($anchor['rowid'] ?? '')
+        || ($event['ts'] ?? null) !== ($anchor['ts'] ?? null) || ($event['gamets'] ?? null) !== ($anchor['gamets'] ?? null)
+        || ($event['type'] ?? null) !== ($anchor['type'] ?? null) || ($event['data'] ?? null) !== ($anchor['data'] ?? null)
+        || ($event['sess'] ?? null) !== ($anchor['sess'] ?? null) || ($event['localts'] ?? null) !== ($anchor['localts'] ?? null)
+        || ($event['people'] ?? null) !== ($anchor['people'] ?? null) || $anchorData !== $expectedData) {
+        throw new Dev30PgFailure('expired_activity_anchor_changed');
+    }
+    return [
+        'requestedWaitSeconds' => $minimumAge, 'observedAgeSeconds' => time() - $receivedAt,
+        'activityGeneration' => 7, 'activityActive' => true, 'anchorRowId' => (string)$anchor['rowid'],
+        'anchorDataSha256' => strtolower(hash('sha256', (string)$event['data'])),
+        'anchorMatchesUnmodifiedActivity' => true,
+    ];
+}
+
+function dev31_assert_dispatch_generation(mixed $admin, string $documentId, array &$ctx): void
+{
+    $delivery = dev30_pg($admin,
+        "SELECT action,text,interaction_generation::text AS interaction_generation FROM public.responselog "
+            . "WHERE action='command' AND text LIKE '%ExtCmdCHIMCorrespondenceBridge_Deliver@%' AND text LIKE $1",
+        ['%' . $documentId . '%']);
+    dev30_assert(count($delivery) === 1 && ($delivery[0]['interaction_generation'] ?? null) === '7',
+        'cold_resume_delivery_generation_not_seven');
+    $renderer = dev30_pg($admin,
+        "SELECT action,text,interaction_generation::text AS interaction_generation FROM public.responselog "
+            . "WHERE action='rolecommand' AND text=$1", ['generateLetter@letter ' . $documentId]);
+    if ($renderer !== []) {
+        dev30_assert(count($renderer) === 1 && ($renderer[0]['interaction_generation'] ?? null) === '7',
+            'cold_resume_renderer_generation_not_seven');
+    }
+    $ctx['nativeDispatchGenerationChecks'][] = [
+        'documentId' => $documentId, 'deliveryRows' => count($delivery), 'deliveryGeneration' => '7',
+        'rendererRows' => count($renderer), 'rendererGeneration' => $renderer === [] ? null : '7',
+    ];
+}
+
+function dev31_release_interaction_barrier(string $path): void
+{
+    if (is_link($path) || file_exists($path)) throw new RuntimeException('interaction_release_not_fresh');
+    $handle = @fopen($path, 'x+b');
+    if (!is_resource($handle)) throw new RuntimeException('interaction_release_create_failed');
+    try {
+        if (fwrite($handle, "continue\n") !== 9 || !fflush($handle)) throw new RuntimeException('interaction_release_write_failed');
+    } finally { fclose($handle); }
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0
+        && (!@chown($path, 'www-data') || !@chgrp($path, 'www-data'))) throw new RuntimeException('interaction_release_owner_failed');
+    if (!@chmod($path, 0660)) throw new RuntimeException('interaction_release_mode_failed');
+}
+
+function dev31_generation_change_api(array &$ctx, string $caseId, string $requestId, string $attemptId, bool $enabled, int $generation): array
+{
+    $offset = @filesize($ctx['pgLogPath']);
+    if (!is_int($offset)) throw new RuntimeException('postgres_log_unreadable');
+    $script = $ctx['dev31TestRoot'] . DIRECTORY_SEPARATOR . 'generation_change_driver.php';
+    $child = dev30_start_child($ctx, $caseId, $script, [], null, 'correspondence.resume',
+        ['operationId' => $requestId, 'attemptId' => $attemptId], ['operationRequestId' => $attemptId, 'authScopes' => ['compose']]);
+    $ready = $child['traceFile'] . '.interaction-captured';
+    $release = $child['traceFile'] . '.interaction-release';
+    $deadline = microtime(true) + 45;
+    while (!is_file($ready)) {
+        if (is_link($ready) || microtime(true) >= $deadline) {
+            dev31_release_interaction_barrier($release);
+            try { dev30_finish_child($ctx, $child); } catch (Throwable) {}
+            throw new Dev30PgFailure('interaction_capture_barrier_timeout');
+        }
+        usleep(10000);
+    }
+    if (is_link($ready) || file_get_contents($ready) !== "captured-generation-7\n") {
+        dev31_release_interaction_barrier($release);
+        try { dev30_finish_child($ctx, $child); } catch (Throwable) {}
+        throw new RuntimeException('interaction_capture_barrier_invalid');
+    }
+    dev31_write_interaction_state($ctx, $enabled, $generation);
+    dev31_release_interaction_barrier($release);
+    return dev30_api_result($ctx, 'correspondence.resume', $offset, dev30_finish_child($ctx, $child));
+}
+
 function dev30_document(mixed $admin, string $requestId): array
 {
     $rows = dev30_pg($admin,
@@ -343,6 +765,19 @@ function dev30_trace_helper(array $ctx): array
 <?php
 $trace = getenv('QD_SOURCE_TRACE_FILE');
 $markerPath = getenv('QD_DEV20_FIXTURE_MARKER');
+$coreRoot = getenv('QD_CHIM_ROOT');
+$expectedInteractionHash = getenv('QD_DEV31_INTERACTION_SHA256');
+$interactionLoadedAtEntry = function_exists('chimInteractionState');
+$interactionHelperPath = is_string($coreRoot) ? $coreRoot . '/lib/chim_interaction.php' : '';
+$interactionActualHash = $interactionHelperPath !== '' && !is_link($interactionHelperPath) && is_file($interactionHelperPath)
+    ? @hash_file('sha256', $interactionHelperPath) : false;
+$interactionPathValid = $interactionHelperPath !== '' && realpath($interactionHelperPath) === $interactionHelperPath;
+if ($expectedInteractionHash !== false && (!is_string($expectedInteractionHash)
+    || preg_match('/\A[a-f0-9]{64}\z/D', $expectedInteractionHash) !== 1
+    || !is_string($interactionActualHash) || !hash_equals($expectedInteractionHash, strtolower($interactionActualHash))
+    || !$interactionPathValid)) {
+    throw new RuntimeException('child_interaction_helper_boundary_invalid');
+}
 $markerRaw = is_string($markerPath) && $markerPath !== '' ? @file_get_contents($markerPath) : false;
 $marker = is_string($markerRaw) ? json_decode($markerRaw, true, 8) : null;
 $networkNamespace = @readlink('/proc/self/ns/net');
@@ -392,10 +827,33 @@ $networkEvidence = [
     'ipv6RouteSha256' => is_string($ipv6Routes) ? hash('sha256', $ipv6Routes) : null,
 ];
 if (is_string($trace) && $trace !== '') {
-    register_shutdown_function(static function () use ($trace, $networkEvidence): void {
+    register_shutdown_function(static function () use ($trace, $networkEvidence, $coreRoot, $expectedInteractionHash,
+        $interactionLoadedAtEntry, $interactionHelperPath, $interactionActualHash, $interactionPathValid): void {
         $files = get_included_files();
         sort($files, SORT_STRING);
-        file_put_contents($trace, json_encode(['includedFiles' => $files, 'networkEvidence' => $networkEvidence], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), LOCK_EX);
+        $traceData = ['includedFiles' => $files, 'networkEvidence' => $networkEvidence];
+        if (is_string($expectedInteractionHash)) {
+            $loadedAtShutdown = function_exists('chimInteractionState');
+            $capturedGeneration = $GLOBALS['chim_interaction_generation'] ?? null;
+            $interactionState = null;
+            $interactionAllowed = null;
+            if ($loadedAtShutdown) {
+                try { $interactionState = chimInteractionState(); } catch (Throwable) {}
+                if (is_int($capturedGeneration)) {
+                    try { $interactionAllowed = chimInteractionAllowed(); } catch (Throwable) {}
+                }
+            }
+            $traceData['interactionEvidence'] = [
+                'loadedAtEntry' => $interactionLoadedAtEntry,
+                'loadedAtShutdown' => $loadedAtShutdown,
+                'helperPath' => $interactionPathValid ? $interactionHelperPath : null,
+                'helperSha256' => is_string($interactionActualHash) ? strtolower($interactionActualHash) : null,
+                'capturedGeneration' => $capturedGeneration,
+                'state' => $interactionState,
+                'allowed' => $interactionAllowed,
+            ];
+        }
+        file_put_contents($trace, json_encode($traceData, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR), LOCK_EX);
     });
 }
 if (!is_array($marker) || !is_string($networkNamespace) || $networkNamespace !== ($marker['networkNamespace'] ?? null)
@@ -408,7 +866,6 @@ if (!is_array($marker) || !is_string($networkNamespace) || $networkNamespace !==
     || !is_string($expectedIpv6Hash) || !hash_equals($expectedIpv6Hash, hash('sha256', $ipv6Routes))) {
     throw new RuntimeException('child_network_boundary_invalid');
 }
-$coreRoot = getenv('QD_CHIM_ROOT');
 $expectedLoggerHash = getenv('QD_DEV30_LOGGER_SHA256');
 $loggerPath = is_string($coreRoot) ? $coreRoot . '/lib/logger.php' : '';
 $customLogPath = getenv('QD_DEV30_CUSTOM_LOG');
@@ -453,7 +910,9 @@ function dev30_child_php_args(string $php, string $traceHelper): array
 
 function dev30_start_child(array $ctx, string $caseId, string $script, array $scriptArgs = [], ?string $stdin = null, ?string $apiOperation = null, array $apiPayload = [], array $apiOptions = []): array
 {
-    $testRoot = $apiOperation === null ? $ctx['legacyTestRoot'] : $ctx['legacyTestRoot'];
+    $testRoot = $ctx['legacyTestRoot'];
+    $dev31Driver = ($ctx['dev31TestRoot'] ?? '') . DIRECTORY_SEPARATOR . 'generation_change_driver.php';
+    if (($ctx['suite'] ?? 'dev30') === 'dev31' && realpath($script) === $dev31Driver) $testRoot = $ctx['dev31TestRoot'];
     $script = dev30_require_file($script, $testRoot);
     $app = 'dev30-' . substr(hash('sha256', $ctx['runId'] . ':' . $caseId . ':' . bin2hex(random_bytes(6))), 0, 20);
     $traceFile = $ctx['trace']['directory'] . DIRECTORY_SEPARATOR . $app . '.json';
@@ -468,6 +927,9 @@ function dev30_start_child(array $ctx, string $caseId, string $script, array $sc
         'QD_DEV30_CUSTOM_LOG' => $ctx['fixtureLogPath'],
         'QD_SOURCE_TRACE_FILE' => $traceFile, 'PGAPPNAME' => $app,
     ];
+    if (($ctx['suite'] ?? 'dev30') === 'dev31') {
+        $env['QD_DEV31_INTERACTION_SHA256'] = $ctx['corePins']['lib/chim_interaction.php'];
+    }
     $runuser = $ctx['runuser'];
     $command = [$runuser, '-u', 'www-data', '--', '/usr/bin/env', '-i'];
     foreach ($env as $name => $value) $command[] = $name . '=' . $value;
@@ -563,6 +1025,9 @@ function dev30_finish_child(array &$ctx, array $child): array
         'networkEvidence' => $childNetwork,
         'stdoutSha256' => hash('sha256', $stdout), 'stderrSha256' => hash('sha256', $stderr),
     ];
+    if (is_array($trace['interactionEvidence'] ?? null)) {
+        $ctx['processes'][array_key_last($ctx['processes'])]['interactionEvidence'] = $trace['interactionEvidence'];
+    }
     $childFlags = preg_match('/\A0x([a-f0-9]+)\z/iD', (string)($childNetwork['loopbackFlags'] ?? ''), $childFlagMatch) === 1
         ? (int)hexdec($childFlagMatch[1]) : 0;
     if (($childNetwork['namespaceMatchesMarker'] ?? null) !== true
@@ -1204,7 +1669,7 @@ $required = [
     'run-id','source-commit','source-binding','owner-binding','artifact-dir','core-root','server-root','owner-root',
     'scratch-root','fixture-marker','pg-socket','pg-port','pg-database','pg-admin-role','pg-app-role','pg-log-path','php',
 ];
-$options = getopt('', array_merge(array_map(static fn(string $key): string => $key . ':', $required), ['cases:']));
+$options = getopt('', array_merge(array_map(static fn(string $key): string => $key . ':', $required), ['cases:','suite:','interaction-source:']));
 $ctx = ['processes' => []];
 $cases = [];
 $status = 'failed';
@@ -1217,8 +1682,16 @@ $admin = null;
 $failure = null;
 $selectedCaseIds = null;
 $expectedCaseCount = null;
+$suite = 'dev30';
 try {
     foreach ($required as $key) if (!is_array($options) || !is_string($options[$key] ?? null) || $options[$key] === '') throw new RuntimeException('argument_' . str_replace('-', '_', $key) . '_required');
+    if (array_key_exists('suite', $options) && !is_string($options['suite'])) throw new RuntimeException('suite_invalid');
+    $suite = is_string($options['suite'] ?? null) ? $options['suite'] : 'dev30';
+    if (!in_array($suite, ['dev30','dev31'], true)) throw new RuntimeException('suite_invalid');
+    if ($suite === 'dev31' && (!is_string($options['cases'] ?? null) || $options['cases'] === ''
+        || !is_string($options['interaction-source'] ?? null) || $options['interaction-source'] === '')) {
+        throw new RuntimeException('dev31_explicit_cases_and_interaction_source_required');
+    }
     $runId = (string)$options['run-id'];
     if (preg_match('/\A[0-9]{8}T[0-9]{6}Z-[a-f0-9]{8}\z/D', $runId) !== 1
         || preg_match('/\A[0-9a-f]{40}\z/D', (string)$options['source-commit']) !== 1) throw new RuntimeException('run_identity_invalid');
@@ -1235,6 +1708,7 @@ try {
             || count(array_unique($selectedCaseIds)) !== count($selectedCaseIds)) throw new RuntimeException('case_filter_invalid');
     }
 
+    $ctx['suite'] = $suite;
     $ctx['runId'] = $runId;
     $ctx['sourceCommit'] = (string)$options['source-commit'];
     $ctx['scratchRoot'] = realpath((string)$options['scratch-root']) ?: '';
@@ -1248,7 +1722,9 @@ try {
     $ctx['pgLogPath'] = (string)$options['pg-log-path'];
     $ctx['php'] = realpath((string)$options['php']) ?: (string)$options['php'];
     $ctx['artifactDir'] = realpath((string)$options['artifact-dir']) ?: '';
+    $ctx['interactionSourcePath'] = is_string($options['interaction-source'] ?? null) ? $options['interaction-source'] : '';
     $ctx['legacyTestRoot'] = $ctx['serverRoot'] . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'dev23-pg';
+    $ctx['dev31TestRoot'] = $ctx['serverRoot'] . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'dev31-pg';
     if ($ctx['scratchRoot'] !== '/var/tmp/department-dev23-' . $runId
         || $ctx['coreRoot'] !== $ctx['scratchRoot'] . '/stage/core'
         || $ctx['serverRoot'] !== $ctx['coreRoot'] . '/ext/questionable_decisions'
@@ -1258,7 +1734,8 @@ try {
         || is_link((string)$options['pg-socket']) || !is_dir($ctx['pgSocket'])
         || $ctx['fixtureMarker'] !== $ctx['scratchRoot'] . '/fixture-marker.json'
         || is_link($ctx['fixtureMarker']) || !is_file($ctx['fixtureMarker']) || !is_file($ctx['pgLogPath'])
-        || !is_file($ctx['php']) || !is_dir($ctx['legacyTestRoot'])) throw new RuntimeException('staged_fixture_identity_invalid');
+        || !is_file($ctx['php']) || !is_dir($ctx['legacyTestRoot'])
+        || ($suite === 'dev31' && !is_dir($ctx['dev31TestRoot']))) throw new RuntimeException('staged_fixture_identity_invalid');
     if (!is_dir($ctx['artifactDir']) || is_link($ctx['artifactDir'])) throw new RuntimeException('artifact_directory_invalid');
     dev30_require_file($ctx['sourceBindingPath'], $ctx['scratchRoot']);
     dev30_require_file($ctx['ownerBindingPath'], $ctx['scratchRoot']);
@@ -1273,16 +1750,27 @@ try {
     $ctx['networkEvidence'] = dev30_loopback_preflight($fixtureIdentity);
     $networkVerified = true;
 
-    $caseManifestPath = $ctx['serverRoot'] . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'dev30-pg' . DIRECTORY_SEPARATOR . 'cases.json';
+    $caseManifestPath = $ctx['serverRoot'] . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR
+        . ($suite === 'dev31' ? 'dev31-pg' : 'dev30-pg') . DIRECTORY_SEPARATOR . 'cases.json';
     $caseRaw = @file_get_contents($caseManifestPath);
     $caseManifest = is_string($caseRaw) ? json_decode($caseRaw, true, 32) : null;
-    if (!is_array($caseManifest) || ($caseManifest['schemaVersion'] ?? null) !== 1
-        || ($caseManifest['kind'] ?? null) !== 'department-dev30-actual-pg-cases'
-        || ($caseManifest['ownerVersion'] ?? null) !== '0.1.0-dev.30'
-        || ($caseManifest['ownerCommit'] ?? null) !== '1eb58d999698002f8aeaa05b21464f7608717794'
-        || count($caseManifest['cases'] ?? []) !== 22 || count($caseManifest['sourceFiles'] ?? []) !== 22) throw new RuntimeException('case_manifest_invalid');
+    $manifestContract = $suite === 'dev31'
+        ? is_array($caseManifest) && ($caseManifest['schemaVersion'] ?? null) === 1
+            && ($caseManifest['kind'] ?? null) === 'department-dev31-actual-pg-cases'
+            && ($caseManifest['ownerVersion'] ?? null) === '0.1.0-dev.31'
+            && ($caseManifest['ownerCommit'] ?? null) === 'e393bd5f9a1cd31a8d8d006a4356faddc9eb3212'
+            && ($caseManifest['ownerClosureFiles'] ?? null) === 21
+            && is_array($caseManifest['cases'] ?? null) && count($caseManifest['cases']) === 11
+            && is_array($caseManifest['sourceFiles'] ?? null) && count($caseManifest['sourceFiles']) === 25
+            && count(array_unique($caseManifest['sourceFiles'])) === 25
+        : is_array($caseManifest) && ($caseManifest['schemaVersion'] ?? null) === 1
+            && ($caseManifest['kind'] ?? null) === 'department-dev30-actual-pg-cases'
+            && ($caseManifest['ownerVersion'] ?? null) === '0.1.0-dev.30'
+            && ($caseManifest['ownerCommit'] ?? null) === '1eb58d999698002f8aeaa05b21464f7608717794'
+            && count($caseManifest['cases'] ?? []) === 22 && count($caseManifest['sourceFiles'] ?? []) === 22;
+    if (!$manifestContract) throw new RuntimeException('case_manifest_invalid');
     $caseIds = array_column($caseManifest['cases'], 'id');
-    if ($caseIds !== [
+    $dev30CaseIds = [
         'adapter.unavailable_player_read_recovery','adapter.manual_compose_scheduler_no_dispatch','adapter.request_id_repeat_no_resend',
         'adapter.unknown_partial_reconcile_no_resend','adapter.forwarded_utf8_detail_roundtrip','adapter.restore_pending_refusal_recovery',
         'adapter.resume_manual_readonly_and_retry','adapter.resume_guard_refusals','adapter.resume_concurrent_attempts','adapter.resume_reason_projection',
@@ -1290,10 +1778,29 @@ try {
         'owner.bgl_unreadable_defer_recover','owner.player_unavailable_defer_recover','owner.form_identity_unavailable_defer_recover',
         'owner.player_identity_mismatch_cancel','owner.actor_identity_mismatch_cancel','owner.form_identity_mismatch_cancel',
         'owner.explicit_optout_cancel','owner.confirmed_dead_cancel','owner.episode_change_cancel','owner.restore_epoch_change_reject',
-    ]) throw new RuntimeException('case_inventory_invalid');
+    ];
+    $dev31CaseIds = [
+        'adapter.request_id_repeat_no_resend','adapter.unknown_partial_reconcile_no_resend',
+        'adapter.forwarded_utf8_detail_roundtrip','adapter.restore_pending_refusal_recovery',
+        'adapter.resume_manual_readonly_and_retry','adapter.resume_guard_refusals','adapter.resume_concurrent_attempts',
+        'adapter.pending_limited_and_failure','adapter.resume_cold_boot_zero_nearby_npc_saved_500_exact_once',
+        'adapter.resume_cold_boot_zero_nearby_npc_saved_500_concurrent_once','adapter.resume_native_context_refusals_no_operation',
+    ];
+    $manifestExpectedIds = $suite === 'dev31' ? $dev31CaseIds : $dev30CaseIds;
+    if ($caseIds !== $manifestExpectedIds) throw new RuntimeException('case_inventory_invalid');
     if ($selectedCaseIds !== null && array_diff($selectedCaseIds, $caseIds) !== []) throw new RuntimeException('case_filter_invalid');
-    $expectedCaseCount = count($selectedCaseIds ?? $caseIds);
+    if ($suite === 'dev31') {
+        $requiredSelectedCases = $caseManifest['requiredSelectedCases'] ?? null;
+        $actualSelection = $selectedCaseIds;
+        if (!is_array($requiredSelectedCases) || $requiredSelectedCases !== $dev31CaseIds || !is_array($actualSelection)) {
+            throw new RuntimeException('dev31_case_selection_invalid');
+        }
+        $sortedSelection = $actualSelection; $sortedRequired = $requiredSelectedCases;
+        sort($sortedSelection, SORT_STRING); sort($sortedRequired, SORT_STRING);
+        if ($sortedSelection !== $sortedRequired) throw new RuntimeException('dev31_case_selection_invalid');
+    }
     $expectedCaseIds = $selectedCaseIds ?? $caseIds;
+    $expectedCaseCount = count($expectedCaseIds);
     $GLOBALS['dev30_selected_cases'] = $selectedCaseIds;
     $sourceBindingRaw = @file_get_contents($ctx['sourceBindingPath']);
     $sourceBinding = is_string($sourceBindingRaw) ? json_decode($sourceBindingRaw, true, 32) : null;
@@ -1308,10 +1815,30 @@ try {
 
     $ownerRaw = @file_get_contents($ctx['ownerBindingPath']);
     $ownerBinding = is_string($ownerRaw) ? json_decode($ownerRaw, true, 32) : null;
+    $expectedOwnerVersion = $suite === 'dev31' ? '0.1.0-dev.31' : '0.1.0-dev.30';
+    $expectedOwnerCommit = $suite === 'dev31'
+        ? 'e393bd5f9a1cd31a8d8d006a4356faddc9eb3212' : '1eb58d999698002f8aeaa05b21464f7608717794';
+    $expectedOwnerPinCount = $suite === 'dev31' ? 21 : 20;
     if (!is_array($ownerBinding) || ($ownerBinding['schemaVersion'] ?? null) !== 1
-        || ($ownerBinding['ownerVersion'] ?? null) !== '0.1.0-dev.30'
-        || ($ownerBinding['ownerCommit'] ?? null) !== '1eb58d999698002f8aeaa05b21464f7608717794'
-        || !is_array($ownerBinding['ownerClosurePins'] ?? null) || count($ownerBinding['ownerClosurePins']) !== 20) throw new RuntimeException('owner_binding_invalid');
+        || ($ownerBinding['ownerVersion'] ?? null) !== $expectedOwnerVersion
+        || ($ownerBinding['ownerCommit'] ?? null) !== $expectedOwnerCommit
+        || !is_array($ownerBinding['ownerClosurePins'] ?? null) || count($ownerBinding['ownerClosurePins']) !== $expectedOwnerPinCount) throw new RuntimeException('owner_binding_invalid');
+    if ($suite === 'dev31') {
+        $ownerPinsPath = $ctx['dev31TestRoot'] . DIRECTORY_SEPARATOR . 'owner-pins.json';
+        dev30_require_file($ownerPinsPath, $ctx['serverRoot']);
+        $ownerPinsRaw = @file_get_contents($ownerPinsPath);
+        $ownerPinsManifest = is_string($ownerPinsRaw) ? json_decode($ownerPinsRaw, true, 32) : null;
+        if (!is_array($ownerPinsManifest) || ($ownerPinsManifest['schemaVersion'] ?? null) !== 1
+            || ($ownerPinsManifest['ownerVersion'] ?? null) !== $expectedOwnerVersion
+            || ($ownerPinsManifest['ownerCommit'] ?? null) !== $expectedOwnerCommit
+            || !is_array($ownerPinsManifest['ownerClosurePins'] ?? null) || count($ownerPinsManifest['ownerClosurePins']) !== $expectedOwnerPinCount) {
+            throw new RuntimeException('dev31_owner_pin_manifest_invalid');
+        }
+        $bindingPins = $ownerBinding['ownerClosurePins'];
+        $expectedPins = $ownerPinsManifest['ownerClosurePins'];
+        ksort($bindingPins, SORT_STRING); ksort($expectedPins, SORT_STRING);
+        if ($bindingPins !== $expectedPins) throw new RuntimeException('dev31_owner_pin_binding_mismatch');
+    }
     dev30_owner_pins($ctx['ownerRoot'], $ownerBinding['ownerClosurePins']);
     if (is_link($ctx['coreRoot'] . '/lib/playthrough_preferences.php') || is_link($ctx['coreRoot'] . '/lib/playthrough_runtime.php')
         || is_link($ctx['coreRoot'] . '/lib/playthrough_home.php')) throw new RuntimeException('core_source_redirected');
@@ -1333,6 +1860,18 @@ try {
         $path = $ctx['coreRoot'] . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
         dev30_require_file($path, $ctx['coreRoot']);
         if (!hash_equals($expected, strtolower((string)hash_file('sha256', $path)))) throw new RuntimeException('captured_core_input_mismatch');
+    }
+    if ($suite === 'dev31') {
+        $coreInputPath = $ctx['dev31TestRoot'] . DIRECTORY_SEPARATOR . 'core-inputs.json';
+        dev30_require_file($coreInputPath, $ctx['serverRoot']);
+        $coreInputRaw = @file_get_contents($coreInputPath);
+        $coreInputManifest = is_string($coreInputRaw) ? json_decode($coreInputRaw, true, 32) : null;
+        if (!is_array($coreInputManifest) || !is_array($coreInputManifest['fixtureState'] ?? null)) {
+            throw new RuntimeException('interaction_core_input_manifest_invalid');
+        }
+        dev31_stage_interaction_helper($ctx, $coreInputManifest, $ctx['interactionSourcePath']);
+        dev31_prepare_interaction_fixture($ctx, $coreInputManifest['fixtureState']);
+        $corePins = $ctx['corePins'];
     }
     $ctx['trace'] = dev30_trace_helper($ctx);
 
@@ -1360,7 +1899,9 @@ try {
     $admin = @pg_connect('host=' . $quote($socket) . ' port=5432 dbname=dwemer user=postgres connect_timeout=3', PGSQL_CONNECT_FORCE_NEW);
     if ($admin === false || $admin === null) throw new RuntimeException('admin_connection_failed');
     $ctx['admin'] = $admin;
-    $app = @pg_connect('host=localhost port=5432 dbname=dwemer user=dwemer connect_timeout=3', PGSQL_CONNECT_FORCE_NEW);
+    if ($suite === 'dev31') dev31_prepare_responselog_generation_column($admin);
+    $appHost = $suite === 'dev31' ? '127.0.0.1' : 'localhost';
+    $app = @pg_connect('host=' . $appHost . ' port=5432 dbname=dwemer user=dwemer connect_timeout=3', PGSQL_CONNECT_FORCE_NEW);
     if ($app === false || $app === null) throw new RuntimeException('app_connection_failed');
     $server = dev30_pg($admin, "SELECT current_setting('server_version_num')::int AS version,current_setting('data_directory') AS directory,current_setting('port')::int AS port,current_setting('listen_addresses') AS listeners,current_setting('unix_socket_directories') AS sockets,system_identifier::text AS system_id FROM pg_control_system()");
     $appIdentity = dev30_pg($app, 'SELECT current_database() AS database,current_user AS role,host(inet_client_addr()) AS client_address,host(inet_server_addr()) AS server_address');
@@ -1385,6 +1926,7 @@ try {
     }
     if ($ownership !== ['eventlog' => 'dwemer', 'eventlog_rowid_seq' => 'dwemer']) throw new RuntimeException('database_object_owner_invalid');
     $ctx['fixtureSetup'] = ['appRole' => $identity['role'], 'objectOwners' => $ownership];
+    if ($suite === 'dev31') $ctx['fixtureSetup']['responselogInteractionGeneration'] = 'bigint';
 
     require_once $ctx['serverRoot'] . DIRECTORY_SEPARATOR . 'tests' . DIRECTORY_SEPARATOR . 'dev23-pg' . DIRECTORY_SEPARATOR . 'companion_cases.php';
     dev30_run_child($ctx, 'fixture_owner_initialize', $ctx['legacyTestRoot'] . DIRECTORY_SEPARATOR . 'owner_fixture.php',
@@ -2267,6 +2809,189 @@ try {
         }
     });
 
+    if ($suite === 'dev31') {
+        dev30_case($cases, 'adapter.resume_cold_boot_zero_nearby_npc_saved_500_exact_once', static function () use (&$ctx, $admin, $baseline): void {
+            dev30_reset_fixture_inputs($admin, $baseline);
+            try {
+                dev30_with_unprofiled_scope($ctx, $admin, static function () use (&$ctx, $admin): void {
+                    $fixture = dev31_queued_letter_with_activity($ctx, $admin, 'sf31_zero_nearby_npc');
+                    $letter = $fixture['letter']; $observation = $fixture['observation'];
+                    dev30_assert(($observation['executor'] ?? null) === 'The Narrator'
+                        && ($observation['nearbyActorCount'] ?? null) === 0
+                        && ($observation['managedExecutorObservation'] ?? null) === false
+                        && (int)dev30_scalar($admin, 'SELECT count(*)::text FROM public.core_npc_master WHERE id=900003') === 1,
+                        'zero_nearby_npc_owner_observation_invalid');
+                    $attemptId = dev30_uuid();
+                    $resume = dev30_api($ctx, 'sf31_zero_nearby_npc_resume_repeat', 'correspondence.resume', [
+                        'operationId' => $letter['requestId'], 'attemptId' => $attemptId,
+                    ], ['operationRequestId' => $attemptId, 'repeatSameRequest' => true, 'authScopes' => ['compose']]);
+                    $responses = array_values(array_filter($resume['responses'], static fn(array $row): bool => in_array($row['phase'] ?? null, ['operation','repeat'], true)));
+                    dev30_assert(count($responses) === 2
+                        && ($responses[0]['ok'] ?? null) === true && ($responses[0]['data']['state'] ?? null) === 'dispatched'
+                        && ($responses[1]['ok'] ?? null) === true && ($responses[1]['data']['state'] ?? null) === 'dispatched',
+                        'saved_500_gold_resume_repeat_did_not_dispatch_same_letter');
+                    dev31_interaction_trace($ctx, $resume, true, 7, true);
+                    dev30_assert(dev30_delivery_counts($admin, $letter['documentId']) === ['documents' => 1, 'operations' => 1, 'commands' => 1],
+                        'saved_500_gold_resume_repeat_was_not_exactly_once');
+                    dev31_assert_dispatch_generation($admin, $letter['documentId'], $ctx);
+                    $document = dev30_document($admin, $letter['requestId']);
+                    dev30_assert(($document['payload']['recipient']['kind'] ?? null) === 'npc'
+                        && (int)($document['payload']['recipient']['id'] ?? 0) === 900003,
+                        'saved_500_gold_recipient_identity_changed');
+                });
+            } finally {
+                dev31_write_interaction_state($ctx, true, 7);
+                dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+                dev30_reset_fixture_inputs($admin, $baseline);
+            }
+        });
+
+        dev30_case($cases, 'adapter.resume_cold_boot_zero_nearby_npc_saved_500_concurrent_once', static function () use (&$ctx, $admin, $baseline): void {
+            dev30_reset_fixture_inputs($admin, $baseline);
+            try {
+                dev30_with_unprofiled_scope($ctx, $admin, static function () use (&$ctx, $admin): void {
+                    $fixture = dev31_queued_letter_with_activity($ctx, $admin, 'sf31_zero_nearby_npc_concurrent');
+                    $letter = $fixture['letter']; $observation = $fixture['observation'];
+                    dev30_assert(($observation['executor'] ?? null) === 'The Narrator'
+                        && ($observation['nearbyActorCount'] ?? null) === 0
+                        && ($observation['managedExecutorObservation'] ?? null) === false,
+                        'zero_nearby_npc_concurrent_owner_observation_invalid');
+                    $attempts = [dev30_uuid(), dev30_uuid()];
+                    $results = dev30_concurrent_api($ctx, [
+                        ['caseId' => 'sf31_zero_nearby_npc_resume_a', 'operation' => 'correspondence.resume',
+                            'payload' => ['operationId' => $letter['requestId'], 'attemptId' => $attempts[0]],
+                            'options' => ['operationRequestId' => $attempts[0], 'authScopes' => ['compose']]],
+                        ['caseId' => 'sf31_zero_nearby_npc_resume_b', 'operation' => 'correspondence.resume',
+                            'payload' => ['operationId' => $letter['requestId'], 'attemptId' => $attempts[1]],
+                            'options' => ['operationRequestId' => $attempts[1], 'authScopes' => ['compose']]],
+                    ]);
+                    $responses = [];
+                    foreach ($results as $result) {
+                        dev31_interaction_trace($ctx, $result, true, 7, true);
+                        $responses[] = dev30_response($result);
+                    }
+                    $successes = array_values(array_filter($responses, static fn(array $row): bool => ($row['ok'] ?? null) === true
+                        && ($row['data']['operationId'] ?? null) === $letter['requestId'] && ($row['data']['state'] ?? null) === 'dispatched'));
+                    $conflicts = array_values(array_filter($responses, static fn(array $row): bool => ($row['ok'] ?? null) === false
+                        && ($row['errorCode'] ?? null) === 'conflict'));
+                    dev30_assert(count($successes) === 1 && count($conflicts) === 1
+                        && dev30_delivery_counts($admin, $letter['documentId']) === ['documents' => 1, 'operations' => 1, 'commands' => 1],
+                        'zero_nearby_npc_concurrent_resume_not_exactly_once');
+                    dev31_assert_dispatch_generation($admin, $letter['documentId'], $ctx);
+                });
+            } finally {
+                dev31_write_interaction_state($ctx, true, 7);
+                dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+                dev30_reset_fixture_inputs($admin, $baseline);
+            }
+        });
+
+        dev30_case($cases, 'adapter.resume_native_context_refusals_no_operation', static function () use (&$ctx, $admin, $baseline): void {
+            dev30_reset_fixture_inputs($admin, $baseline);
+            try {
+                dev30_with_unprofiled_scope($ctx, $admin, static function () use (&$ctx, $admin): void {
+                    $fixture = dev31_queued_letter_with_activity($ctx, $admin, 'sf31_native_context');
+                    $letter = $fixture['letter'];
+                    dev30_assert(($fixture['observation']['executor'] ?? null) === 'The Narrator'
+                        && ($fixture['observation']['nearbyActorCount'] ?? null) === 0
+                        && ($fixture['observation']['managedExecutorObservation'] ?? null) === false,
+                        'native_refusal_shared_letter_fixture_invalid');
+
+                    foreach (['passive','off','generation','expired','pending_restore','changed_restore'] as $mode) {
+                        $pendingRestore = false;
+                        $originalEpoch = null;
+                        try {
+                            dev31_write_interaction_state($ctx, true, 7);
+                            $observation = dev31_observe_native_activity($ctx, $admin, $mode === 'passive');
+                            if ($mode === 'passive') {
+                                dev30_assert(($observation['active'] ?? null) === false && ($observation['executor'] ?? null) === null,
+                                    'passive_native_probe_created_active_executor');
+                            } else {
+                                dev30_assert(($observation['active'] ?? null) === true && ($observation['executor'] ?? null) === 'The Narrator',
+                                    'active_native_probe_did_not_create_narrator_executor');
+                            }
+                            $before = dev30_delivery_counts($admin, $letter['documentId']);
+                            dev30_assert($before === ['documents' => 1, 'operations' => 0, 'commands' => 0],
+                                'native_refusal_shared_letter_not_queued');
+                            $attemptId = dev30_uuid();
+                            $caseId = 'sf31_native_' . $mode . '_resume';
+
+                            if ($mode === 'off') {
+                                dev31_write_interaction_state($ctx, false, 7);
+                            } elseif ($mode === 'generation') {
+                                $result = dev31_generation_change_api($ctx, $caseId, $letter['requestId'], $attemptId, true, 8);
+                                dev31_interaction_trace($ctx, $result, true, 8, false);
+                            } elseif ($mode === 'expired') {
+                                $waitStarted = microtime(true);
+                                sleep(46);
+                                $waitElapsed = microtime(true) - $waitStarted;
+                                dev30_assert($waitElapsed >= 46.0, 'native_activity_expiry_wait_interrupted');
+                                $anchorEvidence = dev31_assert_expired_activity_anchor($admin, 46);
+                                $ctx['interactionExpiryWaits'][] = [
+                                    'caseId' => $caseId, 'requestedWaitSeconds' => 46,
+                                    'observedElapsedSeconds' => round($waitElapsed, 3),
+                                    'activityPayloadOrAnchorMutated' => false,
+                                ] + $anchorEvidence;
+                            } elseif ($mode === 'pending_restore') {
+                                dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=TRUE WHERE singleton IS TRUE');
+                                $pendingRestore = true;
+                            } elseif ($mode === 'changed_restore') {
+                                $originalEpoch = (string)dev30_scalar($admin,
+                                    'SELECT epoch::text FROM plugins.correspondence_restore_state WHERE singleton IS TRUE');
+                                if (preg_match('/\A[0-9a-f-]{36}\z/D', $originalEpoch) !== 1) {
+                                    throw new RuntimeException('restore_epoch_fixture_invalid');
+                                }
+                                dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET epoch=$1::uuid WHERE singleton IS TRUE', [dev30_uuid()]);
+                            }
+
+                            if ($mode !== 'generation') {
+                                $result = dev30_api($ctx, $caseId, 'correspondence.resume', [
+                                    'operationId' => $letter['requestId'], 'attemptId' => $attemptId,
+                                ], ['operationRequestId' => $attemptId, 'authScopes' => ['compose']]);
+                                if (in_array($mode, ['pending_restore','changed_restore'], true)) {
+                                    $response = dev30_response($result);
+                                    dev30_assert(($response['ok'] ?? null) === false && ($response['errorCode'] ?? null) === 'stale_context',
+                                        'restore_context_refusal_not_stale_context');
+                                    dev31_restore_preflight_trace($ctx, $result, $mode);
+                                    $ctx['nativeContextRefusalResults'][] = [
+                                        'variant' => $mode, 'ok' => false, 'errorCode' => 'stale_context',
+                                        'boundary' => 'adapter_restore_preflight',
+                                    ];
+                                }
+                            }
+
+                            if (!in_array($mode, ['pending_restore','changed_restore'], true)) {
+                                $response = dev31_assert_executor_unavailable_response($result, $letter);
+                                if (!in_array($mode, ['generation'], true)) {
+                                    dev31_interaction_trace($ctx, $result, $mode !== 'off', 7, $mode !== 'off');
+                                }
+                                $ctx['nativeContextRefusalResults'][] = [
+                                    'variant' => $mode, 'ok' => true, 'state' => 'queued',
+                                    'queuedReason' => 'executor_unavailable', 'responseOperationId' => $response['data']['operationId'],
+                                ];
+                            }
+                            dev31_assert_unchanged_queued_letter($admin, $letter, $before);
+                        } finally {
+                            if ($pendingRestore) {
+                                dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=FALSE WHERE singleton IS TRUE');
+                            }
+                            if (is_string($originalEpoch)) {
+                                dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET epoch=$1::uuid WHERE singleton IS TRUE', [$originalEpoch]);
+                            }
+                            dev31_write_interaction_state($ctx, true, 7);
+                            dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+                        }
+                    }
+                });
+            } finally {
+                dev31_write_interaction_state($ctx, true, 7);
+                dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=FALSE WHERE singleton IS TRUE');
+                dev30_pg($admin, 'DELETE FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']);
+                dev30_reset_fixture_inputs($admin, $baseline);
+            }
+        });
+    }
+
     $ownerCases = [
         'owner.bgl_unreadable_defer_recover' => 'bgl_unreadable',
         'owner.player_unavailable_defer_recover' => 'player_unavailable',
@@ -2329,6 +3054,18 @@ try {
             'networkEvidence' => $ctx['networkEvidence'] ?? null,
             'traceScope' => 'captured PHP includes and pinned non-PHP source bundles only; no live or installed roots are permitted',
         ];
+        if (($ctx['suite'] ?? 'dev30') === 'dev31') {
+            $trace['suite'] = 'dev31';
+            $trace['interactionSource'] = $ctx['interactionSourceEvidence'] ?? null;
+            $trace['interactionFixtureInitial'] = $ctx['interactionFixtureInitial'] ?? null;
+            $trace['interactionFixtureFinal'] = $ctx['interactionFixture'] ?? null;
+            $trace['interactionStateTransitions'] = $ctx['interactionStateTransitions'] ?? [];
+            $trace['interactionChildTraces'] = $ctx['interactionChildTraces'] ?? [];
+            $trace['nativeActivityFixtures'] = $ctx['nativeActivityFixtures'] ?? [];
+            $trace['nativeDispatchGenerationChecks'] = $ctx['nativeDispatchGenerationChecks'] ?? [];
+            $trace['nativeContextRefusalResults'] = $ctx['nativeContextRefusalResults'] ?? [];
+            $trace['interactionExpiryWaits'] = $ctx['interactionExpiryWaits'] ?? [];
+        }
         $tracePath = ($ctx['artifactDir'] ?? '') . DIRECTORY_SEPARATOR . 'source-load-trace.json';
         try {
             if (!is_string($ctx['artifactDir'] ?? null) || !is_dir($ctx['artifactDir']) || is_link($ctx['artifactDir'])
@@ -2354,12 +3091,13 @@ $failed = count(array_filter($cases, static fn(array $case): bool => $case['stat
 $totalAssertions = array_sum(array_column($cases, 'assertions'));
 $receipt = [
     'schemaVersion' => 1,
-    'kind' => 'department-dev30-actual-pg',
+    'kind' => $suite === 'dev31' ? 'department-dev31-actual-pg' : 'department-dev30-actual-pg',
     'status' => $status,
     'failure' => $failure,
     'sourceCommit' => $ctx['sourceCommit'] ?? (string)($options['source-commit'] ?? ''),
-    'ownerVersion' => $ownerBinding['ownerVersion'] ?? '0.1.0-dev.30',
-    'ownerCommit' => $ownerBinding['ownerCommit'] ?? '1eb58d999698002f8aeaa05b21464f7608717794',
+    'ownerVersion' => $ownerBinding['ownerVersion'] ?? ($suite === 'dev31' ? '0.1.0-dev.31' : '0.1.0-dev.30'),
+    'ownerCommit' => $ownerBinding['ownerCommit'] ?? ($suite === 'dev31'
+        ? 'e393bd5f9a1cd31a8d8d006a4356faddc9eb3212' : '1eb58d999698002f8aeaa05b21464f7608717794'),
     'ownerClosurePins' => $ownerBinding['ownerClosurePins'] ?? new stdClass(),
     'sourceHashes' => $sourceHashes,
     'databaseIdentity' => $identity ?? new stdClass(),
@@ -2372,5 +3110,6 @@ $receipt = [
     'counts' => ['cases' => count($cases), 'passed' => $passed, 'failed' => $failed, 'assertions' => $totalAssertions],
     'limits' => ['database' => true, 'http' => false, 'provider' => false, 'native' => false, 'skyrim' => false, 'installedGame' => false, 'live' => false],
 ];
+if ($suite === 'dev31') $receipt['suite'] = 'dev31';
 fwrite(STDOUT, json_encode($receipt, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . "\n");
 exit($status === 'passed' ? 0 : 1);

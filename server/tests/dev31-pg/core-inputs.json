@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "hostCommit": null,
+  "hostTree": null,
+  "provenance": "Captured core helper; no independent Git mapping was recorded.",
+  "files": {
+    "lib/chim_interaction.php": {
+      "source": "artifacts/department-maintainer-audit-20261026/host/server-dev/lib/chim_interaction.php",
+      "sha256": "0f85286f47da7f02b8527ba9099e3d93452185399a9c0f66918072b877ccb6de"
+    }
+  },
+  "fixtureState": {
+    "path": "conf/chim_interaction/state.json",
+    "initial": {"enabled": true, "generation": 7},
+    "ownership": "synthetic state created only beneath the owned per-run scratch core",
+    "captureArtifactWrites": false
+  }
+}

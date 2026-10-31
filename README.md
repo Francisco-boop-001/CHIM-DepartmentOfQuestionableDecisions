@@ -4,6 +4,14 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.30: Sealed Fates dev.31 resume compatibility
+
+The [installable prealpha.30 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.30/WorldOfDramaLlama-0.1.0-prealpha.30.zip) pairs the Department with the exact public Sealed Fates dev.31 source. It starts from the published prealpha.29 ZIP and changes the Department DWPkg plus app.js; inside the DWPkg, only its two version manifests, correspondence adapter, and checksums change. Twenty previous installable payloads remain byte-identical, including PCV companion 0.1.0-prealpha.13 and native DLL 0.1.18.0. The PCV receipt-status behavior from prealpha.29 remains in place.
+
+When a saved letter is waiting because CHIM lacks fresh game activity, leave Skyrim unpaused so normal CHIM polling can refresh activity. Keep CHIM Interaction On where that setting is available. Earlier supported Sealed Fates versions still need a recent managed-NPC report. Choose **Resume** for this same saved letter; do not send a new copy. See the [dev.31 compatibility note](docs/DEV31-COMPATIBILITY.md) and [prealpha.30 build contract](docs/BUILD.md).
+
+The package check compares all 21 dev.31 pins with the actual public owner DWPkg and preserves all 16 previously supported owner-version maps. This source/package evidence does not establish Department PostgreSQL integration, HTTP/provider behavior, installation, or Skyrim behavior. Mouse control remains unresolved; this candidate makes no mouse-fix claim.
+
 ## Prealpha.29: PCV receipt status
 
 The [installable prealpha.29 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.29/WorldOfDramaLlama-0.1.0-prealpha.29.zip) updates the UI's PCV receipt status display. It starts from the exact published prealpha.28 ZIP and advances the Department DWPkg version plus `app.js`; inside the DWPkg, only its two version manifests and checksum file change. Twenty previous installable payloads remain byte-identical, including the PCV companion 0.1.0-prealpha.13 and native DLL 0.1.18.0. Department server runtime sources and PCV owner pins do not change. See the [prealpha.29 build contract](docs/BUILD.md).

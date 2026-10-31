@@ -1,5 +1,31 @@
 # Portable source build
 
+## Prealpha.30 Sealed Fates dev.31 compatibility
+
+Prealpha.30 pairs the Department with the actual public Sealed Fates dev.31 DWPkg. Build from a clean checkout at the frozen source commit, the exact published prealpha.29 installable ZIP (SHA-256 eebf37d6eed330ab37f4b5e1ef064f23514286a6cf0e092e3ce8994ececbf48a), and the official dev.31 DWPkg (SHA-256 7d17ec6cefd21540d01194f719bd69c9961f6d48b5a1bb35d9f86a9ae76f0777). The builder reads every source file from that commit's explicit allowlist and rejects source changes outside the declared prealpha.30 files.
+
+The package retains 22 installable members. It replaces the Department DWPkg and updates UI app.js; only the two DWPkg version manifests, correspondence adapter, and regenerated checksums change inside that package. The other 20 installable payloads remain byte-identical, including PCV companion 0.1.0-prealpha.13 and native DLL 0.1.18.0.
+
+The adapter keeps all 16 previous supported owner maps and adds the exact 21-file dev.31 map. The builder validates the public owner DWPkg's fixed SHA-256 and checksum closure, then compares every mapped path and digest to its packaged file. It also constrains the adapter delta to that new map, the dev.31 capability gates, and the strict dev.30/dev.31 pending-resume gate. The owner handoff hash and source-closure hash in the package audit are provenance references; the builder does not require a separate handoff file.
+
+The UI hint tells players to leave Skyrim unpaused for normal CHIM polling to refresh activity with dev.31 and to keep Interaction On where available. Earlier supported versions still require a recent managed-NPC report. Resume continues the same saved letter. This package proof includes no Department PostgreSQL integration result, HTTP/provider test, installed-game test, or Skyrim acceptance. Mouse control remains unresolved.
+
+Set the published archive paths and frozen commit, then build and audit into a new directory outside the checkout:
+
+```powershell
+$Baseline = 'path/to/WorldOfDramaLlama-0.1.0-prealpha.29.zip'
+$OwnerDwpkg = 'path/to/correspondence-0.1.0-dev.31.dwpkg'
+$Commit = (git -c "safe.directory=$PWD" rev-parse HEAD).Trim()
+$Output = 'path/to/new-prealpha30-output'
+py -3 -B packaging/build-installable-prealpha30.py build --baseline-zip $Baseline --owner-dwpkg $OwnerDwpkg --source-commit $Commit --output-dir $Output
+py -3 -B packaging/build-installable-prealpha30.py audit --baseline-zip $Baseline --owner-dwpkg $OwnerDwpkg --source-commit $Commit --output-dir $Output
+$env:DEPARTMENT_PREALPHA29_ZIP = $Baseline
+$env:SEALED_FATES_DEV31_DWPKG = $OwnerDwpkg
+py -3 -B -m unittest discover -s packaging/tests -p test_installable_prealpha30.py -v
+```
+
+The focused package tests require the actual public .29 archive and dev.31 DWPkg; missing inputs fail the tests. The output directory contains the installable ZIP, exact-allowlist source ZIP, package audit JSON, and LF-only SHA256SUMS.txt. The checksum file covers the other three assets and excludes itself. The source ZIP includes test and PG harness inputs as source files; none of those files are added to the installable mod.
+
 ## Prealpha.29 PCV receipt status
 
 Prealpha.29 updates the UI receipt status display. Build it from a clean checkout at the frozen release commit and the exact published prealpha.28 installable ZIP (SHA-256 `73665957569091e4cbd307bb85d65a3f236cafef5f55472fe82ccdb803c7c97b`). The builder requires the source commit to equal `HEAD`, reads every source file from that commit's explicit allowlist, and verifies the allowlist appends only the .29 builder and focused test. The server manifest may change only its version. Other server sources, native sources, PCV owner sources, and pinned package inputs must remain unchanged.

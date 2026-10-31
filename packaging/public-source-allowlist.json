@@ -288,6 +288,16 @@
     { "path": "packaging/tests/test_installable_prealpha28.py" },
     { "path": "server/tests/correspondence/resume-contract.php" },
     { "path": "packaging/build-installable-prealpha29.py" },
-    { "path": "packaging/tests/test_installable_prealpha29.py" }
+    { "path": "packaging/tests/test_installable_prealpha29.py" },
+    { "path": "docs/DEV31-COMPATIBILITY.md" },
+    { "path": "packaging/build-installable-prealpha30.py" },
+    { "path": "packaging/tests/test_installable_prealpha30.py" },
+    { "path": "server/tests/correspondence/dev31-adapter-interface.php" },
+    { "path": "server/tests/correspondence/dev31-source-contract.php" },
+    { "path": "server/tests/correspondence/fixtures/owner-dev31-handoff.json" },
+    { "path": "server/tests/dev31-pg/cases.json" },
+    { "path": "server/tests/dev31-pg/core-inputs.json" },
+    { "path": "server/tests/dev31-pg/generation_change_driver.php" },
+    { "path": "server/tests/dev31-pg/owner-pins.json" }
   ]
 }
