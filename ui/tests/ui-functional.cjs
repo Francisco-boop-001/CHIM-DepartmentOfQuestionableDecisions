@@ -219,6 +219,18 @@ async function prepareComposer(page, body, options = {}) {
   await page.getByRole('button', { name: /review letter/i }).click();
 }
 
+async function prepareUncertainPaidLetter(page, body) {
+  await prepareComposer(page, body, {
+    inventory: { inventoryRevision: 'uncertain-paid-1', items: [], gold: { available: 10 } },
+  });
+  await page.locator('#gold-amount').fill('5');
+  await page.getByRole('button', { name: /review letter/i }).click();
+  await page.locator('#letter-send').click();
+  const compose = await latestRequest(page, 'correspondence.compose');
+  await respond(page, compose, null, { ok: false, error: { code: 'unavailable', message: 'Synthetic uncertain result.', dispatched: true } });
+  await page.waitForFunction(() => !document.getElementById('letter-pending-refresh').disabled);
+  return compose;
+}
 async function prepareActivePcv(page, revision = 'roster-pcv-unavailable') {
   await page.getByRole('tab', { name: 'Private Conversation' }).click();
   await page.getByRole('button', { name: /refresh cast and status/i }).click();
@@ -807,6 +819,57 @@ async function main() {
       await page.close();
     });
 
+    await test('actor_unavailable preserves local drafts while stale_context still clears authorization', async () => {
+      const recoverable = await authenticatedPage(browser, 'scope-actor-unavailable-consumer', 'm'.repeat(43));
+      const { scene, activeId } = await prepareActivePcv(recoverable, 'roster-actor-unavailable');
+      await prepareComposer(recoverable, 'Unrelated unsent letter draft.');
+      await recoverable.getByRole('tab', { name: 'Private Conversation' }).click();
+      await recoverable.locator('#send-target').selectOption('npc:one');
+      await recoverable.locator('#pcv-text').fill('Keep this unsent private input.');
+      await recoverable.locator('#pcv-send').click();
+      const actorSend = await latestRequest(recoverable, 'pcv.send');
+      await respond(recoverable, actorSend, null, {
+        ok: false, error: { code: 'actor_unavailable', message: 'Synthetic actor loss.', dispatched: false },
+      });
+      await recoverable.getByText('Connected to CHIM', { exact: true }).waitFor();
+      assert.equal(await recoverable.getByRole('button', { name: 'Retry connection', exact: true }).isVisible(), false,
+        'actor-specific refusal does not invalidate the authenticated connection');
+      assert.equal(await recoverable.locator('#pcv-refresh').isDisabled(), false, 'cast refresh remains available');
+      assert.equal(await recoverable.locator('#pcv-text').inputValue(), 'Keep this unsent private input.');
+      assert.equal(await recoverable.locator('#letter-body').inputValue(), 'Unrelated unsent letter draft.');
+      await refreshPcv(recoverable, {
+        state: 'active', activeConfigId: activeId, pendingConfigId: null, active: scene, pending: null,
+      });
+      assert.equal(await recoverable.getByText('Connected to CHIM', { exact: true }).isVisible(), true);
+      assert.equal(await recoverable.locator('#pcv-text').inputValue(), 'Keep this unsent private input.');
+      assert.equal(await recoverable.locator('#letter-body').inputValue(), 'Unrelated unsent letter draft.');
+      assert.equal(await recoverable.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1,
+        'the refusal and cast refresh do not resend the message');
+      assert.equal(await recoverable.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send.status').length), 0,
+        'a not-dispatched refusal does not start status polling');
+      assert.deepEqual(recoverable.__externalRequests, []);
+
+      const stale = await authenticatedPage(browser, 'scope-stale-context-consumer-control', 'n'.repeat(43));
+      await prepareActivePcv(stale, 'roster-stale-context-control');
+      await prepareComposer(stale, 'Clear this unrelated letter draft.');
+      await stale.getByRole('tab', { name: 'Private Conversation' }).click();
+      await stale.locator('#send-target').selectOption('npc:one');
+      await stale.locator('#pcv-text').fill('Clear this private PCV draft.');
+      await stale.locator('#pcv-send').click();
+      const staleSend = await latestRequest(stale, 'pcv.send');
+      await respond(stale, staleSend, null, {
+        ok: false, error: { code: 'stale_context', message: 'Synthetic stale scope.', dispatched: false },
+      });
+      await stale.getByRole('button', { name: 'Retry connection', exact: true }).waitFor({ state: 'visible' });
+      await stale.waitForFunction(() => document.getElementById('pcv-text').value === ''
+        && document.getElementById('letter-body').value === '');
+      assert.equal(await stale.locator('#pcv-refresh').isDisabled(), true, 'genuine stale context still invalidates plugin access');
+      assert.equal(await stale.getByText('Connected to CHIM', { exact: true }).count(), 0);
+      assert.equal(await stale.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1);
+      assert.deepEqual(stale.__externalRequests, []);
+      await stale.close();
+      await recoverable.close();
+    });
     await test('unknown End survives unavailable refresh until definitive Off readback', async () => {
       const page = await authenticatedPage(browser, 'scope-pcv-unknown-refresh');
       await prepareActivePcv(page);
@@ -2267,6 +2330,132 @@ async function main() {
       await page.close();
     });
 
+    await test('unknown paid letter stays locked after a complete empty scan without a second compose', async () => {
+      const page = await authenticatedPage(browser, 'scope-unknown-empty-scan', 'u'.repeat(43));
+      const compose = await prepareUncertainPaidLetter(page, 'Same synthetic paid letter.');
+      await page.locator('#letter-pending-refresh').click();
+      const read = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, read, { operations: [], limited: false, nextCursor: null });
+      const afterScan = await page.evaluate(() => ({
+        operationId: document.getElementById('letter-operation').value,
+        locked: document.getElementById('letter-body').disabled,
+      }));
+      if (!afterScan.locked) {
+        await page.locator('#letter-review').click();
+        if (!await page.locator('#letter-send').isDisabled()) {
+          await page.locator('#letter-send').click();
+          await waitForOperationCount(page, 'correspondence.compose', 2);
+        }
+      }
+      assert.deepEqual(afterScan, { operationId: compose.payload.operationId, locked: true },
+        'a complete empty discovery scan cannot clear the original operation or paid draft lock');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'discovering no waiting letters never makes a second compose request eligible');
+      await page.close();
+    });
+
+    await test('unknown paid letter survives nonempty paginated omissions and keeps fingerprint and transfer reservations', async () => {
+      const page = await authenticatedPage(browser, 'scope-unknown-paginated-scan', 'v'.repeat(43));
+      const compose = await prepareUncertainPaidLetter(page, 'Same synthetic paid letter.');
+      const discoveredId = newUuid();
+      await page.locator('#letter-pending-refresh').click();
+      const firstPage = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, firstPage, { operations: [{
+        operationId: discoveredId, recipientLabel: 'Other recipient', state: 'queued', hasTransfer: false,
+        canResume: false, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: true, nextCursor: 'omitted-operation-final-page' });
+      await page.getByRole('button', { name: /continue checking waiting letters/i }).click();
+      await waitForOperationCount(page, 'correspondence.pending.read', 3);
+      const finalPage = await latestRequest(page, 'correspondence.pending.read');
+      assert.deepEqual(finalPage.payload, { cursor: 'omitted-operation-final-page' });
+      await respond(page, finalPage, { operations: [], limited: false, nextCursor: null });
+      const afterScan = {
+        operationId: await page.locator('#letter-operation').inputValue(),
+        ids: await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        locked: await page.getByLabel('Letter body').isDisabled(),
+      };
+      if (!afterScan.locked) {
+        await page.locator('#letter-review').click();
+        if (!await page.locator('#letter-send').isDisabled()) {
+          await page.locator('#letter-send').click();
+          await waitForOperationCount(page, 'correspondence.compose', 2);
+        }
+      }
+      assert.equal(afterScan.operationId, compose.payload.operationId, 'a complete later page cannot replace the current local operation');
+      assert.deepEqual(afterScan.ids, [discoveredId, compose.payload.operationId], 'completed pagination retains unrelated discoveries and the omitted local handle');
+      assert.equal(afterScan.locked, true, 'the original uncertain draft stays locked');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'pagination does not enable a second compose request');
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await prepareComposer(page, 'Same synthetic paid letter.', {
+        inventory: { inventoryRevision: 'uncertain-paid-2', items: [], gold: { available: 10 } },
+      });
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the retained fingerprint blocks the same writer, recipient, and body');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /same writer, recipient, and normalized body/i);
+
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await prepareComposer(page, 'A different paid letter.', {
+        inventory: { inventoryRevision: 'uncertain-paid-3', items: [], gold: { available: 10 } },
+      });
+      await page.locator('#gold-amount').fill('5');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the retained transfer reservation blocks a second paid letter');
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /transfer-bearing operation remains unresolved/i);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1);
+      await page.close();
+    });
+
+    await test('unknown paid letter remains locked across limited and stale reads', async () => {
+      const page = await authenticatedPage(browser, 'scope-unknown-limited-stale', 'w'.repeat(43));
+      const compose = await prepareUncertainPaidLetter(page, 'A paid letter stays unresolved.');
+      const discoveredId = newUuid();
+      await page.locator('#letter-pending-refresh').click();
+      const limitedRead = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, limitedRead, { operations: [{
+        operationId: discoveredId, recipientLabel: 'Other recipient', state: 'queued', hasTransfer: false,
+        canResume: false, queuedReason: 'not_dispatched', operatorClosed: false,
+      }], limited: true, nextCursor: null });
+      assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
+        [discoveredId, compose.payload.operationId], 'a limited scan preserves the local uncertain handle');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true, 'a limited scan does not unlock the current paid draft');
+
+      await page.locator('#letter-pending-refresh').click();
+      await waitForOperationCount(page, 'correspondence.pending.read', 3);
+      const staleRead = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, staleRead, null, { ok: false, error: { code: 'stale_revision', message: 'opaque stale detail' } });
+      assert.match(await page.locator('#letter-pending-status').innerText(), /scan changed.*refresh waiting letters/i);
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId, 'a stale read preserves the original operation ID');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true, 'a stale read does not unlock the paid draft');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1);
+      await page.close();
+    });
+
+    await test('unknown paid letter releases only after same-ID delivered or rejected reconciliation', async () => {
+      for (const terminal of [
+        { state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'synthetic time' } },
+        { state: 'rejected' },
+      ]) {
+        const page = await authenticatedPage(browser, 'scope-unknown-terminal-' + terminal.state, 'x'.repeat(43));
+        const compose = await prepareUncertainPaidLetter(page, 'A paid letter with a definitive result.');
+        await page.locator('#letter-pending-refresh').click();
+        const read = await latestRequest(page, 'correspondence.pending.read');
+        await respond(page, read, { operations: [], limited: false, nextCursor: null });
+        assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId,
+          'discovery absence keeps the same operation available for reconciliation');
+        assert.equal(await page.getByLabel('Letter body').isDisabled(), true, 'discovery absence keeps the uncertain compose locked');
+
+        await page.getByRole('button', { name: /reconcile same operation/i }).click();
+        const reconcile = await latestRequest(page, 'correspondence.reconcile');
+        assert.deepEqual(reconcile.payload, { operationId: compose.payload.operationId }, 'reconciliation uses only the original ID');
+        await respond(page, reconcile, { operationId: compose.payload.operationId, ...terminal });
+        assert.equal(await page.locator('#letter-reconcile').isHidden(), true, terminal.state + ' releases the resolved operation');
+        assert.equal(await page.getByLabel('Letter body').isDisabled(), false, terminal.state + ' unlocks the current editor');
+        assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+          'definitive same-ID reconciliation does not resend');
+        await page.close();
+      }
+    });
     await test('nearby-cast guidance explains missing and stale CHIM reports without requiring a first message', async () => {
       const page = await authenticatedPage(browser);
       assert.equal(await page.locator('#connection-status').innerText(), 'Connected to CHIM');

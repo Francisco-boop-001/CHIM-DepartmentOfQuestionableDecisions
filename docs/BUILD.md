@@ -1,5 +1,36 @@
 # Portable source build
 
+## Prealpha.31 uncertain-letter and stale-cast repairs
+
+Build from a clean checkout at the frozen source commit, the exact public prealpha.30 installable ZIP (SHA-256 `d8ae8a87cea4f18e41f723a7ea404e5cc16fbb2d1fed5491bde3ffd9d90f0d47`), and the four source-bound native inputs: the 0.1.19.0 DLL, native build/host-test receipt, native source-binding receipt, and PE verification receipt. The builder requires the source commit to equal `HEAD`, reads the exact public source allowlist from that commit, and rejects changes outside the prealpha.31 files.
+
+The installable keeps 22 top-level payloads. It replaces the Department DWPkg and updates `app.js` and the Department DLL; the other 19 previous payloads remain byte-identical. Inside the DWPkg, only `manifest.json`, `server/manifest.json`, and regenerated `checksums.sha256` change. Server runtime code and all owner pins stay at the prealpha.30 bytes, including PCV companion 0.1.0-prealpha.13.
+
+The builder checks the native source-binding closure against Git, the recipe/build-receipt/DLL hashes against one another, all six host tests and the bootstrap fixture inputs, and the PE verifier's source commit, DLL hash, x64 architecture, 0.1.19.0 version, and required exports. It also reads those metadata from the supplied DLL. All four inputs are required; a missing, stale, or mismatched receipt stops the build.
+
+Set the published archive and actual native evidence paths, then build and audit into a new directory outside the checkout:
+
+```powershell
+$Artifacts = 'K:\ActorwrightExchange\artifacts\department-repair31-20261031\package-prep'
+$Baseline = 'K:\ActorwrightExchange\artifacts\department-sf31-20261030\public-download\WorldOfDramaLlama-0.1.0-prealpha.30.zip'
+$NativeDll = Join-Path $Artifacts 'WorldOfDramaLlama.dll'
+$NativeBuild = Join-Path $Artifacts 'native-build-receipt.json'
+$NativeBinding = Join-Path $Artifacts 'native-source-binding.json'
+$NativePe = Join-Path $Artifacts 'native-pe-verification.json'
+$Commit = (git -c "safe.directory=$PWD" rev-parse HEAD).Trim()
+$Output = Join-Path $Artifacts 'assets'
+py -3 -B packaging/build-installable-prealpha31.py build --baseline-zip $Baseline --native-dll $NativeDll --native-build-receipt $NativeBuild --native-source-binding $NativeBinding --native-pe-receipt $NativePe --source-commit $Commit --output-dir $Output
+py -3 -B packaging/build-installable-prealpha31.py audit --baseline-zip $Baseline --native-dll $NativeDll --native-build-receipt $NativeBuild --native-source-binding $NativeBinding --native-pe-receipt $NativePe --source-commit $Commit --output-dir $Output
+$env:DEPARTMENT_PREALPHA30_ZIP = $Baseline
+$env:DEPARTMENT_PREALPHA31_NATIVE_DLL = $NativeDll
+$env:DEPARTMENT_PREALPHA31_NATIVE_BUILD_RECEIPT = $NativeBuild
+$env:DEPARTMENT_PREALPHA31_NATIVE_SOURCE_BINDING = $NativeBinding
+$env:DEPARTMENT_PREALPHA31_NATIVE_PE_RECEIPT = $NativePe
+py -3 -B -m unittest discover -s packaging/tests -p test_installable_prealpha31.py -v
+```
+
+The focused package tests require the actual public .30 archive, native DLL, and source-bound native receipts. They reject a .30 DLL paired with the .19 evidence and a modified build receipt. The output contains the installable ZIP, exact-allowlist source ZIP, package audit JSON, and LF-only `SHA256SUMS.txt` covering the other three assets. Package evidence does not prove installation, live-server/provider behavior, in-game mouse control, or actual letter/item delivery.
+
 ## Prealpha.30 Sealed Fates dev.31 compatibility
 
 Prealpha.30 pairs the Department with the actual public Sealed Fates dev.31 DWPkg. Build from a clean checkout at the frozen source commit, the exact published prealpha.29 installable ZIP (SHA-256 eebf37d6eed330ab37f4b5e1ef064f23514286a6cf0e092e3ce8994ececbf48a), and the official dev.31 DWPkg (SHA-256 7d17ec6cefd21540d01194f719bd69c9961f6d48b5a1bb35d9f86a9ae76f0777). The builder reads every source file from that commit's explicit allowlist and rejects source changes outside the declared prealpha.30 files.

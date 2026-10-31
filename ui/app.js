@@ -2378,16 +2378,8 @@
         for (const operation of state.mail.operations) {
           if (!discoveredIds.has(operation.operationId)) operations.push(operation);
         }
-        const scanComplete = pending.nextCursor === null && !pending.limited;
-        if (scanComplete && state.mail.currentOperationId && !discoveredIds.has(state.mail.currentOperationId)) {
-          state.mail.currentOperationId = null;
-          state.mail.operationDraft = null;
-          state.mail.composeLocked = false;
-          state.mail.reviewed = false;
-          $('letter-review-summary').hidden = true;
-        }
         state.mail.pendingReadDiscoveredIds = discoveredIds;
-        state.mail.operations = scanComplete ? operations.filter((operation) => discoveredIds.has(operation.operationId)) : operations;
+        state.mail.operations = operations;
         state.mail.pendingReadCursor = pending.nextCursor;
         state.mail.pendingReadLimited = pending.limited;
         state.mail.pendingReadFailure = '';

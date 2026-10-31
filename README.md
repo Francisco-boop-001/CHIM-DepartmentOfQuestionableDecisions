@@ -4,6 +4,14 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.31: uncertain letters and stale cast refusals
+
+The [installable prealpha.31 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.31/WorldOfDramaLlama-0.1.0-prealpha.31.zip) contains these repairs. For an update, close Skyrim and replace the previous Department archive with this ZIP. Prealpha.31 keeps an uncertain letter operation and its composer lock when a completed waiting-letter scan omits that operation. The UI releases the lock after same-ID reconciliation confirms a delivered receipt or rejection; a `dispatched: false` refusal also proves it was not sent. The native companion now reports `actor_unavailable` when a selected actor is no longer eligible, so the UI can ask for a cast refresh without clearing server access. See [the repair note](docs/REPAIR31.md) and [the prealpha.31 build contract](docs/BUILD.md).
+
+The installable starts from the exact public prealpha.30 ZIP and replaces only `app.js`, the Department DLL (0.1.19.0), and the Department DWPkg. Inside that DWPkg, only its two version manifests and checksum file change. Nineteen of the 22 prior installable payloads remain byte-identical, including PCV companion 0.1.0-prealpha.13. The builder requires source-bound build, test, and PE receipts for the native inputs, DLL, and host-test result.
+
+These package checks do not establish mouse or keyboard control in Skyrim, installed-game behavior, or actual letter/item delivery. No live CHIM server, provider, or Skyrim gameplay result is claimed.
+
 ## Prealpha.30: Sealed Fates dev.31 resume compatibility
 
 The [installable prealpha.30 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.30/WorldOfDramaLlama-0.1.0-prealpha.30.zip) pairs the Department with the exact public Sealed Fates dev.31 source. It starts from the published prealpha.29 ZIP and changes the Department DWPkg plus app.js; inside the DWPkg, only its two version manifests, correspondence adapter, and checksums change. Twenty previous installable payloads remain byte-identical, including PCV companion 0.1.0-prealpha.13 and native DLL 0.1.18.0. The PCV receipt-status behavior from prealpha.29 remains in place.

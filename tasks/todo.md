@@ -578,3 +578,28 @@ The cold write path reaches qd_runtime_with_owned_connection → correspondenceN
 Final offline review: the 11 selected groups bind 25 unique source inputs, 21 public owner pins and the captured helper hash. The cold saved-500 checks assert actual delivery generation 7; passive/Off/generation/real 46-second expiry must return queued/executor_unavailable, while pending/changed restore must return stale_context without writes. The test fixture adds only the captured host BIGINT column, not a production schema change. Root lint, source inventory and whitespace checks pass. TEST2 has not been entered; the full candidate must be clean and commit-bound before the coordinated warning/window.
 
 Review: prealpha.30 published 2026-10-31T00:55:07Z from immutable source 496f816356ce0af8d6b4fb67e720f90e9bba0ebe. Both maintainers independently accepted actual TEST2 API/PG run 20261031T004858Z-6954a1bb: 11/11, 137 assertions, 25 Department + 21 owner Git inputs, 12 captured core files and 52 raw child trace/stream triples. Exact once/concurrent saved 500-gold recovery, generation 7, genuine 46-second expiry and restore/no-renewal postconditions passed. Earlier two pre-API runner failures are retained as failed evidence. Owned PG stopped/scratch removed, all leases released, initial TEST2 stopped restored, existing host listener unchanged; no live/game/core/provider/installation access. 297 source files match Git, official archive accepted, all four clean/draft/anonymous assets exact, 28 old releases/151 assets/56 refs preserved. Source tag and assets remain immutable; this completion changes documentation only. Mouse capture and physical Skyrim/native delivery remain unresolved/unverified.
+
+# Focused bug hunt — 2026-10-30
+
+Scope: current prealpha.30 source, recent PCV receipt polling, PRISMA input lifecycle, and Sealed Fates recovery. TEST source/offline evidence only; no CHIM core/live/running-game/installation changes, server runs, DLL builds or publication.
+
+- [x] Trace reported mouse capture and relevant native/CHIM/PRISMA boundaries against captured sources; separate confirmed defects from runtime hypotheses.
+- [x] Review receipt polling and recovery failure/race paths; create minimal offline reproductions for concrete candidates.
+- [x] Review version/identity and saved-letter recovery boundaries against the current owner source; avoid unaffected suites.
+- [x] Write ranked findings with file/line evidence, reproduction results and remaining limits; close the review checklist.
+
+Review: focused hunt completed against exact published prealpha.30 source bytes. Two new defects reproduced with an isolated browser/fake bridge: an empty complete waiting-letter scan loses an uncertain local paid-send lock and permits a second request; a local native target-loss stale_context clears global UI access and both PCV/letter drafts. Two control probes passed, both safety assertions correctly fail. All 21 public dev.31 owner pins match. Ranked evidence and minimal suggested fixes: artifacts/department-bughunt-20261030/FINDINGS.md. No product fixes or publication performed; no server/DB/DLL/game/live/core/installed-file access. Mouse remains unlocalized and needs a TEST onset trace; browser success is not native proof.
+
+# Two-defect repair and prealpha.31 release — 2026-10-31
+
+Spec: repair the two reproduced findings in artifacts/department-bughunt-20261030/FINDINGS.md. Preserve unresolved operation IDs/fingerprints/transfer locks across discovery absence; release only through existing definitive same-ID reconciliation. Use actor-specific native refusal without weakening genuine authentication/save/scope invalidation. TEST/offline only; no CHIM core, live, installed files, running game, provider or server/DB calls. A companion DLL rebuild is necessary for the native error-code fix; build once after source review.
+
+- [x] LUNA/max: regression RED then minimal UI recovery fix and targeted GREEN, including pagination/empty/nonempty omission and definitive reconciliation.
+- [ ] LUNA/max: regression RED then native target-loss code fix; preserve true scope/auth refusal, review before one isolated DLL19 build.
+- [ ] Root spec/code review and independent targeted reproductions; check relevant replay/privacy/failure edges without broad suites.
+- [ ] LUNA/max: source-bound prealpha.31 package from exact public30 plus reviewed DLL; clean reproducibility, checksums and archive-consumer verification.
+- [ ] Root final audit, commit/push/prerelease publication, anonymous asset/history verification and clean main promotion.
+
+Review: pending. Mouse capture is a separate unresolved issue and must not be presented as repaired by these fixes.
+
+Source-freeze review: root accepted the narrow UI deletion and actor-only native error reclassification; actual replay probe now passes3/3 with original ID retained/one compose/no external request, and source-emitted actor-error UI probe preserves connection/both drafts with no resend. Worker4repair regressions and privacy/limited/stale controls passed; root reviewed the screenshot. Native27 sources are frozen and unchanged during the single build;6hosttests passed, DLL compilation and PE/emitted-validator/package gates remain pending. No server/DB/WSL/core/live/game/installed-file access.

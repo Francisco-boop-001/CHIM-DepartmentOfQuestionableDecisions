@@ -128,7 +128,7 @@ namespace
 	std::string_view SafeErrorCode(std::string_view code) noexcept
 	{
 		constexpr std::array codes{
-			std::string_view("busy"), std::string_view("connection_secure_storage_failed"),
+			std::string_view("actor_unavailable"), std::string_view("busy"), std::string_view("connection_secure_storage_failed"),
 			std::string_view("connection_setup_required"), std::string_view("forbidden"),
 			std::string_view("invalid_request"), std::string_view("invalid_response"),
 			std::string_view("stale_context"), std::string_view("stale_revision"),
@@ -2400,7 +2400,7 @@ namespace
 				return;
 			}
 			if (!managedRosterReady_ || !managedActorKeys_.contains(actorKey) || !managedActorLabels_.contains(actorKey)) {
-				RespondPreDispatchError(request, "stale_context", "The selected managed actor is no longer available.");
+				RespondPreDispatchError(request, "actor_unavailable", "The selected actor is no longer eligible. Refresh the cast and try again.");
 				return;
 			}
 			if (!HasCompanionOperationCapacity()) {
@@ -2444,7 +2444,7 @@ namespace
 			dql::companion::TargetIdentity target;
 			const auto actorHandle = ResolveFreshPcvActor(pending.actorKey, result, target);
 			if (!actorHandle) {
-				RespondPreDispatchError(pending.request, "stale_context", "The selected actor could not be matched to the fresh CHIM roster.");
+				RespondPreDispatchError(pending.request, "actor_unavailable", "The selected actor is no longer eligible. Refresh the cast and try again.");
 				return;
 			}
 			if (!NativeDestinationMatches()) {
@@ -2931,7 +2931,7 @@ extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.18.0"_v,
+SKSEPluginInfo(.Version = "0.1.19.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
@@ -2943,7 +2943,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	SKSE::Init(skse);
 	InitializeNativeLogger();
 	LogEvent("startup", "skse_initialized");
-	LogEvent("startup", "version_0_1_0_18");
+	LogEvent("startup", "version_0_1_0_19");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
 	if (!messaging || !papyrus) {

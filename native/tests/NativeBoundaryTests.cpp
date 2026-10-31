@@ -99,6 +99,7 @@ namespace
 		const auto response = dql::contract::MakePreDispatchError(request, "stale_context",
 			"The Department authorization context is no longer current.");
 		CHECK(response["ok"] == false);
+		CHECK(response["error"]["code"] == "stale_context");
 		CHECK(response["requestId"] == request.requestId);
 		CHECK(response["operation"] == request.operation);
 		CHECK(response["context"]["viewToken"] == request.viewToken);
@@ -106,6 +107,12 @@ namespace
 		CHECK(response["error"]["dispatched"] == false);
 		CHECK(response.dump().find("C2-02-PRIVATE-COMPOSITION-SENTINEL") == std::string::npos);
 		WriteJson(std::getenv("DQL_REFUSAL_FIXTURE_PATH"), response);
+
+		const auto actorUnavailable = dql::contract::MakePreDispatchError(request, "actor_unavailable",
+			"The selected actor is no longer eligible. Refresh the cast and try again.");
+		CHECK(actorUnavailable["error"]["code"] == "actor_unavailable");
+		CHECK(actorUnavailable["error"]["dispatched"] == false);
+		CHECK(actorUnavailable.dump().find("C2-02-PRIVATE-COMPOSITION-SENTINEL") == std::string::npos);
 	}
 
 	void TestQueueFullWriteRefusalFixture()
@@ -138,11 +145,18 @@ namespace
 			"dql::inventory::GoldAmountFromInventory("));
 		CHECK(ContainsBetween(source, "ComposeResult PrepareComposePayload(", "void LoadOpenKey()",
 			"dql::inventory::GoldAmountFromInventory(player->GetInventory())"));
-		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.18.0\"_v,") != std::string::npos);
-		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_0_18\")") != std::string::npos);
+		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.19.0\"_v,") != std::string::npos);
+		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_0_19\")") != std::string::npos);
 		CHECK(source.find("void RespondPreDispatchError(") != std::string::npos);
 		CHECK(source.find("dql::contract::MakePreDispatchError(request, code, message)") != std::string::npos);
 		CHECK(source.find("dql::contract::MakeError(request, code, message, dispatched)") != std::string::npos);
+		CHECK(source.find("std::string_view(\"actor_unavailable\")") != std::string::npos);
+		CHECK(ContainsBetween(source,
+			"if (!managedRosterReady_ || !managedActorKeys_.contains(actorKey)",
+			"if (!HasCompanionOperationCapacity())", "RespondPreDispatchError(request, \"actor_unavailable\""));
+		CHECK(ContainsBetween(source, "void OnPcvFreshRoster(PendingCompanionStage& pending",
+			"if (!NativeDestinationMatches())", "RespondPreDispatchError(pending.request, \"actor_unavailable\""));
+		CHECK(source.find("if (errorCode == \"unauthorized\" || errorCode == \"forbidden\" || errorCode == \"stale_context\") ClearServerAccess();") != std::string::npos);
 		CHECK(ContainsBetween(source, "if (!request.serverContext", "if (!serverAuthenticated_)",
 			"RespondPreDispatchError("));
 		CHECK(ContainsBetween(source, "if (!serverAuthenticated_)",
