@@ -680,6 +680,7 @@ function dev31_assert_expired_activity_anchor(mixed $admin, int $minimumAge): ar
         'requestedWaitSeconds' => $minimumAge, 'observedAgeSeconds' => time() - $receivedAt,
         'activityGeneration' => 7, 'activityActive' => true, 'anchorRowId' => (string)$anchor['rowid'],
         'anchorDataSha256' => strtolower(hash('sha256', (string)$event['data'])),
+        'presencePayload' => $rows[0]['payload'], 'anchorEvent' => $event,
         'anchorMatchesUnmodifiedActivity' => true,
     ];
 }
@@ -2900,6 +2901,10 @@ try {
                     foreach (['passive','off','generation','expired','pending_restore','changed_restore'] as $mode) {
                         $pendingRestore = false;
                         $originalEpoch = null;
+                        $expiredProofBefore = null;
+                        $expiredCountSnapshotBefore = null;
+                        $expiryEvidenceIndex = null;
+                        $restoreSnapshotBefore = null;
                         try {
                             dev31_write_interaction_state($ctx, true, 7);
                             $observation = dev31_observe_native_activity($ctx, $admin, $mode === 'passive');
@@ -2926,12 +2931,16 @@ try {
                                 sleep(46);
                                 $waitElapsed = microtime(true) - $waitStarted;
                                 dev30_assert($waitElapsed >= 46.0, 'native_activity_expiry_wait_interrupted');
-                                $anchorEvidence = dev31_assert_expired_activity_anchor($admin, 46);
-                                $ctx['interactionExpiryWaits'][] = [
+                                $expiredProofBefore = dev31_assert_expired_activity_anchor($admin, 46);
+                                $expiryEvidence = [
                                     'caseId' => $caseId, 'requestedWaitSeconds' => 46,
                                     'observedElapsedSeconds' => round($waitElapsed, 3),
                                     'activityPayloadOrAnchorMutated' => false,
-                                ] + $anchorEvidence;
+                                ] + $expiredProofBefore;
+                                unset($expiryEvidence['presencePayload'], $expiryEvidence['anchorEvent']);
+                                $ctx['interactionExpiryWaits'][] = $expiryEvidence;
+                                $expiryEvidenceIndex = array_key_last($ctx['interactionExpiryWaits']);
+                                $expiredCountSnapshotBefore = dev30_count_snapshot($admin);
                             } elseif ($mode === 'pending_restore') {
                                 dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET pending=TRUE WHERE singleton IS TRUE');
                                 $pendingRestore = true;
@@ -2944,6 +2953,27 @@ try {
                                 dev30_pg($admin, 'UPDATE plugins.correspondence_restore_state SET epoch=$1::uuid WHERE singleton IS TRUE', [dev30_uuid()]);
                             }
 
+                            if (in_array($mode, ['pending_restore','changed_restore'], true)) {
+                                $restoreSnapshotBefore = [
+                                    'restoreRow' => dev30_scalar($admin,
+                                        'SELECT to_jsonb(s)::text FROM plugins.correspondence_restore_state AS s WHERE s.singleton IS TRUE'),
+                                    'presencePayload' => dev30_scalar($admin,
+                                        'SELECT payload::text FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']),
+                                    'anchorEvent' => dev30_scalar($admin,
+                                        "SELECT to_jsonb(e)::text FROM public.eventlog AS e WHERE e.rowid = "
+                                            . "(SELECT (payload->'activity'->'anchor'->>'rowid')::bigint FROM plugins.correspondence_presence WHERE playthrough_id=\$1)",
+                                        ['unprofiled']),
+                                    'ownerCounts' => dev30_count_snapshot($admin),
+                                    'roleCommandCount' => (string)dev30_scalar($admin,
+                                        "SELECT count(*)::text FROM public.responselog WHERE action='rolecommand'"),
+                                    'deliveryCounts' => dev30_delivery_counts($admin, $letter['documentId']),
+                                ];
+                                dev30_assert(is_string($restoreSnapshotBefore['restoreRow'] ?? null)
+                                    && is_string($restoreSnapshotBefore['presencePayload'] ?? null)
+                                    && is_string($restoreSnapshotBefore['anchorEvent'] ?? null),
+                                    'restore_refusal_snapshot_missing');
+                            }
+
                             if ($mode !== 'generation') {
                                 $result = dev30_api($ctx, $caseId, 'correspondence.resume', [
                                     'operationId' => $letter['requestId'], 'attemptId' => $attemptId,
@@ -2952,6 +2982,22 @@ try {
                                     $response = dev30_response($result);
                                     dev30_assert(($response['ok'] ?? null) === false && ($response['errorCode'] ?? null) === 'stale_context',
                                         'restore_context_refusal_not_stale_context');
+                                    $restoreSnapshotAfter = [
+                                        'restoreRow' => dev30_scalar($admin,
+                                            'SELECT to_jsonb(s)::text FROM plugins.correspondence_restore_state AS s WHERE s.singleton IS TRUE'),
+                                        'presencePayload' => dev30_scalar($admin,
+                                            'SELECT payload::text FROM plugins.correspondence_presence WHERE playthrough_id=$1', ['unprofiled']),
+                                        'anchorEvent' => dev30_scalar($admin,
+                                            "SELECT to_jsonb(e)::text FROM public.eventlog AS e WHERE e.rowid = "
+                                                . "(SELECT (payload->'activity'->'anchor'->>'rowid')::bigint FROM plugins.correspondence_presence WHERE playthrough_id=\$1)",
+                                            ['unprofiled']),
+                                        'ownerCounts' => dev30_count_snapshot($admin),
+                                        'roleCommandCount' => (string)dev30_scalar($admin,
+                                            "SELECT count(*)::text FROM public.responselog WHERE action='rolecommand'"),
+                                        'deliveryCounts' => dev30_delivery_counts($admin, $letter['documentId']),
+                                    ];
+                                    dev30_assert($restoreSnapshotBefore === $restoreSnapshotAfter,
+                                        'restore_context_refusal_mutated_owned_state');
                                     dev31_restore_preflight_trace($ctx, $result, $mode);
                                     $ctx['nativeContextRefusalResults'][] = [
                                         'variant' => $mode, 'ok' => false, 'errorCode' => 'stale_context',
@@ -2962,6 +3008,19 @@ try {
 
                             if (!in_array($mode, ['pending_restore','changed_restore'], true)) {
                                 $response = dev31_assert_executor_unavailable_response($result, $letter);
+                                if ($mode === 'expired') {
+                                    dev30_assert(is_array($expiredCountSnapshotBefore)
+                                        && $expiredCountSnapshotBefore === dev30_count_snapshot($admin),
+                                        'expired_resume_mutated_owner_counts');
+                                    $expiredProofAfter = dev31_assert_expired_activity_anchor($admin, 46);
+                                    dev30_assert(($expiredProofAfter['presencePayload'] ?? null) === ($expiredProofBefore['presencePayload'] ?? null)
+                                        && ($expiredProofAfter['anchorEvent'] ?? null) === ($expiredProofBefore['anchorEvent'] ?? null)
+                                        && ($expiredProofAfter['anchorRowId'] ?? null) === ($expiredProofBefore['anchorRowId'] ?? null)
+                                        && ($expiredProofAfter['anchorDataSha256'] ?? null) === ($expiredProofBefore['anchorDataSha256'] ?? null),
+                                        'expired_resume_mutated_activity_or_owned_anchor');
+                                    dev30_assert(is_int($expiryEvidenceIndex), 'expired_resume_evidence_index_missing');
+                                    $ctx['interactionExpiryWaits'][$expiryEvidenceIndex]['postResumePayloadAndAnchorUnchanged'] = true;
+                                }
                                 if (!in_array($mode, ['generation'], true)) {
                                     dev31_interaction_trace($ctx, $result, $mode !== 'off', 7, $mode !== 'off');
                                 }
