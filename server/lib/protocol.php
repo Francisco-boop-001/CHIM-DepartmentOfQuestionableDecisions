@@ -286,16 +286,67 @@ function qd_validate_pcv_configuration(mixed $configuration): bool
 
 function qd_brainwash_valid_authoring(mixed $value): bool
 {
-    if (!is_object($value) || !qd_exact_properties($value, ['workingCard','conversation','historyLimit'])
+    if (!is_object($value) || !qd_exact_properties($value, ['workingCard','conversation','historyLimit'], ['intent'])
         || !qd_brainwash_valid_changes($value->workingCard, true) || count(get_object_vars($value->workingCard)) !== 8
         || !is_array($value->conversation) || !array_is_list($value->conversation) || count($value->conversation) > 8
         || !is_int($value->historyLimit) || $value->historyLimit < 0 || $value->historyLimit > 200) return false;
+    if (property_exists($value,'intent') && (!in_array($value->intent,['creative','development'],true)
+        || ($value->intent==='development' && $value->historyLimit===0))) return false;
     $bytes = 0;
     foreach ($value->conversation as $turn) {
         if (!is_object($turn) || !qd_exact_properties($turn, ['role','content'])
             || !in_array($turn->role, ['user','assistant'], true) || !qd_valid_string($turn->content, 2000, true)) return false;
         $bytes += strlen($turn->content);
         if ($bytes > 12000) return false;
+    }
+    return true;
+}
+
+
+function qd_brainwash_valid_draft_authoring(object $draft): bool
+{
+    if (!property_exists($draft, 'authoring')) return true;
+    $value=$draft->authoring;
+    if (($draft->origin??null)!=='ai' || !is_object($value)
+        || !qd_exact_properties($value,['reply','evidence','historyCount','historyTruncated'],['intent','assessments'])
+        || !qd_valid_string($value->reply,2000,true) || !is_array($value->evidence) || !array_is_list($value->evidence) || count($value->evidence)>20
+        || !is_int($value->historyCount) || $value->historyCount<0 || $value->historyCount>200 || !is_bool($value->historyTruncated)) return false;
+    $seen=[];
+    foreach($value->evidence as $item) {
+        if (!is_object($item) || !qd_exact_properties($item,['eventId','reason','excerpt'])
+            || !is_string($item->eventId) || preg_match('/\A[1-9][0-9]{0,19}\z/D',$item->eventId)!==1
+            || !qd_valid_string($item->reason,256,true) || !qd_valid_string($item->excerpt,256,true) || isset($seen[$item->eventId])) return false;
+        $seen[$item->eventId]=true;
+    }
+    if (property_exists($value,'intent')!==property_exists($value,'assessments')) return false;
+    if (!property_exists($value,'intent')) return true;
+    if (!in_array($value->intent,['creative','development'],true) || !is_array($value->assessments) || !array_is_list($value->assessments) || count($value->assessments)>9
+        || !qd_brainwash_valid_changes($draft->changes??null,true) || !qd_brainwash_valid_changes($draft->before??null,true)) return false;
+    $selected=array_keys(get_object_vars($draft->changes));
+    if (property_exists($draft,'beliefs')) {
+        if (!qd_valid_string($draft->beliefs,4000,true) || !qd_valid_string($draft->beliefsBefore??null,4000,true)) return false;
+        $selected[]='beliefs';
+    }
+    if (count($value->assessments)!==count($selected)) return false;
+    $assessed=[];
+    foreach($value->assessments as $item) {
+        if (!is_object($item) || !qd_exact_properties($item,['field','basis','reason','eventIds']) || !is_string($item->field)
+            || !in_array($item->field,$selected,true) || isset($assessed[$item->field])
+            || !in_array($item->basis,['author','evidence','inference','unchanged'],true)
+            || !qd_valid_string($item->reason,512) || preg_match('/[^\s\p{Z}\x{FEFF}]/u',$item->reason)!==1
+            || !is_array($item->eventIds) || !array_is_list($item->eventIds) || count($item->eventIds)>5
+            || ($item->basis==='evidence' ? $item->eventIds===[] : $item->eventIds!==[])) return false;
+        $ids=[];
+        foreach($item->eventIds as $id) {
+            if (!is_string($id) || !isset($seen[$id]) || isset($ids[$id])) return false;
+            $ids[$id]=true;
+        }
+        $field=$item->field;
+        if ($field!=='beliefs' && !property_exists($draft->before,$field)) return false;
+        $changed=$field==='beliefs' ? $draft->beliefs!==$draft->beliefsBefore : $draft->changes->$field!==$draft->before->$field;
+        if (($item->basis==='unchanged' && $changed)
+            || ($value->intent==='development' && (($changed && $item->basis!=='evidence') || ($value->historyCount===0 && $item->basis!=='unchanged')))) return false;
+        $assessed[$field]=true;
     }
     return true;
 }

@@ -1,0 +1,11 @@
+# Evidence desk: local source candidate
+
+Department prealpha.33/native 0.1.21.0 expects the exact MMP owner dev.6 source closure. Earlier dev.3/dev.4/dev.5 maps remain unchanged; the current candidate requires dev.6. This candidate is unpublished and uninstalled. The earlier authoring candidate report describes the preceding dev.5/native 0.1.20.0 verification only.
+
+The actual shared editor is synchronized byte-for-byte from the frozen owner. The Department shell retains all five tabs and uses a single MMP masthead. PHP input, PHP draft-authoring output, native and JS validators accept optional explicit creative/development intent, paired field assessments including beliefs, source-ID linkage and bounded nonblank reasons. Development requires history, rejects unsupported changes and compares unchanged with the saved card. Unsaved working text remains model context. The backend remains the semantic authority; structural links cannot prove relevance or entailment.
+
+Source verification: 43 PHP checks pass; actual JS bridge browser checks pass; actual Department shell plus shared editor fixture passes with all nine selected assessments, unchecked field/belief acceptance, exactly one goals-only Apply, retained full unsaved context, all five tabs visible, narrow layout without horizontal overflow, no browser errors and no network requests. The synthetic fixture uses the real app request/response validators and editor. It is not installed PRISMA, CHIM, provider or database evidence. The common artifact screenshot prisma-evidence-desk.png was visually inspected.
+
+The legacy Department contract fixture passes 68/80 on Windows. Its same 12 known journal/directory-fsync cases fail before owner dispatch. Exact source closure/drift acceptance passes. Durability checks were not weakened. Root verified all six native host suites before the scoped Unicode parity correction, then fresh host/plugin rebuild and the targeted Contract suite afterward; no DLL was packaged by this integration worker. See the common integration-report.md and native build logs for the current build evidence.
+
+No WSL, distro, database, provider, installed file, live endpoint, listener, Skyrim or gameplay operation occurred. No commit, publication or installation occurred.

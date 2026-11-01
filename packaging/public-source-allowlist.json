@@ -2,305 +2,917 @@
   "schemaVersion": 1,
   "kind": "explicit-public-source-allowlist",
   "files": [
-    { "path": ".gitattributes" },
-    { "path": "README.md" },
-    { "path": "docs/BRAINWASH-IMPLEMENTATION.md" },
-    { "path": "docs/BUILD.md" },
-    { "path": "docs/audits/2026-10-26-maintainer-world-contracts.md" },
-    { "path": "docs/audits/2026-10-26-maintainer-world-coverage.md" },
-    { "path": "docs/audits/2026-10-26-maintainer-world-findings.md" },
-    { "path": "docs/audits/2026-10-26-maintainer-world-prompt.md" },
-    { "path": "docs/DEV18-COMPATIBILITY.md" },
-    { "path": "docs/DEV20-COMPATIBILITY.md" },
-    { "path": "docs/DEV23-COMPATIBILITY.md" },
-    { "path": "docs/DEV24-COMPATIBILITY.md" },
-    { "path": "docs/DEV25-COMPATIBILITY.md" },
-    { "path": "docs/DEV26-COMPATIBILITY.md" },
-    { "path": "docs/DEV30-COMPATIBILITY.md" },
-    { "path": "docs/PAIRING-CHECK.md" },
-    { "path": "docs/STATE-RECOVERY-POLICY.md" },
-    { "path": "docs/TEST-PROFILE-SETUP.md" },
-    { "path": "docs/VERIFICATION.md" },
-    { "path": "docs/superpowers/plans/2026-10-24-automatic-chim-setup.md" },
-    { "path": "docs/superpowers/plans/2026-10-24-sealed-fates-dev23-compatibility.md" },
-    { "path": "docs/superpowers/plans/2026-10-25-bootstrap-validator.md" },
-    { "path": "docs/superpowers/plans/2026-10-25-sealed-fates-dev24.md" },
-    { "path": "docs/superpowers/plans/2026-10-25-startup-handshake.md" },
-    { "path": "docs/superpowers/plans/2026-10-26-maintainer-fixes.md" },
-    { "path": "docs/superpowers/plans/2026-10-26-dev26-pairing.md" },
-    { "path": "docs/superpowers/plans/2026-10-28-sealed-fates-dev30.md" },
-    { "path": "docs/superpowers/specs/2026-10-23-install-and-use-design.md" },
-    { "path": "native/CMakeLists.txt" },
-    { "path": "native/build.ps1" },
-    { "path": "native/deps.lock.json" },
-    { "path": "native/deps/PrismaUI_API.h" },
-    { "path": "native/fetch-dependencies.ps1" },
-    { "path": "native/papyrus/PexMetadata.psm1" },
-    { "path": "native/papyrus/Source/WorldOfDramaLlamaMCM.psc" },
-    { "path": "native/papyrus/Source/WorldOfDramaLlamaNative.psc" },
-    { "path": "native/papyrus/build.ps1" },
-    { "path": "native/papyrus/deps.lock.json" },
-    { "path": "native/papyrus/fetch-dependencies.ps1" },
-    { "path": "native/papyrus/tests/PexMetadata.Tests.ps1" },
-    { "path": "native/src/ConnectionProtocol.cpp" },
-    { "path": "native/src/ConnectionProtocol.h" },
-    { "path": "native/src/Contract.cpp" },
-    { "path": "native/src/Contract.h" },
-    { "path": "native/src/HttpTransport.cpp" },
-    { "path": "native/src/HttpTransport.h" },
-    { "path": "native/src/NativePolicy.cpp" },
-    { "path": "native/src/NativePolicy.h" },
-    { "path": "native/src/PcvCompanionPolicy.cpp" },
-    { "path": "native/src/PcvCompanionPolicy.h" },
-    { "path": "native/src/Plugin.cpp" },
-    { "path": "native/tests/Build-Recipe.Tests.ps1" },
-    { "path": "native/tests/ConnectionProtocolTests.cpp" },
-    { "path": "native/tests/ContractTests.cpp" },
-    { "path": "native/tests/NativeBoundaryTests.cpp" },
-    { "path": "native/tests/PcvCompanionPolicyTests.cpp" },
-    { "path": "native/tests/ServerBootstrapTests.cpp" },
-    { "path": "native/tests/emit-pcv-companion-fixtures.php" },
-    { "path": "native/tests/fixtures/PlayerConversationRoutingPolicy.h" },
-    { "path": "native/tests/fixtures/Plugin-LICENSE" },
-    { "path": "native/tests/fixtures/README.md" },
-    { "path": "native/tests/fixtures/php-companion-json-fixtures.json" },
-    { "path": "native/tests/http-transport-tests.cpp" },
-    { "path": "packaging/COMPANION-ONLY-TEST-PACKAGE.md" },
-    { "path": "packaging/audit-department-pre-alpha.ps1" },
-    { "path": "packaging/authoring/NuGet.Config" },
-    { "path": "packaging/authoring/Program.cs" },
-    { "path": "packaging/authoring/WorldOfDramaLlamaGamePlugin.csproj" },
-    { "path": "packaging/authoring/build.ps1" },
-    { "path": "packaging/authoring/packages.lock.json" },
-    { "path": "packaging/authoring/tests/Build.Tests.ps1" },
-    { "path": "packaging/build-companion-only-test-candidate.ps1" },
-    { "path": "packaging/build-installable-prealpha8.py" },
-    { "path": "packaging/build-installable-prealpha9.py" },
-    { "path": "packaging/build-installable-prealpha13.py" },
-    { "path": "packaging/build-installable-prealpha14.py" },
-    { "path": "packaging/build-installable-prealpha15.py" },
-    { "path": "packaging/build-installable-prealpha16.py" },
-    { "path": "packaging/build-installable-prealpha17.py" },
-    { "path": "packaging/build-installable-prealpha18.py" },
-    { "path": "packaging/build-installable-prealpha19.py" },
-    { "path": "packaging/repack-source-compatibility.py" },
-    { "path": "packaging/companion-only/PCV-PROVENANCE.md" },
-    { "path": "packaging/companion-only/WorldOfDramaLlama.ini" },
-    { "path": "packaging/companion-only/notices/CHIM-Plugin-MIT-LICENSE.txt" },
-    { "path": "packaging/companion-only/notices/CommonLibSSE-NG-3.7.0-LICENSE.txt" },
-    { "path": "packaging/companion-only/notices/Department-nlohmann-json-3.11.3-MIT.txt" },
-    { "path": "packaging/companion-only/notices/PrismaUI-LICENSE.md" },
-    { "path": "packaging/companion-only/notices/fmt-10.2.1-LICENSE.txt" },
-    { "path": "packaging/companion-only/notices/rapidcsv-8.84-LICENSE.txt" },
-    { "path": "packaging/companion-only/notices/spdlog-1.13.0-LICENSE.txt" },
-    { "path": "packaging/companion-only/pcv-0.1.23-source-manifest.json" },
-    { "path": "packaging/public-source-allowlist.json" },
-    { "path": "packaging/tests/ReleaseChecksums.Tests.ps1" },
-    { "path": "packaging/tests/test_installable_prealpha8.py" },
-    { "path": "packaging/tests/test_installable_prealpha9.py" },
-    { "path": "packaging/tests/test_installable_prealpha13.py" },
-    { "path": "packaging/tests/test_installable_prealpha14.py" },
-    { "path": "packaging/tests/test_installable_prealpha15.py" },
-    { "path": "packaging/tests/test_installable_prealpha16.py" },
-    { "path": "packaging/tests/test_installable_prealpha17.py" },
-    { "path": "packaging/tests/test_installable_prealpha18.py" },
-    { "path": "packaging/tests/test_installable_prealpha19.py" },
-    { "path": "packaging/write-release-checksums.ps1" },
-    { "path": "pcv-companion/companion.php" },
-    { "path": "pcv-companion/globals.php" },
-    { "path": "pcv-companion/manifest.json" },
-    { "path": "pcv-companion/preprocessing.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/installation_guard.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/log.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/manifest.json" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/preprocessing.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/reflection.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/scope.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.23/server/state.php" },
-    { "path": "server/adapters/brainwash.php" },
-    { "path": "server/adapters/correspondence.php" },
-    { "path": "server/adapters/mp.php" },
-    { "path": "server/adapters/pcv.php" },
-    { "path": "server/adapters/runtime_support.php" },
-    { "path": "server/adapters/sas.php" },
-    { "path": "server/api.php" },
-    { "path": "server/connect.php" },
-    { "path": "server/index.php" },
-    { "path": "server/lib/auth.php" },
-    { "path": "server/lib/connect.php" },
-    { "path": "server/lib/dispatcher.php" },
-    { "path": "server/lib/journal.php" },
-    { "path": "server/lib/overlay_setup.php" },
-    { "path": "server/lib/protocol.php" },
-    { "path": "server/manifest.json" },
-    { "path": "server/preprocessing.php" },
-    { "path": "server/runtime.php" },
-    { "path": "server/tests/brainwash/department-contract.php" },
-    { "path": "server/tests/brainwash/installed-runtime.php" },
-    { "path": "server/tests/correspondence/dev14-interface-compatibility.php" },
-    { "path": "server/tests/correspondence/dev18-generation-reader.php" },
-    { "path": "server/tests/correspondence/dev18-ingress-authority.php" },
-    { "path": "server/tests/correspondence/dev18-lease-identity.php" },
-    { "path": "server/tests/correspondence/dev18-owned-close.php" },
-    { "path": "server/tests/correspondence/dev18-physical-mapping.php" },
-    { "path": "server/tests/correspondence/dev18-source-contract.php" },
-    { "path": "server/tests/correspondence/dev20-source-contract.php" },
-    { "path": "server/tests/correspondence/dev20-closed-unknown.php" },
-    { "path": "server/tests/correspondence/dev20-physical-mapping.php" },
-    { "path": "server/tests/correspondence/dev21-source-contract.php" },
-    { "path": "server/tests/correspondence/dev22-source-contract.php" },
-    { "path": "server/tests/correspondence/dev23-source-contract.php" },
-    { "path": "server/tests/correspondence/dev26-source-contract.php" },
-    { "path": "server/tests/correspondence/check-owner-pairing.php" },
-    { "path": "server/tests/correspondence/pairing-selfcheck.php" },
-    { "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/lib/boundaries.php" },
-    { "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/lib/runtime.php" },
-    { "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/lib/store.php" },
-    { "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/manifest.json" },
-    { "path": "server/tests/dev18-pg/api_driver.php" },
-    { "path": "server/tests/dev18-pg/base.sql" },
-    { "path": "server/tests/dev18-pg/cases.json" },
-    { "path": "server/tests/dev18-pg/fixture_guard.php" },
-    { "path": "server/tests/dev18-pg/owner_fixture.php" },
-    { "path": "server/tests/dev18-pg/seed_unknown_receipt.php" },
-    { "path": "server/tests/dev20-pg/api_driver.php" },
-    { "path": "server/tests/dev20-pg/base.sql" },
-    { "path": "server/tests/dev20-pg/cases.json" },
-    { "path": "server/tests/dev20-pg/fixture_guard.php" },
-    { "path": "server/tests/dev20-pg/owner_fixture.php" },
-    { "path": "server/tests/dev20-pg/seed_unknown_receipt.php" },
-    { "path": "server/tests/dev23-pg/api_driver.php" },
-    { "path": "server/tests/dev23-pg/base.sql" },
-    { "path": "server/tests/dev23-pg/build-source-bindings.ps1" },
-    { "path": "server/tests/dev23-pg/cases.json" },
-    { "path": "server/tests/dev23-pg/companion_cases.php" },
-    { "path": "server/tests/dev23-pg/controller_switch.php" },
-    { "path": "server/tests/dev23-pg/coverage.json" },
-    { "path": "server/tests/dev23-pg/fixture_guard.php" },
-    { "path": "server/tests/dev23-pg/launch-dev23-test.ps1" },
-    { "path": "server/tests/dev23-pg/owner-runtime-pins.json" },
-    { "path": "server/tests/dev23-pg/owner_fixture.php" },
-    { "path": "server/tests/dev23-pg/pg_scenarios.php" },
-    { "path": "server/tests/dev23-pg/run-dev23-owner-facade.sh" },
-    { "path": "server/tests/dev23-pg/seed_unknown_receipt.php" },
-    { "path": "server/tests/dev23-pg/test_runner_contract.py" },
-    { "path": "server/tests/dev23-pg/verify-dev23-harness.ps1" },
-    { "path": "server/tests/dev23-pg/verify-owner-pins.ps1" },
-    { "path": "server/tests/foundation/journal.php" },
-    { "path": "server/tests/foundation/run.php" },
-    { "path": "server/tests/mp/source-contract.php" },
-    { "path": "server/tests/native-bootstrap/generate.php" },
-    { "path": "server/tests/onboarding/bootstrap-overlay.php" },
-    { "path": "server/tests/onboarding/connect.php" },
-    { "path": "server/tests/onboarding/core-package-install.php" },
-    { "path": "server/tests/onboarding/emit-connect-fixtures.php" },
-    { "path": "server/tests/onboarding/http-guard.php" },
-    { "path": "server/tests/onboarding/overlay.php" },
-    { "path": "server/tests/onboarding/stock-ingress.php" },
-    { "path": "server/tests/pcv/adapter.php" },
-    { "path": "server/tests/pcv/companion_owner_seam.php" },
-    { "path": "server/tests/pcv/companion_presence_reader.php" },
-    { "path": "server/tests/pcv/companion_store.php" },
-    { "path": "server/tests/pcv/owner_source_contract.php" },
-    { "path": "server/tests/pcv/runtime_support_limits.php" },
-    { "path": "server/tests/provision-cgi.php" },
-    { "path": "server/tests/sas/source-contract.php" },
-    { "path": "server/tools/provision.php" },
-    { "path": "tasks/lessons.md" },
-    { "path": "tasks/todo.md" },
-    { "path": "ui/app.css" },
-    { "path": "ui/app.js" },
-    { "path": "ui/brainwash-editor.css" },
-    { "path": "ui/brainwash-editor.js" },
-    { "path": "ui/index.html" },
-    { "path": "ui/tests/brainwash.cjs" },
-    { "path": "ui/tests/fixtures/fifth-tab.html" },
-    { "path": "ui/tests/startup-handshake.cjs" },
-    { "path": "ui/tests/ui-functional.cjs" },
-    { "path": "ui/tests/ui-interactions.cjs" },
-    { "path": "ui/tests/ui-render.cjs" },
-    { "path": "docs/PCV24-COMPATIBILITY.md" },
-    { "path": "docs/superpowers/plans/2026-10-26-pcv24-paired.md" },
-    { "path": "packaging/build-installable-prealpha20.py" },
-    { "path": "packaging/companion-only/pcv-0.1.24-source-manifest.json" },
-    { "path": "packaging/tests/test_installable_prealpha20.py" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/installation_guard.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/log.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/manifest.json" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/preprocessing.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/reflection.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/scope.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.24/server/state.php" },
-    { "path": "docs/superpowers/plans/2026-10-26-sharmat-connect21.md" },
-    { "path": "packaging/build-installable-prealpha21.py" },
-    { "path": "packaging/tests/test_installable_prealpha21.py" },
-    { "path": "server/globals.php" },
-    { "path": "docs/DEV27-COMPATIBILITY.md" },
-    { "path": "docs/superpowers/plans/2026-10-26-dev27-pairing.md" },
-    { "path": "packaging/build-installable-prealpha22.py" },
-    { "path": "packaging/tests/test_installable_prealpha22.py" },
-    { "path": "server/tests/correspondence/dev27-source-contract.php" },
-    { "path": "docs/NORMAL-CHIM-COMPATIBILITY.md" },
-    { "path": "packaging/build-installable-prealpha23.py" },
-    { "path": "packaging/tests/test_installable_prealpha23.py" },
-    { "path": "server/tests/pcv/core_main_guard.php" },
-    { "path": "docs/DEV28-COMPATIBILITY.md" },
-    { "path": "native/src/GoldInventory.h" },
-    { "path": "packaging/build-installable-prealpha24.py" },
-    { "path": "packaging/tests/test_installable_prealpha24.py" },
-    { "path": "server/tests/correspondence/dev28-source-contract.php" },
-    { "path": "docs/DEV29-COMPATIBILITY.md" },
-    { "path": "packaging/build-installable-prealpha25.py" },
-    { "path": "packaging/tests/test_installable_prealpha25.py" },
-    { "path": "packaging/build-installable-prealpha26.py" },
-    { "path": "packaging/tests/test_installable_prealpha26.py" },
-    { "path": "server/tests/correspondence/dev29-source-contract.php" },
-    { "path": "server/tests/correspondence/dev29-transaction-memo.php" },
-    { "path": "server/tests/correspondence/dev30-source-contract.php" },
-    { "path": "server/tests/correspondence/dev30-adapter-interface.php" },
-    { "path": "server/tests/dev30-pg/cases.json" },
-    { "path": "server/tests/dev30-pg/actual_pg.php" },
-    { "path": "docs/PCV25-OFFLINE-CANDIDATE.md" },
-    { "path": "docs/superpowers/plans/2026-10-29-pcv25-offline.md" },
-    { "path": "packaging/build-pcv25-offline-candidate.py" },
-    { "path": "packaging/companion-only/PCV25-PROVENANCE.md" },
-    { "path": "packaging/companion-only/pcv-0.1.25-source-manifest.json" },
-    { "path": "packaging/tests/test_pcv25_offline_candidate.py" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/installation_guard.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/log.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/manifest.json" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/preprocessing.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/reflection.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/scope.php" },
-    { "path": "pcv-companion/private-conversation-v0.1.25/server/state.php" },
-    { "path": "server/tests/pcv25/overlay_upgrade.php" },
-    { "path": "server/tests/pcv25/source_contract.php" },
-    { "path": "server/tests/pcv25/owner_loaders.php" },
-    { "path": "server/tests/pcv25/recursive_loader_orders.php" },
-    { "path": "docs/PCV25-RELEASE.md" },
-    { "path": "docs/superpowers/plans/2026-10-29-pcv25-release.md" },
-    { "path": "packaging/build-installable-prealpha27.py" },
-    { "path": "packaging/tests/test_installable_prealpha27.py" },
-    { "path": "docs/LETTER-RECOVERY.md" },
-    { "path": "docs/superpowers/plans/2026-10-30-letter-resume.md" },
-    { "path": "docs/superpowers/specs/2026-10-30-letter-resume-design.md" },
-    { "path": "packaging/build-installable-prealpha28.py" },
-    { "path": "packaging/tests/test_installable_prealpha28.py" },
-    { "path": "server/tests/correspondence/resume-contract.php" },
-    { "path": "packaging/build-installable-prealpha29.py" },
-    { "path": "packaging/tests/test_installable_prealpha29.py" },
-    { "path": "docs/DEV31-COMPATIBILITY.md" },
-    { "path": "packaging/build-installable-prealpha30.py" },
-    { "path": "packaging/tests/test_installable_prealpha30.py" },
-    { "path": "server/tests/correspondence/dev31-adapter-interface.php" },
-    { "path": "server/tests/correspondence/dev31-source-contract.php" },
-    { "path": "server/tests/correspondence/fixtures/owner-dev31-handoff.json" },
-    { "path": "server/tests/dev31-pg/cases.json" },
-    { "path": "server/tests/dev31-pg/core-inputs.json" },
-    { "path": "server/tests/dev31-pg/generation_change_driver.php" },
-    { "path": "server/tests/dev31-pg/owner-pins.json" },
-    { "path": "docs/REPAIR31.md" },
-    { "path": "packaging/build-installable-prealpha31.py" },
-    { "path": "packaging/tests/test_installable_prealpha31.py" }
+    {
+      "path": ".gitattributes"
+    },
+    {
+      "path": "README.md"
+    },
+    {
+      "path": "docs/BRAINWASH-IMPLEMENTATION.md"
+    },
+    {
+      "path": "docs/BUILD.md"
+    },
+    {
+      "path": "docs/audits/2026-10-26-maintainer-world-contracts.md"
+    },
+    {
+      "path": "docs/audits/2026-10-26-maintainer-world-coverage.md"
+    },
+    {
+      "path": "docs/audits/2026-10-26-maintainer-world-findings.md"
+    },
+    {
+      "path": "docs/audits/2026-10-26-maintainer-world-prompt.md"
+    },
+    {
+      "path": "docs/DEV18-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/DEV20-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/DEV23-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/DEV24-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/DEV25-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/DEV26-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/DEV30-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/PAIRING-CHECK.md"
+    },
+    {
+      "path": "docs/STATE-RECOVERY-POLICY.md"
+    },
+    {
+      "path": "docs/TEST-PROFILE-SETUP.md"
+    },
+    {
+      "path": "docs/VERIFICATION.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-24-automatic-chim-setup.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-24-sealed-fates-dev23-compatibility.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-25-bootstrap-validator.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-25-sealed-fates-dev24.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-25-startup-handshake.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-maintainer-fixes.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-dev26-pairing.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-28-sealed-fates-dev30.md"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-23-install-and-use-design.md"
+    },
+    {
+      "path": "native/CMakeLists.txt"
+    },
+    {
+      "path": "native/build.ps1"
+    },
+    {
+      "path": "native/deps.lock.json"
+    },
+    {
+      "path": "native/deps/PrismaUI_API.h"
+    },
+    {
+      "path": "native/fetch-dependencies.ps1"
+    },
+    {
+      "path": "native/papyrus/PexMetadata.psm1"
+    },
+    {
+      "path": "native/papyrus/Source/WorldOfDramaLlamaMCM.psc"
+    },
+    {
+      "path": "native/papyrus/Source/WorldOfDramaLlamaNative.psc"
+    },
+    {
+      "path": "native/papyrus/build.ps1"
+    },
+    {
+      "path": "native/papyrus/deps.lock.json"
+    },
+    {
+      "path": "native/papyrus/fetch-dependencies.ps1"
+    },
+    {
+      "path": "native/papyrus/tests/PexMetadata.Tests.ps1"
+    },
+    {
+      "path": "native/src/ConnectionProtocol.cpp"
+    },
+    {
+      "path": "native/src/ConnectionProtocol.h"
+    },
+    {
+      "path": "native/src/Contract.cpp"
+    },
+    {
+      "path": "native/src/Contract.h"
+    },
+    {
+      "path": "native/src/HttpTransport.cpp"
+    },
+    {
+      "path": "native/src/HttpTransport.h"
+    },
+    {
+      "path": "native/src/NativePolicy.cpp"
+    },
+    {
+      "path": "native/src/NativePolicy.h"
+    },
+    {
+      "path": "native/src/PcvCompanionPolicy.cpp"
+    },
+    {
+      "path": "native/src/PcvCompanionPolicy.h"
+    },
+    {
+      "path": "native/src/Plugin.cpp"
+    },
+    {
+      "path": "native/tests/Build-Recipe.Tests.ps1"
+    },
+    {
+      "path": "native/tests/ConnectionProtocolTests.cpp"
+    },
+    {
+      "path": "native/tests/ContractTests.cpp"
+    },
+    {
+      "path": "native/tests/NativeBoundaryTests.cpp"
+    },
+    {
+      "path": "native/tests/PcvCompanionPolicyTests.cpp"
+    },
+    {
+      "path": "native/tests/ServerBootstrapTests.cpp"
+    },
+    {
+      "path": "native/tests/emit-pcv-companion-fixtures.php"
+    },
+    {
+      "path": "native/tests/fixtures/PlayerConversationRoutingPolicy.h"
+    },
+    {
+      "path": "native/tests/fixtures/Plugin-LICENSE"
+    },
+    {
+      "path": "native/tests/fixtures/README.md"
+    },
+    {
+      "path": "native/tests/fixtures/php-companion-json-fixtures.json"
+    },
+    {
+      "path": "native/tests/http-transport-tests.cpp"
+    },
+    {
+      "path": "packaging/COMPANION-ONLY-TEST-PACKAGE.md"
+    },
+    {
+      "path": "packaging/audit-department-pre-alpha.ps1"
+    },
+    {
+      "path": "packaging/authoring/NuGet.Config"
+    },
+    {
+      "path": "packaging/authoring/Program.cs"
+    },
+    {
+      "path": "packaging/authoring/WorldOfDramaLlamaGamePlugin.csproj"
+    },
+    {
+      "path": "packaging/authoring/build.ps1"
+    },
+    {
+      "path": "packaging/authoring/packages.lock.json"
+    },
+    {
+      "path": "packaging/authoring/tests/Build.Tests.ps1"
+    },
+    {
+      "path": "packaging/build-companion-only-test-candidate.ps1"
+    },
+    {
+      "path": "packaging/build-installable-prealpha8.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha9.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha13.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha14.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha15.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha16.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha17.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha18.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha19.py"
+    },
+    {
+      "path": "packaging/repack-source-compatibility.py"
+    },
+    {
+      "path": "packaging/companion-only/PCV-PROVENANCE.md"
+    },
+    {
+      "path": "packaging/companion-only/WorldOfDramaLlama.ini"
+    },
+    {
+      "path": "packaging/companion-only/notices/CHIM-Plugin-MIT-LICENSE.txt"
+    },
+    {
+      "path": "packaging/companion-only/notices/CommonLibSSE-NG-3.7.0-LICENSE.txt"
+    },
+    {
+      "path": "packaging/companion-only/notices/Department-nlohmann-json-3.11.3-MIT.txt"
+    },
+    {
+      "path": "packaging/companion-only/notices/PrismaUI-LICENSE.md"
+    },
+    {
+      "path": "packaging/companion-only/notices/fmt-10.2.1-LICENSE.txt"
+    },
+    {
+      "path": "packaging/companion-only/notices/rapidcsv-8.84-LICENSE.txt"
+    },
+    {
+      "path": "packaging/companion-only/notices/spdlog-1.13.0-LICENSE.txt"
+    },
+    {
+      "path": "packaging/companion-only/pcv-0.1.23-source-manifest.json"
+    },
+    {
+      "path": "packaging/public-source-allowlist.json"
+    },
+    {
+      "path": "packaging/tests/ReleaseChecksums.Tests.ps1"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha8.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha9.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha13.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha14.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha15.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha16.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha17.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha18.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha19.py"
+    },
+    {
+      "path": "packaging/write-release-checksums.ps1"
+    },
+    {
+      "path": "pcv-companion/companion.php"
+    },
+    {
+      "path": "pcv-companion/globals.php"
+    },
+    {
+      "path": "pcv-companion/manifest.json"
+    },
+    {
+      "path": "pcv-companion/preprocessing.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/installation_guard.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/log.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/manifest.json"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/preprocessing.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/reflection.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/scope.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.23/server/state.php"
+    },
+    {
+      "path": "server/adapters/brainwash.php"
+    },
+    {
+      "path": "server/adapters/correspondence.php"
+    },
+    {
+      "path": "server/adapters/mp.php"
+    },
+    {
+      "path": "server/adapters/pcv.php"
+    },
+    {
+      "path": "server/adapters/runtime_support.php"
+    },
+    {
+      "path": "server/adapters/sas.php"
+    },
+    {
+      "path": "server/api.php"
+    },
+    {
+      "path": "server/connect.php"
+    },
+    {
+      "path": "server/index.php"
+    },
+    {
+      "path": "server/lib/auth.php"
+    },
+    {
+      "path": "server/lib/connect.php"
+    },
+    {
+      "path": "server/lib/dispatcher.php"
+    },
+    {
+      "path": "server/lib/journal.php"
+    },
+    {
+      "path": "server/lib/overlay_setup.php"
+    },
+    {
+      "path": "server/lib/protocol.php"
+    },
+    {
+      "path": "server/manifest.json"
+    },
+    {
+      "path": "server/preprocessing.php"
+    },
+    {
+      "path": "server/runtime.php"
+    },
+    {
+      "path": "server/tests/brainwash/department-contract.php"
+    },
+    {
+      "path": "server/tests/brainwash/installed-runtime.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev14-interface-compatibility.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev18-generation-reader.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev18-ingress-authority.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev18-lease-identity.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev18-owned-close.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev18-physical-mapping.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev18-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev20-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev20-closed-unknown.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev20-physical-mapping.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev21-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev22-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev23-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev26-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/check-owner-pairing.php"
+    },
+    {
+      "path": "server/tests/correspondence/pairing-selfcheck.php"
+    },
+    {
+      "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/lib/boundaries.php"
+    },
+    {
+      "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/lib/runtime.php"
+    },
+    {
+      "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/lib/store.php"
+    },
+    {
+      "path": "server/tests/correspondence/fixtures/installed-dev14-core/ext/correspondence/manifest.json"
+    },
+    {
+      "path": "server/tests/dev18-pg/api_driver.php"
+    },
+    {
+      "path": "server/tests/dev18-pg/base.sql"
+    },
+    {
+      "path": "server/tests/dev18-pg/cases.json"
+    },
+    {
+      "path": "server/tests/dev18-pg/fixture_guard.php"
+    },
+    {
+      "path": "server/tests/dev18-pg/owner_fixture.php"
+    },
+    {
+      "path": "server/tests/dev18-pg/seed_unknown_receipt.php"
+    },
+    {
+      "path": "server/tests/dev20-pg/api_driver.php"
+    },
+    {
+      "path": "server/tests/dev20-pg/base.sql"
+    },
+    {
+      "path": "server/tests/dev20-pg/cases.json"
+    },
+    {
+      "path": "server/tests/dev20-pg/fixture_guard.php"
+    },
+    {
+      "path": "server/tests/dev20-pg/owner_fixture.php"
+    },
+    {
+      "path": "server/tests/dev20-pg/seed_unknown_receipt.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/api_driver.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/base.sql"
+    },
+    {
+      "path": "server/tests/dev23-pg/build-source-bindings.ps1"
+    },
+    {
+      "path": "server/tests/dev23-pg/cases.json"
+    },
+    {
+      "path": "server/tests/dev23-pg/companion_cases.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/controller_switch.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/coverage.json"
+    },
+    {
+      "path": "server/tests/dev23-pg/fixture_guard.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/launch-dev23-test.ps1"
+    },
+    {
+      "path": "server/tests/dev23-pg/owner-runtime-pins.json"
+    },
+    {
+      "path": "server/tests/dev23-pg/owner_fixture.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/pg_scenarios.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/run-dev23-owner-facade.sh"
+    },
+    {
+      "path": "server/tests/dev23-pg/seed_unknown_receipt.php"
+    },
+    {
+      "path": "server/tests/dev23-pg/test_runner_contract.py"
+    },
+    {
+      "path": "server/tests/dev23-pg/verify-dev23-harness.ps1"
+    },
+    {
+      "path": "server/tests/dev23-pg/verify-owner-pins.ps1"
+    },
+    {
+      "path": "server/tests/foundation/journal.php"
+    },
+    {
+      "path": "server/tests/foundation/run.php"
+    },
+    {
+      "path": "server/tests/mp/source-contract.php"
+    },
+    {
+      "path": "server/tests/native-bootstrap/generate.php"
+    },
+    {
+      "path": "server/tests/onboarding/bootstrap-overlay.php"
+    },
+    {
+      "path": "server/tests/onboarding/connect.php"
+    },
+    {
+      "path": "server/tests/onboarding/core-package-install.php"
+    },
+    {
+      "path": "server/tests/onboarding/emit-connect-fixtures.php"
+    },
+    {
+      "path": "server/tests/onboarding/http-guard.php"
+    },
+    {
+      "path": "server/tests/onboarding/overlay.php"
+    },
+    {
+      "path": "server/tests/onboarding/stock-ingress.php"
+    },
+    {
+      "path": "server/tests/pcv/adapter.php"
+    },
+    {
+      "path": "server/tests/pcv/companion_owner_seam.php"
+    },
+    {
+      "path": "server/tests/pcv/companion_presence_reader.php"
+    },
+    {
+      "path": "server/tests/pcv/companion_store.php"
+    },
+    {
+      "path": "server/tests/pcv/owner_source_contract.php"
+    },
+    {
+      "path": "server/tests/pcv/runtime_support_limits.php"
+    },
+    {
+      "path": "server/tests/provision-cgi.php"
+    },
+    {
+      "path": "server/tests/sas/source-contract.php"
+    },
+    {
+      "path": "server/tools/provision.php"
+    },
+    {
+      "path": "tasks/lessons.md"
+    },
+    {
+      "path": "tasks/todo.md"
+    },
+    {
+      "path": "ui/app.css"
+    },
+    {
+      "path": "ui/app.js"
+    },
+    {
+      "path": "ui/brainwash-editor.css"
+    },
+    {
+      "path": "ui/brainwash-editor.js"
+    },
+    {
+      "path": "ui/index.html"
+    },
+    {
+      "path": "ui/tests/brainwash.cjs"
+    },
+    {
+      "path": "ui/tests/fixtures/fifth-tab.html"
+    },
+    {
+      "path": "ui/tests/startup-handshake.cjs"
+    },
+    {
+      "path": "ui/tests/ui-functional.cjs"
+    },
+    {
+      "path": "ui/tests/ui-interactions.cjs"
+    },
+    {
+      "path": "ui/tests/ui-render.cjs"
+    },
+    {
+      "path": "docs/PCV24-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-pcv24-paired.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha20.py"
+    },
+    {
+      "path": "packaging/companion-only/pcv-0.1.24-source-manifest.json"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha20.py"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/installation_guard.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/log.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/manifest.json"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/preprocessing.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/reflection.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/scope.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.24/server/state.php"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-sharmat-connect21.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha21.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha21.py"
+    },
+    {
+      "path": "server/globals.php"
+    },
+    {
+      "path": "docs/DEV27-COMPATIBILITY.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-26-dev27-pairing.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha22.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha22.py"
+    },
+    {
+      "path": "server/tests/correspondence/dev27-source-contract.php"
+    },
+    {
+      "path": "docs/NORMAL-CHIM-COMPATIBILITY.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha23.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha23.py"
+    },
+    {
+      "path": "server/tests/pcv/core_main_guard.php"
+    },
+    {
+      "path": "docs/DEV28-COMPATIBILITY.md"
+    },
+    {
+      "path": "native/src/GoldInventory.h"
+    },
+    {
+      "path": "packaging/build-installable-prealpha24.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha24.py"
+    },
+    {
+      "path": "server/tests/correspondence/dev28-source-contract.php"
+    },
+    {
+      "path": "docs/DEV29-COMPATIBILITY.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha25.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha25.py"
+    },
+    {
+      "path": "packaging/build-installable-prealpha26.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha26.py"
+    },
+    {
+      "path": "server/tests/correspondence/dev29-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev29-transaction-memo.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev30-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev30-adapter-interface.php"
+    },
+    {
+      "path": "server/tests/dev30-pg/cases.json"
+    },
+    {
+      "path": "server/tests/dev30-pg/actual_pg.php"
+    },
+    {
+      "path": "docs/PCV25-OFFLINE-CANDIDATE.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-29-pcv25-offline.md"
+    },
+    {
+      "path": "packaging/build-pcv25-offline-candidate.py"
+    },
+    {
+      "path": "packaging/companion-only/PCV25-PROVENANCE.md"
+    },
+    {
+      "path": "packaging/companion-only/pcv-0.1.25-source-manifest.json"
+    },
+    {
+      "path": "packaging/tests/test_pcv25_offline_candidate.py"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/installation_guard.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/log.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/manifest.json"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/preprocessing.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/reflection.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/scope.php"
+    },
+    {
+      "path": "pcv-companion/private-conversation-v0.1.25/server/state.php"
+    },
+    {
+      "path": "server/tests/pcv25/overlay_upgrade.php"
+    },
+    {
+      "path": "server/tests/pcv25/source_contract.php"
+    },
+    {
+      "path": "server/tests/pcv25/owner_loaders.php"
+    },
+    {
+      "path": "server/tests/pcv25/recursive_loader_orders.php"
+    },
+    {
+      "path": "docs/PCV25-RELEASE.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-29-pcv25-release.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha27.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha27.py"
+    },
+    {
+      "path": "docs/LETTER-RECOVERY.md"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-30-letter-resume.md"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-30-letter-resume-design.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha28.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha28.py"
+    },
+    {
+      "path": "server/tests/correspondence/resume-contract.php"
+    },
+    {
+      "path": "packaging/build-installable-prealpha29.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha29.py"
+    },
+    {
+      "path": "docs/DEV31-COMPATIBILITY.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha30.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha30.py"
+    },
+    {
+      "path": "server/tests/correspondence/dev31-adapter-interface.php"
+    },
+    {
+      "path": "server/tests/correspondence/dev31-source-contract.php"
+    },
+    {
+      "path": "server/tests/correspondence/fixtures/owner-dev31-handoff.json"
+    },
+    {
+      "path": "server/tests/dev31-pg/cases.json"
+    },
+    {
+      "path": "server/tests/dev31-pg/core-inputs.json"
+    },
+    {
+      "path": "server/tests/dev31-pg/generation_change_driver.php"
+    },
+    {
+      "path": "server/tests/dev31-pg/owner-pins.json"
+    },
+    {
+      "path": "docs/REPAIR31.md"
+    },
+    {
+      "path": "packaging/build-installable-prealpha31.py"
+    },
+    {
+      "path": "packaging/tests/test_installable_prealpha31.py"
+    },
+    {
+      "path": "docs/MMP-AUTHORING-CANDIDATE.md"
+    },
+    {
+      "path": "docs/MMP-EVIDENCE-DESK-CANDIDATE.md"
+    },
+    {
+      "path": "docs/MMP-NIGHT-RELEASE.md"
+    },
+    {
+      "path": "ui/tests/evidence-desk.cjs"
+    }
   ]
 }

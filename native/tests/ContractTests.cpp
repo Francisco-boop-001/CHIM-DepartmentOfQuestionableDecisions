@@ -204,6 +204,17 @@ int main(int argc, char** argv)
 		{"historyLimit", 200}
 	};
 	CHECK(dql::contract::ParseRequest(authoringRequest.dump()).envelope.has_value());
+
+	auto intentRequest = authoringRequest;
+	intentRequest["payload"]["authoring"]["intent"] = "development";
+	CHECK(dql::contract::ParseRequest(intentRequest.dump()).envelope.has_value());
+	intentRequest["payload"]["authoring"]["historyLimit"] = 0;
+	CHECK(!dql::contract::ParseRequest(intentRequest.dump()).envelope.has_value());
+	intentRequest["payload"]["authoring"]["intent"] = "creative";
+	CHECK(dql::contract::ParseRequest(intentRequest.dump()).envelope.has_value());
+	intentRequest["payload"]["authoring"]["intent"] = "unknown";
+	CHECK(!dql::contract::ParseRequest(intentRequest.dump()).envelope.has_value());
+
 	auto invalidAuthoring = authoringRequest;
 	invalidAuthoring["payload"]["authoring"]["conversation"][0]["role"] = "system";
 	CHECK(!dql::contract::ParseRequest(invalidAuthoring.dump()).envelope.has_value());
@@ -316,6 +327,46 @@ int main(int argc, char** argv)
 		{"historyCount", 1}, {"historyTruncated", false}
 	};
 	CHECK(dql::contract::ParseServerResponse(authoringResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+
+	auto assessedResponse = authoringResponse;
+	auto& assessed = assessedResponse["data"]["authoring"];
+	assessed["intent"] = "development";
+	assessed["assessments"] = Json::array({Json{{"field","personality"},{"basis","evidence"},{"reason","A durable witnessed consequence."},{"eventIds",Json::array({"12"})}}});
+	CHECK(dql::contract::ParseServerResponse(assessedResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	const std::vector<std::pair<std::string,Json>> assessmentMutations{
+		{"/field","core"}, {"/basis","forged"}, {"/reason",""}, {"/reason"," \t"}, {"/reason","\xc2\x85"}, {"/reason","\xe1\xa0\x8e"}, {"/reason",std::string(513,'x')},
+		{"/eventIds",Json::array()}, {"/eventIds",Json::array({"13"})}, {"/eventIds",Json::array({"12","12"})},
+		{"/eventIds",Json::object()}, {"/extra",true}
+	};
+	for (const auto& [path,value] : assessmentMutations) {
+		auto bad = assessedResponse;
+		bad["data"]["authoring"]["assessments"][0][Json::json_pointer(path)] = value;
+		CHECK(!dql::contract::ParseServerResponse(bad.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	}
+	for (const auto* key : {"intent","assessments"}) {
+		auto bad=assessedResponse;bad["data"]["authoring"].erase(key);
+		CHECK(!dql::contract::ParseServerResponse(bad.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	}
+	auto missingAssessment=assessedResponse;missingAssessment["data"]["authoring"]["assessments"]=Json::array();
+	CHECK(!dql::contract::ParseServerResponse(missingAssessment.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto duplicateAssessment=assessedResponse;duplicateAssessment["data"]["authoring"]["assessments"].push_back(assessed["assessments"][0]);
+	CHECK(!dql::contract::ParseServerResponse(duplicateAssessment.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto unchangedResponse=assessedResponse;
+	unchangedResponse["data"]["authoring"]["assessments"][0]["basis"]="unchanged";
+	unchangedResponse["data"]["authoring"]["assessments"][0]["eventIds"]=Json::array();
+	CHECK(!dql::contract::ParseServerResponse(unchangedResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	unchangedResponse["data"]["changes"]["personality"]="Quiet.";
+	CHECK(dql::contract::ParseServerResponse(unchangedResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto creativeResponse=unchangedResponse;creativeResponse["data"]["changes"]["personality"]="Author choice.";
+	creativeResponse["data"]["authoring"]["assessments"][0]["basis"]="author";
+	CHECK(!dql::contract::ParseServerResponse(creativeResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	creativeResponse["data"]["authoring"]["intent"]="creative";
+	CHECK(dql::contract::ParseServerResponse(creativeResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto beliefAssessment=assessedResponse;beliefAssessment["data"]["before"]=Json::object();beliefAssessment["data"]["changes"]=Json::object();
+	beliefAssessment["data"]["beliefsBefore"]="Old";beliefAssessment["data"]["beliefs"]="New";
+	beliefAssessment["data"]["authoring"]["assessments"][0]["field"]="beliefs";
+	CHECK(dql::contract::ParseServerResponse(beliefAssessment.dump(), *brainwashDraftRequest.envelope).value.has_value());
+
 	auto invalidAuthoringResponse = authoringResponse;
 	invalidAuthoringResponse["data"]["authoring"]["evidence"][0]["excerpt"] = std::string(257, 'x');
 	CHECK(!dql::contract::ParseServerResponse(invalidAuthoringResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());

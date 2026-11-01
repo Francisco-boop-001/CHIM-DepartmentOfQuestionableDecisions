@@ -255,9 +255,11 @@
     return true;
   }
   function validBrainwashAuthoring(value) {
-    if (!exactKeys(value, ['workingCard', 'conversation', 'historyLimit']) || !exactKeys(value.workingCard, BRAINWASH_FIELDS)
+    if (!exactKeys(value, ['workingCard', 'conversation', 'historyLimit'], ['intent']) || !exactKeys(value.workingCard, BRAINWASH_FIELDS)
       || !validBrainwashFields(value.workingCard, true) || !Array.isArray(value.conversation) || value.conversation.length > 8
       || !Number.isInteger(value.historyLimit) || value.historyLimit < 0 || value.historyLimit > 200) return false;
+    if (Object.prototype.hasOwnProperty.call(value,'intent') && (!['creative','development'].includes(value.intent)
+      || (value.intent === 'development' && value.historyLimit === 0))) return false;
     let size = 0;
     return value.conversation.every((turn) => {
       if (!exactKeys(turn, ['role', 'content']) || !['user', 'assistant'].includes(turn.role) || !boundedString(turn.content, 2000)) return false;
@@ -265,15 +267,37 @@
       return size <= 12000;
     });
   }
-  function validBrainwashAuthoringResult(value) {
-    if (!exactKeys(value, ['reply', 'evidence', 'historyCount', 'historyTruncated']) || !boundedString(value.reply, 2000)
+  function validBrainwashAuthoringResult(value, draft) {
+    if (!exactKeys(value, ['reply', 'evidence', 'historyCount', 'historyTruncated'], ['intent', 'assessments']) || !boundedString(value.reply, 2000)
       || !Array.isArray(value.evidence) || value.evidence.length > 20 || !Number.isInteger(value.historyCount)
       || value.historyCount < 0 || value.historyCount > 200 || typeof value.historyTruncated !== 'boolean') return false;
     const seen = new Set();
-    return value.evidence.every((item) => exactKeys(item, ['eventId', 'reason', 'excerpt'])
+    if (!value.evidence.every((item) => exactKeys(item, ['eventId', 'reason', 'excerpt'])
       && typeof item.eventId === 'string' && /^[1-9][0-9]{0,19}$/.test(item.eventId)
       && boundedString(item.reason, 256) && boundedString(item.excerpt, 256)
-      && !seen.has(item.eventId) && seen.add(item.eventId));
+      && !seen.has(item.eventId) && seen.add(item.eventId))) return false;
+
+    if (Object.prototype.hasOwnProperty.call(value, 'intent') !== Object.prototype.hasOwnProperty.call(value, 'assessments')) return false;
+    if (!Object.prototype.hasOwnProperty.call(value, 'intent')) return true;
+    if (!['creative','development'].includes(value.intent) || !Array.isArray(value.assessments) || value.assessments.length > 9) return false;
+    const selected = [...Object.keys(draft.changes), ...(draft.beliefs !== undefined ? ['beliefs'] : [])];
+    if (value.assessments.length !== selected.length) return false;
+    const assessed = new Set();
+    return value.assessments.every((item) => {
+      if (!exactKeys(item, ['field','basis','reason','eventIds']) || !selected.includes(item.field) || assessed.has(item.field)
+        || !['author','evidence','inference','unchanged'].includes(item.basis) || !boundedString(item.reason,512) || !/[^\s\p{Z}\u0085\u180E\uFEFF]/u.test(item.reason)
+        || !Array.isArray(item.eventIds) || item.eventIds.length > 5 || new Set(item.eventIds).size !== item.eventIds.length
+        || item.eventIds.some((id) => typeof id !== 'string' || !seen.has(id))
+        || (item.basis === 'evidence' ? item.eventIds.length === 0 : item.eventIds.length !== 0)) return false;
+      const field = item.field;
+      if (field === 'beliefs' ? draft.beliefsBefore === undefined : !Object.prototype.hasOwnProperty.call(draft.before,field)) return false;
+      const changed = field === 'beliefs' ? draft.beliefs !== draft.beliefsBefore : draft.changes[field] !== draft.before[field];
+      if ((item.basis === 'unchanged' && changed) || (value.intent === 'development'
+        && ((changed && item.basis !== 'evidence') || (value.historyCount === 0 && item.basis !== 'unchanged')))) return false;
+      assessed.add(field);
+      return true;
+    });
+
   }
   function payloadFieldsValid(operation, payload) {
     const fields = {
@@ -374,7 +398,7 @@
       || !validBrainwashFields(value.before, true) || !validBrainwashFields(value.changes, true)
       || (value.beliefsBefore !== undefined && !boundedString(value.beliefsBefore, 4000))
       || (value.beliefs !== undefined && !boundedString(value.beliefs, 4000))
-      || (value.authoring !== undefined && (value.origin !== 'ai' || !validBrainwashAuthoringResult(value.authoring)))) return false;
+      || (value.authoring !== undefined && (value.origin !== 'ai' || !validBrainwashAuthoringResult(value.authoring, value)))) return false;
     return Object.keys(value.changes).length > 0 || value.beliefs !== undefined;
   }
   function validBrainwashResponse(operation, value) {

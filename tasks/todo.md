@@ -612,3 +612,11 @@ Final review: prealpha.31 published 2026-10-31T09:19:59Z from immutable source 5
 - [x] Run26ownerchecks,6nativehost suites, fullDLLbuild and actual integrated browser fixture; independent review approved.
 - [ ] Database/provider/Skyrim acceptance deferred by direct source-checks-only instruction.
 Review: source candidate prealpha.32/native0.1.20; primary, installed and live remain untouched. Windows legacy journal fixture failures reproduce on unchanged baseline; no durability guard relaxed. See docs/MMP-AUTHORING-CANDIDATE.md.
+
+## Evidence desk integration - 2026-11-01
+- [x] Add RED/GREEN intent and assessment regressions across PHP, JS and native boundaries.
+- [x] Extend strict bounded DTO validation; preserve legacy shapes.
+- [x] Sync frozen dev.6 editor and exact source pins; update local candidate versions.
+- [x] Review source diff and record source-only verification limits.
+
+Review: PHP43/43, actual JS bridge and actual Department shell/editor fixtures pass. All11 exact dev.6 pins and synchronized asset bytes pass; dev.3/dev.4/dev.5 maps remain unchanged. Single MMP masthead and PHP/JS/native Unicode blank-reason parity corrected. Root verified native six-suite pass, then final parity rebuild and targeted Contract pass. Legacy Windows contract68/80 retains the same12 journal-fsync failures; no guard relaxed. Source-only, unpublished/uninstalled; no WSL/DB/provider/live/game access. See docs/MMP-EVIDENCE-DESK-CANDIDATE.md and common integration-report.md.

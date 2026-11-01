@@ -20,7 +20,8 @@ function newUuid() {
 function testDocument() {
   const html = fs.readFileSync(htmlPath, 'utf8');
   const css = fs.readFileSync(path.join(uiRoot, 'app.css'), 'utf8');
-  const app = fs.readFileSync(path.join(uiRoot, 'app.js'), 'utf8');
+  const appSource = fs.readFileSync(path.join(uiRoot, 'app.js'), 'utf8');
+  const app = appSource.replace('  renderMpChoices();', '  window.__validateBrainwashDraft = validBrainwashDraft;\n  renderMpChoices();');
   assert.ok(!app.includes('</script'), 'test app source must not terminate its inline script');
   const setup = `<script>
     window.PRISMA = Object.freeze({ testSentinel: true });
@@ -94,7 +95,7 @@ async function main() {
     assert.equal(await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).count(), 1, 'Malpractice Makes Perfect is the fifth accessible plugin tab');
     await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
     assert.equal(await page.getByRole('tabpanel', { name: /Malpractice Makes Perfect/i }).isVisible(), true);
-    assert.equal(await page.locator('#panel-brainwash').getByText('Unlicensed character development', { exact: true }).isVisible(), true);
+    assert.equal(await page.locator('#panel-brainwash > .view-heading').count(), 0, 'shared editor owns its single masthead');
     assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.mounts), 1, 'shared editor mount API is called once');
     assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.available), false, 'unpaired bootstrap keeps editor unavailable');
 
@@ -165,7 +166,7 @@ async function main() {
       window.__authoringPromise = window.__brainwashEditorSpy.request('brainwash.draft', {
         actorKey: 'npc:42', expectedRevision: 'a'.repeat(64), operationId: '123e4567-e89b-12d3-a456-426614174012',
         mode: 'ai', changes: { personality: fields.personality }, instruction: 'Keep her dry humour.',
-        authoring: { workingCard: fields, conversation: [{ role: 'user', content: 'Keep her dry humour.' }], historyLimit: 200 },
+        authoring: { workingCard: fields, conversation: [{ role: 'user', content: 'Keep her dry humour.' }], historyLimit: 200, intent: 'development' },
       }).catch((error) => ({ error: error.code }));
     });
     const authoringRequest = await waitForRequest(page, 'brainwash.draft', authoringCount);
@@ -179,18 +180,44 @@ async function main() {
     });
     const authoringResult = await page.evaluate(() => window.__authoringPromise);
     assert.equal(authoringResult.authoring.evidence[0].excerpt, 'Lydia agreed to help.', 'source excerpts cross the real response validator');
+
+    const assessmentChecks = await page.evaluate((draft) => {
+      const valid = window.__validateBrainwashDraft;
+      const base = structuredClone(draft);
+      base.authoring.intent = 'development';
+      base.authoring.assessments = [{field:'personality',basis:'evidence',reason:'A witnessed durable consequence.',eventIds:['12']}];
+      if (!valid(base)) return { accepted: false };
+      const changes = [
+        d => { delete d.authoring.intent; }, d => { delete d.authoring.assessments; },
+        d => { d.authoring.assessments=[]; }, d => { d.authoring.assessments.push(structuredClone(d.authoring.assessments[0])); },
+        d => { d.authoring.assessments[0].field='core'; }, d => { d.authoring.assessments[0].basis='forged'; },
+        d => { d.authoring.assessments[0].reason='\u0085'; }, d => { d.authoring.assessments[0].reason='\u180e'; }, d => { d.authoring.assessments[0].reason=''; }, d => { d.authoring.assessments[0].reason=' \t\u00a0'; },
+        d => { d.authoring.assessments[0].reason='é'.repeat(257); }, d => { d.authoring.assessments[0].eventIds=[]; },
+        d => { d.authoring.assessments[0].eventIds=['13']; }, d => { d.authoring.assessments[0].eventIds=['12','12']; },
+        d => { d.authoring.assessments[0].eventIds={}; }, d => { d.authoring.assessments[0].extra=true; },
+        d => { d.authoring.assessments[0].basis='unchanged';d.authoring.assessments[0].eventIds=[]; },
+        d => { d.authoring.assessments[0].basis='author';d.authoring.assessments[0].eventIds=[]; },
+      ];
+      const rejected = changes.every(change => {const d=structuredClone(base);change(d);return !valid(d);});
+      const unchanged=structuredClone(base);unchanged.changes.personality=unchanged.before.personality;
+      unchanged.authoring.assessments[0].basis='unchanged';unchanged.authoring.assessments[0].eventIds=[];
+      const creative=structuredClone(base);creative.authoring.intent='creative';creative.authoring.assessments[0].basis='author';creative.authoring.assessments[0].eventIds=[];
+      const beliefs=structuredClone(base);beliefs.before={};beliefs.changes={};beliefs.beliefsBefore='Old';beliefs.beliefs='New';beliefs.authoring.assessments[0].field='beliefs';
+      return {accepted:true,rejected,unchanged:valid(unchanged),creative:valid(creative),beliefs:valid(beliefs),legacy:valid(draft)};
+    }, authoringResult);
+    assert.deepEqual(assessmentChecks,{accepted:true,rejected:true,unchanged:true,creative:true,beliefs:true,legacy:true},'real shell response validator enforces field evidence and saved-baseline unchanged');
     const authoringRefusals = await page.evaluate(async () => {
       const base = window.__bridgeRequests.find((request) => request.payload.authoring).payload;
       const before = window.__bridgeRequests.length;
       const results = [];
-      for (const change of [payload => { payload.authoring.conversation[0].role = 'system'; }, payload => { payload.authoring.historyLimit = 201; }, payload => { payload.mode = 'manual'; }]) {
+      for (const change of [payload => { payload.authoring.conversation[0].role = 'system'; }, payload => { payload.authoring.historyLimit = 201; }, payload => { payload.mode = 'manual'; }, payload => { payload.authoring.historyLimit = 0; }, payload => { payload.authoring.intent = 'unknown'; }]) {
         const payload = JSON.parse(JSON.stringify(base)); change(payload);
         try { await window.__brainwashEditorSpy.request('brainwash.draft', payload); results.push('accepted'); }
         catch (error) { results.push(error.code); }
       }
       return { results, dispatched: window.__bridgeRequests.length - before };
     });
-    assert.deepEqual(authoringRefusals, { results: ['INVALID_INPUT','INVALID_INPUT','INVALID_INPUT'], dispatched: 0 });
+    assert.deepEqual(authoringRefusals, { results: ['INVALID_INPUT','INVALID_INPUT','INVALID_INPUT','INVALID_INPUT','INVALID_INPUT'], dispatched: 0 });
 
     const beforeDeniedRead = await page.evaluate(() => window.__bridgeRequests.length);
     const deniedAttempt = await page.evaluate(async (before) => {

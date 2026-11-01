@@ -309,10 +309,12 @@ namespace dql::contract
 
 		bool IsBrainwashAuthoringInput(const Json& value)
 		{
-			if (!HasOnlyKeys(value, { "workingCard", "conversation", "historyLimit" })
+			if (!(value.contains("intent") ? HasOnlyKeys(value, { "workingCard", "conversation", "historyLimit", "intent" }) : HasOnlyKeys(value, { "workingCard", "conversation", "historyLimit" }))
 				|| !IsBrainwashFields(value["workingCard"], true) || value["workingCard"].size() != 8
 				|| !value["conversation"].is_array() || value["conversation"].size() > 8
 				|| !value["historyLimit"].is_number_integer() || value["historyLimit"] < 0 || value["historyLimit"] > 200) return false;
+			if (value.contains("intent") && ((value["intent"]!="creative" && value["intent"]!="development")
+				|| (value["intent"]=="development" && value["historyLimit"]==0))) return false;
 			std::size_t bytes = 0;
 			for (const auto& turn : value["conversation"]) {
 				if (!HasOnlyKeys(turn, { "role", "content" }) || !turn["role"].is_string()
@@ -323,9 +325,29 @@ namespace dql::contract
 			return true;
 		}
 
-		bool IsBrainwashAuthoringResult(const Json& value)
+
+		bool HasBrainwashReason(const Json& value)
 		{
-			if (!HasOnlyKeys(value, { "reply", "evidence", "historyCount", "historyTruncated" })
+			if (!IsBrainwashText(value, 512, false)) return false;
+			// The bounded parser already checked UTF-8; exclude the same whitespace as the owner.
+			const auto& text=value.get_ref<const std::string&>();
+			for (std::size_t i=0; i<text.size();) {
+				const auto lead=static_cast<unsigned char>(text[i++]);
+				std::uint32_t cp=lead;
+				const int extra=lead<0x80 ? 0 : lead<0xE0 ? 1 : lead<0xF0 ? 2 : 3;
+				if (extra) cp=lead & (0x7F >> extra);
+				for (int j=0;j<extra;++j) cp=(cp<<6)|(static_cast<unsigned char>(text[i++])&0x3F);
+				if (!((cp>=9 && cp<=13) || cp==0x20 || cp==0x85 || cp==0xA0 || cp==0x1680 || cp==0x180E || (cp>=0x2000 && cp<=0x200A)
+					|| cp==0x2028 || cp==0x2029 || cp==0x202F || cp==0x205F || cp==0x3000 || cp==0xFEFF)) return true;
+			}
+			return false;
+		}
+
+		bool IsBrainwashAuthoringResult(const Json& value, const Json& draft)
+		{
+			if (!((value.contains("intent") || value.contains("assessments"))
+				? HasOnlyKeys(value, { "reply", "evidence", "historyCount", "historyTruncated", "intent", "assessments" })
+				: HasOnlyKeys(value, { "reply", "evidence", "historyCount", "historyTruncated" }))
 				|| !IsBrainwashText(value["reply"], 2000) || !value["evidence"].is_array() || value["evidence"].size() > 20
 				|| !value["historyCount"].is_number_integer() || value["historyCount"] < 0 || value["historyCount"] > 200
 				|| !value["historyTruncated"].is_boolean()) return false;
@@ -336,6 +358,28 @@ namespace dql::contract
 				const auto& id = item["eventId"].get_ref<const std::string&>();
 				if (id.front() < '1' || id.front() > '9' || !std::all_of(id.begin(), id.end(), [](char c) { return c >= '0' && c <= '9'; })
 					|| !seen.emplace(id).second) return false;
+			}
+
+			if (value.contains("intent") != value.contains("assessments")) return false;
+			if (!value.contains("intent")) return true;
+			if ((value["intent"]!="creative" && value["intent"]!="development") || !value["assessments"].is_array() || value["assessments"].size()>9) return false;
+			const auto selectedCount=draft["changes"].size()+(draft.contains("beliefs")?1:0);
+			if (value["assessments"].size()!=selectedCount) return false;
+			std::unordered_set<std::string> assessed;
+			for (const auto& item : value["assessments"]) {
+				if (!HasOnlyKeys(item,{"field","basis","reason","eventIds"}) || !item["field"].is_string() || !item["basis"].is_string()
+					|| !HasBrainwashReason(item["reason"]) || !item["eventIds"].is_array() || item["eventIds"].size()>5) return false;
+				const auto field=item["field"].get<std::string>();const auto basis=item["basis"].get<std::string>();
+				if ((field=="beliefs" ? !draft.contains("beliefs") || !draft.contains("beliefsBefore") : !draft["changes"].contains(field) || !draft["before"].contains(field))
+					|| !assessed.emplace(field).second || (basis!="author" && basis!="evidence" && basis!="inference" && basis!="unchanged")
+					|| (basis=="evidence" ? item["eventIds"].empty() : !item["eventIds"].empty())) return false;
+				std::unordered_set<std::string> ids;
+				for (const auto& id : item["eventIds"]) {
+					if (!id.is_string() || !seen.contains(id.get<std::string>()) || !ids.emplace(id.get<std::string>()).second) return false;
+				}
+				const bool changed=field=="beliefs" ? draft["beliefs"]!=draft["beliefsBefore"] : draft["changes"][field]!=draft["before"][field];
+				if ((basis=="unchanged" && changed) || (value["intent"]=="development"
+					&& ((changed && basis!="evidence") || (value["historyCount"]==0 && basis!="unchanged")))) return false;
 			}
 			return true;
 		}
@@ -415,7 +459,7 @@ namespace dql::contract
 				|| !IsBrainwashFields(data["before"], true) || !IsBrainwashFields(data["changes"], true)) return false;
 			if (data.contains("beliefsBefore") && !IsBrainwashText(data["beliefsBefore"], 4000)) return false;
 			if (data.contains("beliefs") && !IsBrainwashText(data["beliefs"], 4000)) return false;
-			if (data.contains("authoring") && (data["origin"] != "ai" || !IsBrainwashAuthoringResult(data["authoring"]))) return false;
+			if (data.contains("authoring") && (data["origin"] != "ai" || !IsBrainwashAuthoringResult(data["authoring"], data))) return false;
 			return !data["changes"].empty() || data.contains("beliefs");
 		}
 

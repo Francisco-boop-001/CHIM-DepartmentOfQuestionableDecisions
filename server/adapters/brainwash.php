@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.5';
+const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.6';
 const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
     '0.1.0-dev.3' => [
         'api.php' => ['lf' => 'b26658695d86654d10ab2d8c38df0b4ebbf5e37c0d3d42a5cf64ba489f7ff20c', 'windowsCrlf' => '1bdcd95cc3e9b3305d2aa374fcc64b7329e998e2b537879043bbb7d18e502eae'],
@@ -32,6 +32,19 @@ const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
         'lib/service.php' => ['lf' => '018b57b06bc11546bed83e8683c13e298062ed61f862a79a864eec96e587b9e8', 'windowsCrlf' => '4553eda3a74bb9c1002183ea6f8a8d80ce801aac8de80a894f7c030376292be8'],
         'lib/web.php' => ['lf' => '8590ce5e45ff75d990117e00901dcf240b9d0708d304d2aa3e72fa1a69fd46cd', 'windowsCrlf' => 'b7439ab843b1bc6a1cc5d26c3a16cc9726a839cce9dede85e9790498cfc75d91'],
         'manifest.json' => ['lf' => '910cea30d4e19d32abc2c54733c9bcc3cb17eec026901dd915f2e2f554777376', 'windowsCrlf' => '3000444c39fcc7e1b90669ab9d81d78244f4995afc76b4a12a125ab209582d39'],
+        'runtime.php' => ['lf' => '3cf5af02bff7cd423d6d0fd226011c8726200a438c6e469881c16181fd72d3fb', 'windowsCrlf' => 'a5548f50f8cf4facd28e8226e71ec31eefe739f4db8d1dcef11321ea61d7a50a'],
+    ],
+    '0.1.0-dev.6' => [
+        'api.php' => ['lf' => '4ae15803dcaa27ca5a20651fae42842125f1df40f5fc65dcfc678217827e23e3', 'windowsCrlf' => 'f5714a2232d31ffcc35961c07a8ded567e20d7b1ae90e47a3e4b9c6da3ff7352'],
+        'assets/editor.css' => ['lf' => '5c52ec2e17a4dc72bb3d7029d6a23d3d9bd55f8039ef12d82cf7524ca3d8a954', 'windowsCrlf' => '6b5357d4568682c3de100125d9fb36f702202ee9e9b71c80e3f5619350edb097'],
+        'assets/editor.js' => ['lf' => 'e494d2c3d403d3c71915dd47785d1b13f893b3026ee37151f9696fcb78089abf', 'windowsCrlf' => '05a57eebf7a692c33740be25c30184a267c032146fc0a063a9c08f2c6ccac681'],
+        'assets/web.js' => ['lf' => 'e7cd45f6664a7ba0ec92a3dd7d65917fadc7f672689d7b847e303b1ca92288dc', 'windowsCrlf' => '12eab2fe1c7cc75d30cc34b180a40c51facf10bdda4d2db3edc974d19f567e46'],
+        'context_pre.php' => ['lf' => '67f73134e4818ca513b1269ee1b2365f7696f737793ff6d48ee57b4cebd9120a', 'windowsCrlf' => '2604c771b6c57c0020495f68ed15606a3469b9dedc853f8ebaf163f6d5e75d5f'],
+        'index.php' => ['lf' => 'afdabe1ff5119c16c021e11f4d9157c8601db4bf1672d2fa4508c49aa791decd', 'windowsCrlf' => '54ae8db99e5ef24ea38b9ef9752720fab422c34c073cfed115715e7c4324c94d'],
+        'lib/authoring.php' => ['lf' => '3b30e9d4d135f8978b7dfca8f854f89b91207c29e35da4b3ba830ad6fa879586', 'windowsCrlf' => '60ec6d6c8c503e81f6ea827c34bd79b6c7c3f3c5b06de339e06ac6a5f95fa62b'],
+        'lib/service.php' => ['lf' => '79f0f2df567ada9ce3dbb0b8371e677f477b644926448f613d9a0da39b7ef71c', 'windowsCrlf' => 'a6c81832b5d829212910600a40ef6912a0591499bc159bad20bdbd60572a7b4f'],
+        'lib/web.php' => ['lf' => '8590ce5e45ff75d990117e00901dcf240b9d0708d304d2aa3e72fa1a69fd46cd', 'windowsCrlf' => 'b7439ab843b1bc6a1cc5d26c3a16cc9726a839cce9dede85e9790498cfc75d91'],
+        'manifest.json' => ['lf' => '4f352f91a78380b28af3ecb261cbba9740949768a96c4d8ae685663a7ce1190f', 'windowsCrlf' => '35a36130254f2b8ec58c66facabaa956fcbbc569d0684c8737df88ad97edb462'],
         'runtime.php' => ['lf' => '3cf5af02bff7cd423d6d0fd226011c8726200a438c6e469881c16181fd72d3fb', 'windowsCrlf' => 'a5548f50f8cf4facd28e8226e71ec31eefe739f4db8d1dcef11321ea61d7a50a'],
     ],
 ];
@@ -180,6 +193,10 @@ function qd_brainwash_call(string $operation, stdClass $payload, array $context)
         throw new QDServerFault('unavailable');
     }
     if (!is_array($result) || array_is_list($result)) throw new QDServerFault('unavailable');
+    if ($operation==='brainwash.draft') {
+        $dto=json_decode(json_encode($result,JSON_THROW_ON_ERROR),false,QD_MAX_JSON_DEPTH,JSON_THROW_ON_ERROR);
+        if (!is_object($dto) || !qd_brainwash_valid_draft_authoring($dto)) throw new QDServerFault('unavailable');
+    }
     return $result;
 }
 

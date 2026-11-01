@@ -53,3 +53,5 @@ Preserve UTF-8 and existing per-file line endings during documentation edits. Sc
 - A prepared native/Papyrus receipt is scheduling evidence, not a failed conversation. When the player confirms ongoing dialogue, keep send acceptance, owner scene status and audible/gameplay delivery distinct; reconcile the exact operation automatically without replaying it, and never leave an early queued snapshot displayed as a permanent error.
 
 - Versioned test suites can reuse an older fixture protocol. Compare the actual producer schema literal, exact key shape, paths and environment mapping with the reused guard before freezing; do not rename its marker with the suite version. PostgreSQL inet::text may include /32: validate the canonical host() result at the identity boundary while retaining raw metadata and strict role/database/namespace ownership checks.
+
+- For cross-language validation, test the full owner whitespace set explicitly; PHP Unicode whitespace includes U+0085 and U+180E that JavaScript whitespace classes do not both cover. Keep optional metadata and unknown-key bounds identical across PHP, JS and native boundaries.

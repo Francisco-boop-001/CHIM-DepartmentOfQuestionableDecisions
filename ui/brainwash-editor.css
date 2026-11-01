@@ -1,36 +1,67 @@
-:root {
-  color-scheme: light dark;
-  font: 16px/1.45 system-ui, sans-serif;
-}
+/* Scope all controls: other Department tabs retain their own design. */
+body.brainwash-web { margin:0; background:#101713; }
+.brainwash-page { max-width:1560px; margin:auto; padding:24px; }
+.brainwash-editor { --ink:#222c2b; --paper:#f6f1e6; --rule:#c9c0ae; --red:#a33b2b; --muted:#62665d; --surface:#ece6d9; --input:#fffaf0; --input-border:#a69c88; --status:#ede5d6; --source:#f8f3e8; --line:#b5ab98; --button:var(--ink); --button-text:#fff7e6; --button-hover:#384843; --button-hover-text:#fff7e6; color:var(--ink); font:15px/1.55 'Segoe UI',sans-serif; color-scheme:light; display:grid; grid-template-columns:220px minmax(300px,1.35fr) minmax(290px,1fr); grid-template-areas:'masthead masthead masthead' 'status status status' 'cast desk findings' 'cast fields findings' 'cast undo findings'; gap:20px; align-items:start; padding:24px; background:var(--paper); border:1px solid var(--rule); }
+.brainwash-editor *, .brainwash-editor *::before, .brainwash-editor *::after { box-sizing:border-box; }
+.brainwash-editor h1,.brainwash-editor h2,.brainwash-editor h3 { color:var(--ink); font-family:Georgia,'Times New Roman',serif; font-weight:400; letter-spacing:-.03em; }
+.brainwash-editor h1 { font-size:clamp(28px,3vw,43px); line-height:1.05; margin:7px 0; }
+.brainwash-editor h2 { font-size:29px; line-height:1.15; margin:9px 0 16px; }
+.brainwash-editor h3 { font-size:20px; }
+.brainwash-editor p { margin:0 0 12px; }
+.brainwash-masthead { grid-area:masthead; display:flex; align-items:center; gap:20px; padding-bottom:24px; border-bottom:3px double var(--ink); }
+.brainwash-masthead p:first-child,.brainwash-panel > p:first-child { font:600 10px/1.5 'Segoe UI',sans-serif; letter-spacing:.14em; color:var(--muted); }
+.brainwash-masthead p { margin:0; }
+.brainwash-imprint { border:1px solid var(--red); color:var(--red); width:64px; height:64px; display:grid; place-items:center; font:21px Georgia,serif; transform:rotate(-5deg); flex-shrink:0; }
+.brainwash-motto { margin-left:auto !important; max-width:130px; color:var(--red); font:italic 18px/1.25 Georgia,serif; }
+.brainwash-status { grid-area:status; border-left:3px solid var(--red); padding:8px 12px; background:var(--status); font-size:12px; margin:0 !important; overflow-wrap:anywhere; }
+.brainwash-panel { min-width:0; padding:0; background:transparent; border:0; border-radius:0; }
+.brainwash-cast { grid-area:cast; padding-right:20px; border-right:1px solid var(--rule); }
+.brainwash-cast h2 { font-size:24px; }
+.brainwash-workbench { grid-area:desk; }
+.brainwash-findings { grid-area:findings; padding:20px; border:1px solid var(--rule); background:var(--surface); }
+.brainwash-fields { grid-area:fields; border-top:1px solid var(--rule); padding-top:16px; }
+.brainwash-fields:not([open]) > :not(summary) { display:none; }
+.brainwash-fields summary { cursor:pointer; color:var(--red); font-weight:600; }
+.brainwash-fields[open] > * { margin-bottom:12px; }
+.brainwash-undo { grid-area:undo; border-top:1px solid var(--rule); padding-top:16px; }
+.brainwash-undo h2 { font-size:22px; }
+.brainwash-warning { grid-column:1 / -1; border:1px solid var(--red); padding:12px; color:var(--red); }
+.brainwash-editor label { display:block; font-size:13px; font-weight:600; margin:14px 0; }
+.brainwash-editor input[type='search'],.brainwash-editor select,.brainwash-editor textarea { width:100%; display:block; margin-top:6px; padding:10px 12px; background:var(--input); color:var(--ink); border:1px solid var(--input-border); border-radius:0; font:14px/1.6 'Segoe UI',sans-serif; box-shadow:none; }
+.brainwash-editor textarea { resize:vertical; min-height:100px; }
+.brainwash-workbench textarea[aria-label='Creative direction'] { font:19px/1.6 Georgia,serif; min-height:160px; border-left:3px solid var(--red); }
+.brainwash-editor input[type='checkbox'] { accent-color:var(--red); width:17px; height:17px; vertical-align:middle; margin:0 8px 0 0; }
+.brainwash-editor button { min-height:40px; margin:4px 6px 4px 0; padding:9px 13px; border:1px solid var(--ink); border-radius:0; background:var(--button); color:var(--button-text); font:600 12px/1.4 'Segoe UI',sans-serif; cursor:pointer; box-shadow:none; }
+.brainwash-editor button:hover:not(:disabled) { background:var(--button-hover); border-color:var(--button-hover); color:var(--button-hover-text); }
+.brainwash-editor button:disabled,.brainwash-editor input:disabled,.brainwash-editor select:disabled,.brainwash-editor textarea:disabled { opacity:.48; cursor:not-allowed; }
+.brainwash-cast button,.brainwash-conversation button { color:var(--ink); background:transparent; border-color:var(--rule); font-weight:400; }
+.brainwash-cast button:hover:not(:disabled),.brainwash-conversation button:hover:not(:disabled) { color:var(--button-hover-text); }
+.brainwash-approaches { display:flex; border-bottom:1px solid var(--rule); gap:14px; margin:18px 0 12px; }
+.brainwash-approaches button { background:transparent; color:var(--muted); border:0; border-bottom:3px solid transparent; margin:0; padding:10px 0; }
+.brainwash-approaches button[aria-pressed='true'] { color:var(--red); border-bottom-color:var(--red); }
+.brainwash-approaches button:hover:not(:disabled) { background:transparent; color:var(--red); }
+.brainwash-approach-note,.brainwash-caption { color:var(--muted); font-size:12px; }
+.brainwash-identity { display:flex; justify-content:space-between; gap:10px; padding:7px 0; color:var(--muted); font:11px/1.5 Consolas,monospace; border-bottom:1px solid var(--rule); }
+.brainwash-synopsis { font:italic 19px/1.6 Georgia,serif; margin:14px 0 !important; white-space:pre-wrap; overflow-wrap:anywhere; max-height:180px; overflow:auto; }
+.brainwash-conversation { margin:18px 0; padding-top:12px; border-top:1px solid var(--rule); }
+.brainwash-conversation h3 { display:none; }
+.brainwash-conversation > p { font-size:11px; color:var(--muted); }
+.brainwash-editor fieldset { min-width:0; margin:16px 0; padding:14px 0; border:0; border-top:1px solid var(--line); border-radius:0; }
+.brainwash-editor legend { color:var(--ink); font:21px Georgia,serif; text-transform:capitalize; padding:0 8px 0 0; }
+.brainwash-editor fieldset label { font-size:12px; }
+.brainwash-basis { font:600 9px/1.6 'Segoe UI',sans-serif; letter-spacing:.08em; color:var(--red); }
+.brainwash-source { margin:12px 0; padding:12px 14px; border-left:2px solid var(--red); background:var(--source); font:italic 16px/1.55 Georgia,serif; white-space:pre-wrap; overflow-wrap:anywhere; }
+.brainwash-source cite { display:block; margin-top:8px; color:var(--muted); font:10px 'Segoe UI',sans-serif; }
+.brainwash-review-text { white-space:pre-wrap; overflow-wrap:anywhere; font-size:13px; padding:10px 0; border-bottom:1px dotted var(--rule); }
+.brainwash-kept { color:var(--muted); font-size:12px; padding:8px 0; border-top:1px dotted var(--rule); }
+.brainwash-empty-findings h2 { font-style:italic; }
+.brainwash-empty-findings ol { padding-left:20px; font-size:12px; }
+.brainwash-empty-findings li { padding:8px 0; border-bottom:1px dotted var(--rule); }
+.brainwash-empty-desk { min-height:320px; padding-top:20px; }
+.brainwash-editor :focus-visible { outline:3px solid var(--red); outline-offset:3px; }
+@media(max-width:1100px) { .brainwash-editor { grid-template-columns:190px minmax(0,1fr); grid-template-areas:'masthead masthead' 'status status' 'cast desk' 'cast fields' 'cast findings' 'cast undo'; gap:18px; } }
+@media(max-width:640px) { .brainwash-page { padding:0; } .brainwash-editor { display:flex; flex-direction:column; padding:18px; gap:20px; } .brainwash-editor > * { width:100%; } .brainwash-masthead { gap:12px; } .brainwash-imprint { width:42px; height:48px; font-size:14px; } .brainwash-motto { display:none; } .brainwash-cast { border-right:0; border-bottom:1px solid var(--rule); padding:0 0 16px; } .brainwash-masthead p:first-child { font-size:8px; } .brainwash-editor h1 { font-size:27px; } }
 
-* { box-sizing: border-box; }
-body { margin: 0; background: #14181d; color: #eef2f6; }
-.brainwash-page { max-width: 1100px; margin: 0 auto; padding: 1.25rem; }
-.brainwash-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; }
-.brainwash-header h1, .brainwash-header p { margin: 0; }
-.brainwash-header p { color: #b5c0cb; }
-.brainwash-editor { display: grid; gap: 1rem; }
-.brainwash-panel { min-width: 0; padding: 1rem; border: 1px solid #3a4652; border-radius: .5rem; background: #1d242c; }
-.brainwash-panel h2 { margin: 0 0 .75rem; font-size: 1.15rem; }
-.brainwash-panel > label { display: block; margin: .6rem 0; }
-.brainwash-panel input[type="search"], .brainwash-panel select, .brainwash-panel textarea {
-  display: block; width: 100%; margin-top: .3rem; padding: .65rem; border: 1px solid #596777; border-radius: .3rem; background: #10151a; color: inherit; font: inherit;
-}
-.brainwash-panel textarea { resize: vertical; }
-.brainwash-fields { display: grid; gap: .75rem; }
-.brainwash-fields > summary { cursor: pointer; font-weight: 650; }
-.brainwash-fields fieldset, .brainwash-panel fieldset { min-width: 0; margin: 0; padding: .75rem; border: 1px solid #44515e; border-radius: .35rem; }
-.brainwash-fields legend, .brainwash-panel legend { padding: 0 .3rem; font-weight: 650; text-transform: capitalize; }
-.brainwash-panel fieldset label { display: inline-flex; align-items: center; gap: .45rem; }
-button { min-height: 2.5rem; margin: .35rem .45rem .1rem 0; padding: .5rem .85rem; border: 1px solid #6c91b4; border-radius: .35rem; background: #275276; color: white; font: inherit; cursor: pointer; }
-button:hover:not(:disabled) { background: #32658e; }
-button:disabled, input:disabled, textarea:disabled, select:disabled { opacity: .6; cursor: not-allowed; }
-.brainwash-status { margin: 0; padding: .65rem .8rem; border-left: 3px solid #68a9d8; background: #202e39; }
-.brainwash-warning { padding: .7rem; border: 1px solid #b17d36; background: #3b2b18; }
-.brainwash-review-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: .45rem 0; padding: .55rem; background: #111820; border-radius: .25rem; }
-:focus-visible { outline: 3px solid #f0c66e; outline-offset: 2px; }
-
-@media (max-width: 640px) {
-  .brainwash-page { padding: .75rem; }
-  .brainwash-header { align-items: flex-start; }
-}
+.brainwash-editor[data-theme='night'] { --ink:#e4e7d8; --paper:#18221e; --rule:#43564a; --red:#e5a487; --muted:#afbdaf; --surface:#202e26; --input:#111b16; --input-border:#657767; --status:#25362b; --source:#2a3a2d; --line:#536856; --button:#d8cfb8; --button-text:#19231d; --button-hover:#ead9b8; --button-hover-text:#17201b; color-scheme:dark; }
+.brainwash-editor .brainwash-theme-toggle { flex-shrink:0; min-width:94px; background:transparent; color:var(--ink); border-color:var(--rule); }
+@media(max-width:640px) { .brainwash-masthead { flex-wrap:wrap; } .brainwash-theme-toggle { margin-left:auto !important; } }

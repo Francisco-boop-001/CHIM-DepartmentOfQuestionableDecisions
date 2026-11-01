@@ -1,0 +1,73 @@
+'use strict';
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const {chromium}=require(require.resolve('playwright',{paths:[process.env.PLAYWRIGHT_MODULE_ROOT]}));
+const ui=path.resolve(__dirname,'..');
+(async()=>{
+ const browser=await chromium.launch({headless:true,executablePath:process.env.PRISMA_TEST_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'});
+ try {
+  const page=await browser.newPage({viewport:{width:1440,height:1080}});const errors=[];const requests=[];
+  page.on('pageerror',e=>errors.push(e.message));page.on('request',r=>requests.push(r.url()));
+  let html=fs.readFileSync(path.join(ui,'index.html'),'utf8');
+  for(const file of ['app.css','brainwash-editor.css']) html=html.replace(`<link rel="stylesheet" href="./${file}">`,`<style>${fs.readFileSync(path.join(ui,file),'utf8')}</style>`);
+  for(const file of ['app.js','brainwash-editor.js']) html=html.replace(`<script src="./${file}" defer></script>`,'');
+  html=html.replace('</body>',`<script>${fs.readFileSync(path.join(ui,'brainwash-editor.js'),'utf8')}</script><script>${fs.readFileSync(path.join(ui,'app.js'),'utf8')}</script></body>`);
+  await page.setContent(html,{waitUntil:'domcontentloaded'});
+  await page.evaluate(()=>{
+   const names=['core','npc_static_bio','personality','appearance','occupation','skills','speechstyle','goals'];
+   let fields=Object.fromEntries(names.map(f=>[f,'Saved '+f]));let beliefs='Saved belief';let last=null;
+   const card=()=>({actorKey:'npc:42',label:'Lydia',scope:'synthetic-only',revision:'a'.repeat(64),fields:{...fields},beliefs,draftId:null,lastOperation:last});
+   window.evidenceDeskCalls=[];
+   window.departmentRequest=raw=>{const req=JSON.parse(raw);window.evidenceDeskCalls.push(req);let data;
+    if(req.operation==='bootstrap') data={authenticated:true,authRequired:false,serverContext:'synthetic-context',scopeToken:'A'.repeat(43),capabilities:{pcv:false,mp:false,sas:false,correspondence:false,brainwash:true},access:{pcv:false,inspector:false,compose:false,authorDetail:false,brainwash:true},perspectives:{mp:{choices:[],limited:false},sas:{choices:[],limited:false}}};
+    else if(req.operation==='brainwash.catalog.read') data={actors:[{actorKey:'npc:42',label:'Lydia'}],limited:false,source:'nearby',state:'ready',observedAt:1793450000};
+    else if(req.operation==='brainwash.card.read') data=card();
+    else if(req.operation==='brainwash.draft') {
+     const changes=Object.fromEntries(Object.keys(req.payload.changes).map(f=>[f,f==='goals'?'Help rebuild Whiterun.':fields[f]]));
+     data={actorKey:'npc:42',scope:'synthetic-only',revision:'a'.repeat(64),draftId:'123e4567-e89b-12d3-a456-426614174001',origin:'ai',before:{...fields},changes,beliefsBefore:beliefs,beliefs:'Rebuilding is a shared duty.',authoring:{reply:'Review the lasting commitment.',intent:req.payload.authoring.intent,historyCount:1,historyTruncated:false,evidence:[{eventId:'128',reason:'A direct voluntary promise.',excerpt:'Lydia: I will return and help them rebuild.'}],assessments:[...Object.keys(changes).map(f=>({field:f,basis:f==='goals'?'evidence':'unchanged',reason:f==='goals'?'A lasting commitment.':'No support for further change.',eventIds:f==='goals'?['128']:[]})),{field:'beliefs',basis:'evidence',reason:'A voluntary commitment.',eventIds:['128']}]}};
+    } else if(req.operation==='brainwash.apply') {
+     for(const f of req.payload.acceptedFields)fields[f]='Help rebuild Whiterun.';
+     if(req.payload.acceptBeliefs)beliefs='Rebuilding is a shared duty.';
+     last={operationId:req.payload.operationId,state:'applied'};data={operationId:req.payload.operationId,state:'applied',card:card()};
+    } else throw Error('Unexpected synthetic operation '+req.operation);
+    queueMicrotask(()=>window.departmentReceive(JSON.stringify({version:1,requestId:req.requestId,operation:req.operation,context:req.context,ok:true,data})));
+   };
+   window.departmentInitialize(JSON.stringify({version:1,viewToken:'123e4567-e89b-12d3-a456-426614174000',nativeGeneration:'1',serverContext:null}));
+  });
+  await page.getByRole('tab',{name:'Malpractice Makes Perfect',exact:true}).click();
+  await page.getByRole('heading',{name:'Develop Lydia',exact:true}).waitFor();
+  assert.equal(await page.locator('.brainwash-editor').getAttribute('data-theme'),'night');
+  await page.getByRole('button',{name:'Switch to paper mode',exact:true}).click();
+  assert.equal(await page.locator('.brainwash-editor').getAttribute('data-theme'),'paper');
+  await page.getByRole('button',{name:'Switch to night mode',exact:true}).click();
+  assert.equal(await page.locator('.brainwash-editor').getAttribute('data-theme'),'night');
+  await page.getByRole('button',{name:'Develop from experience',exact:true}).click();
+  await page.getByText('Optional manual fields and AI field selection',{exact:true}).click();
+  await page.getByRole('textbox',{name:'core text',exact:true}).fill('Unsaved creative context');
+  await page.getByRole('checkbox',{name:'Include beliefs in draft',exact:true}).check();
+  await page.getByRole('textbox',{name:'Creative direction',exact:true}).fill('Use the promise to rebuild; preserve identity.');
+  await page.getByRole('button',{name:'Develop card with AI',exact:true}).click();
+  await page.getByRole('heading',{name:'Review draft',exact:true}).waitFor();
+  assert.equal(await page.getByRole('button',{name:'Apply accepted changes',exact:true}).isDisabled(),true);
+  assert.equal(await page.getByRole('checkbox',{name:'Accept this beliefs change',exact:true}).isChecked(),false);
+  assert.equal(await page.locator('.brainwash-source').count(),2);
+  const draft=(await page.evaluate(()=>window.evidenceDeskCalls)).find(r=>r.operation==='brainwash.draft');
+  assert.equal(draft.payload.authoring.intent,'development');assert.ok(draft.payload.authoring.historyLimit>0);
+  assert.equal(draft.payload.authoring.workingCard.core,'Unsaved creative context');
+  assert.equal(await page.getByRole('checkbox',{name:'Accept this field',exact:true}).count(),1,'unchanged saved authority must not appear as an authored change');
+  assert.equal(await page.getByRole('tab').count(),5,'all five Department tabs remain present');
+  for (const tab of await page.getByRole('tab').all()) assert.equal(await tab.isVisible(),true,'all five Department tabs remain visible');
+  const screenshot=process.env.PRISMA_EVIDENCE_DESK_SCREENSHOT;
+  if (screenshot) await page.screenshot({path:screenshot,fullPage:true});
+  await page.setViewportSize({width:430,height:932});assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth),false);
+  await page.getByRole('checkbox',{name:'Accept this field',exact:true}).check();
+  await page.getByRole('button',{name:'Apply accepted changes',exact:true}).click();
+  await page.waitForFunction(()=>window.evidenceDeskCalls.some(r=>r.operation==='brainwash.apply'));
+  const calls=await page.evaluate(()=>window.evidenceDeskCalls);const apply=calls.find(r=>r.operation==='brainwash.apply');
+  assert.deepEqual(apply.payload.acceptedFields,['goals']);assert.equal(apply.payload.acceptBeliefs,false);
+  assert.equal(calls.filter(r=>r.operation==='brainwash.draft').length,1);
+  assert.deepEqual(errors,[]);assert.deepEqual(requests,[]);
+  console.log('PASS actual Department shell + frozen shared editor: development intent, full unsaved context, per-field evidence, saved unchanged baseline, explicit beliefs acceptance, selective apply, narrow layout; synthetic data only.');
+ } finally {await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});
