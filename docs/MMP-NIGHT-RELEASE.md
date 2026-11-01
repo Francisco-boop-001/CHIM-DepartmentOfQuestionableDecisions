@@ -9,3 +9,16 @@ Verification includes the theme default/persistence/blocked-storage regression, 
 The source-only restrictions remain: no fresh PostgreSQL, provider, installed-runtime or Skyrim acceptance. Pre-labelled semantic cases are not model-quality results. The twelve existing Windows journal/directory-fsync fixture failures remain a disclosed platform verification limit. Publish as a TEST/PRE-ALPHA prerelease; publication does not install or synchronize a live server or game.
 
 Use one matched installation source: the paired game ZIP for PRISMA, or the MMP DWPkg alone for the web server route. Replace older enabled copies when performing a separately chosen installation. Keep Skyrim closed during game-mod replacement. Do not use the older dev.3 combined ZIP as an update for this release.
+
+
+## Publication record
+
+Published TEST prereleases on 2026-11-01:
+
+- MMP `v0.1.0-dev.6`, immutable source `16ebfbd678b735b3b00daba1dd6a4ca7f76b63ea`.
+- Department `v0.1.0-prealpha.33`, immutable source `85223582305f88bd917f861222ac8b24e2621d94`.
+- Paired game ZIP SHA256 `79d5aba79bf90e49a5e1ef521079b4ffcbdcf92386244528d89ad82720d4d4ba` (both ZIP names contain identical bytes).
+
+All five assets in each release were downloaded from the draft and anonymously after publication; bytes, GitHub digests and sizes match the verified uploads. The official captured CHIM archive consumer accepted both server packages without activation. Source packages reproduce the tested worktree package from exact commits. 39 owner host checks, 43 protocol checks and 12 packaging regressions passed; the actual web/Department browser fixtures include default night and both theme directions.
+
+The release tags and assets are immutable. Later release-branch documentation records publication without changing their runtime payloads. No installation, live-server or installed-game access, WSL, database or provider work was performed for this publication. Runtime and model-quality limits above remain.

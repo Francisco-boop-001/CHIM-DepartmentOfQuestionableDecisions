@@ -620,3 +620,11 @@ Review: source candidate prealpha.32/native0.1.20; primary, installed and live r
 - [x] Review source diff and record source-only verification limits.
 
 Review: PHP43/43, actual JS bridge and actual Department shell/editor fixtures pass. All11 exact dev.6 pins and synchronized asset bytes pass; dev.3/dev.4/dev.5 maps remain unchanged. Single MMP masthead and PHP/JS/native Unicode blank-reason parity corrected. Root verified native six-suite pass, then final parity rebuild and targeted Contract pass. Legacy Windows contract68/80 retains the same12 journal-fsync failures; no guard relaxed. Source-only, unpublished/uninstalled; no WSL/DB/provider/live/game access. See docs/MMP-EVIDENCE-DESK-CANDIDATE.md and common integration-report.md.
+
+
+## Default night mode and publication — 2026-11-01
+- [x] Verify night default, paper toggle, remembered preference and denied-storage handling in shared web/PRISMA editor.
+- [x] Commit exact release source and verify deterministic packages, official archive consumer and source pins.
+- [x] Push immutable release tags and publish approved TEST prereleases after destination approval.
+- [x] Verify draft and anonymous public downloads, GitHub asset digests/sizes and frozen source identity.
+Review: public MMP dev.6 and Department prealpha.33 verified. Tags/assets preserved; release-branch completion is documentation only. Live/game untouched; database/provider/Skyrim acceptance remains unperformed.
