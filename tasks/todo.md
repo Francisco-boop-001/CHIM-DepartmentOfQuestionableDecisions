@@ -627,6 +627,8 @@ Review: PHP43/43, actual JS bridge and actual Department shell/editor fixtures p
 - [x] Add exact dev.32 pins and preserve dev.31 capabilities and earlier maps.
 - [x] Verify real packaged source, tamper rejection and the normal installable ZIP.
 - [x] Record the result and verification boundaries for the Sealed Fates owner.
-- [ ] Commit the reviewed source, verify the draft assets, publish, and confirm the public bytes.
+- [x] Commit the reviewed source, verify the draft assets, publish, and confirm the public bytes.
 
 Review: exact dev.31/dev.32 owner loader and read/commit fixture checks passed. Historical source maps are byte-identical. Captured CHIM archive validation accepted both packages without activation. The normal candidate ZIP changes only the Department server package and rebuilds identically. No runtime, installation or publication work.
+
+Published v0.1.0-prealpha.34 from b5b10ed58fe85d5821f765fd86954c70e295b2f7. All five public assets matched the verified draft and local files. The MO2 ZIP SHA-256 is a6bb404d1b1afc163caca4479088df3bbaf8cfe68898b4d3b9842062a922c134. Installed HTTP, PostgreSQL and Skyrim remain untested.
