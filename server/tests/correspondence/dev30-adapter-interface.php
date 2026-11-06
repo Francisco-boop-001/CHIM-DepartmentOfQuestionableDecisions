@@ -12,7 +12,7 @@ for ($i = 1; $i < $argc; $i++) {
     } elseif ($argv[$i] === '--adapter' && isset($argv[$i + 1])) {
         $adapterPath = $argv[++$i];
     } else {
-        fwrite(STDERR, "usage: php -n dev30-adapter-interface.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.30|0.1.0-dev.31] [--adapter PATH]\n");
+        fwrite(STDERR, "usage: php -n dev30-adapter-interface.php --owner-root OWNER_SERVER_DIR [--owner-version 0.1.0-dev.30|0.1.0-dev.31|0.1.0-dev.32] [--adapter PATH]\n");
         exit(2);
     }
 }
@@ -20,8 +20,8 @@ for ($i = 1; $i < $argc; $i++) {
 $ownerRoot = realpath($ownerRoot) ?: '';
 $adapterPath = realpath($adapterPath) ?: '';
 $manifest = $ownerRoot !== '' ? json_decode((string)@file_get_contents($ownerRoot . DIRECTORY_SEPARATOR . 'manifest.json'), true) : null;
-if ($ownerRoot === '' || !is_array($manifest) || !in_array($ownerVersion, ['0.1.0-dev.30', '0.1.0-dev.31'], true) || ($manifest['version'] ?? null) !== $ownerVersion || $adapterPath === '') {
-    fwrite(STDERR, "A frozen dev.30/dev.31 owner source root and adapter are required.\n");
+if ($ownerRoot === '' || !is_array($manifest) || !in_array($ownerVersion, ['0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32'], true) || ($manifest['version'] ?? null) !== $ownerVersion || $adapterPath === '') {
+    fwrite(STDERR, "A frozen dev.30/dev.31/dev.32 owner source root and adapter are required.\n");
     exit(2);
 }
 if (function_exists('pg_query')) {

@@ -178,7 +178,7 @@ $document = [
     'operation_id' => null,
     'payer' => ['kind' => 'player'],
 ];
-foreach (['0.1.0-dev.30', '0.1.0-dev.31'] as $resumeVersion) {
+foreach (['0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32'] as $resumeVersion) {
     resumeContractExpect(qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, false, false), 'an intact manual zero-operation letter should be resumable for ' . $resumeVersion);
     foreach (['dispatched', 'unknown', 'partial', 'delivered', 'rejected'] as $state) {
         resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, $state, true, false, false, false), 'non-queued state must refuse resume: ' . $state);
@@ -193,7 +193,7 @@ foreach (['0.1.0-dev.30', '0.1.0-dev.31'] as $resumeVersion) {
     resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, false, false, true), 'orphan dispatch anchors must refuse resume');
     resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, ['operation_id' => null, 'payer' => ['kind' => 'npc']], 'queued', true, false, false, false), 'non-player-paid letters must refuse resume');
 }
-foreach (['0.1.0-dev.29', '0.1.0-dev.32'] as $unsupportedVersion) {
+foreach (['0.1.0-dev.29', '0.1.0-dev.33'] as $unsupportedVersion) {
     resumeContractExpect(!qd_correspondence_resume_eligible($unsupportedVersion, $document, 'queued', true, false, false, false), 'resume must refuse unsupported owner version: ' . $unsupportedVersion);
 }
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_content_overflow')) === 'renderer_unavailable', 'known renderer failures must map to a fixed renderer code');

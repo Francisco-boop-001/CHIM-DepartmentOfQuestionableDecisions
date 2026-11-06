@@ -4,6 +4,14 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.34: Sealed Fates dev.32 compatibility
+
+Download the [Department prealpha.34 MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.34/WorldOfDramaLlama-0.1.0-prealpha.34.zip) and the separate [Sealed Fates dev.32 MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-SealedFates/releases/tag/correspondence-v0.1.0-dev.32). Close Skyrim before replacing the previous enabled copy of each mod. Each mod ships its own CHIM server package in its regular ZIP.
+
+Department accepts the exact dev.32 release alongside dev.31. The 22 dev.32 pins include the corrected web acknowledgement page. The archive retains the prealpha.33 DLL, PRISMA interface, and other plugin packages.
+
+Offline verification covers loading both packaged owner versions, rejecting tampered files, letter resume contracts, and validation with the captured CHIM archive extractor. Installed HTTP, PostgreSQL, and Skyrim were not tested for this release.
+
 ## Prealpha.33: Malpractice evidence desk and default night mode
 
 [Download the paired prealpha.33 game ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.33/WorldOfDramaLlama-0.1.0-prealpha.33.zip). It includes MMP dev.6, the shared night/paper editor, and Department companion0.1.21.0. Night is the default. Nearby selection, iterative authoring and field-specific evidence review reach the native transport; older native DLLs do not support this new authoring contract.

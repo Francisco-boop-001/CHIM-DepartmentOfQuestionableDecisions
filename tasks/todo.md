@@ -620,3 +620,13 @@ Review: source candidate prealpha.32/native0.1.20; primary, installed and live r
 - [x] Review source diff and record source-only verification limits.
 
 Review: PHP43/43, actual JS bridge and actual Department shell/editor fixtures pass. All11 exact dev.6 pins and synchronized asset bytes pass; dev.3/dev.4/dev.5 maps remain unchanged. Single MMP masthead and PHP/JS/native Unicode blank-reason parity corrected. Root verified native six-suite pass, then final parity rebuild and targeted Contract pass. Legacy Windows contract68/80 retains the same12 journal-fsync failures; no guard relaxed. Source-only, unpublished/uninstalled; no WSL/DB/provider/live/game access. See docs/MMP-EVIDENCE-DESK-CANDIDATE.md and common integration-report.md.
+
+## Sealed Fates dev.32 compatibility candidate (2026-11-06)
+
+- [x] Verify the exact owner package and show the prealpha.33 adapter rejects dev.32.
+- [x] Add exact dev.32 pins and preserve dev.31 capabilities and earlier maps.
+- [x] Verify real packaged source, tamper rejection and the normal installable ZIP.
+- [x] Record the result and verification boundaries for the Sealed Fates owner.
+- [ ] Commit the reviewed source, verify the draft assets, publish, and confirm the public bytes.
+
+Review: exact dev.31/dev.32 owner loader and read/commit fixture checks passed. Historical source maps are byte-identical. Captured CHIM archive validation accepted both packages without activation. The normal candidate ZIP changes only the Department server package and rebuilds identically. No runtime, installation or publication work.
