@@ -64,7 +64,7 @@ $noChange = clone $brainwashOperations['brainwash.draft'];
 $noChange->changes = (object)[];
 $expect(qd_validate_payload('brainwash.draft', $noChange) === 'invalid_request', 'empty draft refused');
 $oversizedField = clone $brainwashOperations['brainwash.draft'];
-$oversizedField->changes = (object)['personality' => str_repeat('x', 8193)];
+$oversizedField->changes = (object)['personality' => str_repeat('é', 32768) . 'x'];
 $expect(qd_validate_payload('brainwash.draft', $oversizedField) === 'invalid_request', 'oversized card field refused');
 $oversizedInstruction = clone $brainwashOperations['brainwash.draft'];
 $oversizedInstruction->instruction = str_repeat('x', 2001);
@@ -80,6 +80,8 @@ $extraUndo->fullRow = true;
 $expect(qd_validate_payload('brainwash.undo', $extraUndo) === 'invalid_request', 'whole-row undo payload refused');
 
 $expect(in_array('brainwash', QD_ALLOWED_SCOPES, true), 'Brainwash scope is a recognized explicit permission');
+$expect(QD_BRAINWASH_EXPECTED_VERSION === '0.1.0-dev.7', 'adapter selects the agreed frozen Brainwash owner version');
+$expect(qd_brainwash_manifest_ready($ownerSourceRoot), 'exact staged Brainwash dev7 source closure matches every adapter pin');
 $expect(qd_has_required_scope(['pcv', 'inspector', 'compose'], 'brainwash') === false, 'legacy scopes do not imply Brainwash write access');
 $expect(qd_has_required_scope(['brainwash'], 'brainwash') === true, 'Brainwash scope grants only explicit access');
 $expect(qd_access_for_scopes(['inspector'])['brainwash'] === false, 'inspector access does not grant Brainwash writes');

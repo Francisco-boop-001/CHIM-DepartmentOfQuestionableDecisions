@@ -14,8 +14,10 @@ const pagePath = path.resolve(__dirname, '..', 'index.html');
 const fifthTabFixturePath = path.join(__dirname, 'fixtures', 'fifth-tab.html');
 const resultPath = process.env.UI_TEST_RESULTS;
 const screenshotPath = process.env.UI_TEST_SCREENSHOT;
+const actorSelectorScreenshotPath = process.env.UI_ACTOR_SELECTOR_SCREENSHOT;
+const receiptCheckScreenshotPath = process.env.UI_RECEIPT_CHECK_SCREENSHOT;
 const testFilter = process.env.UI_TEST_FILTER || '';
-const executorUnavailableGuidance = 'CHIM delivery is waiting for fresh game activity. With Sealed Fates dev.31, leave Skyrim unpaused so normal CHIM polling can update it. Earlier supported versions need a recent managed-NPC report. Keep CHIM Interaction On where that setting is available. Resume this same saved letter; do not send a new copy.';
+const executorUnavailableGuidance = 'CHIM delivery is waiting for fresh game activity. With Sealed Fates dev.31 or later, leave Skyrim unpaused so normal CHIM polling can update it. Earlier supported versions need a recent managed-NPC report. Keep CHIM Interaction On where that setting is available. Resume this same saved letter; do not send a new copy.';
 const connectionPendingScreenshotPath = process.env.UI_CONNECTION_PENDING_SCREENSHOT;
 const connectionSetupErrorScreenshotPath = process.env.UI_CONNECTION_SETUP_ERROR_SCREENSHOT;
 const nativeRefusalScreenshotPath = process.env.UI_NATIVE_REFUSAL_SCREENSHOT;
@@ -203,6 +205,18 @@ async function authenticatedPage(browser, serverContext = 'scope-test-1', scopeT
   return page;
 }
 
+async function authenticatedAfterUnauthenticatedBootstrap(browser, serverContext = 'scope-test-1', scopeToken = 'A'.repeat(43)) {
+  const page = await openPage(browser);
+  const initial = await initialize(page);
+  await respond(page, initial, unauthenticatedData());
+  const authenticated = await initialize(page, newUuid(), '2');
+  await respond(page, authenticated, authenticatedData(serverContext, scopeToken));
+  await waitForOperationCount(page, 'correspondence.pending.read', 1);
+  const pending = await latestRequest(page, 'correspondence.pending.read');
+  await respond(page, pending, { operations: [], limited: false, nextCursor: null });
+  return page;
+}
+
 async function prepareComposer(page, body, options = {}) {
   await page.getByRole('tab', { name: 'Sealed Fates' }).click();
   await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
@@ -217,6 +231,19 @@ async function prepareComposer(page, body, options = {}) {
   await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
   await page.getByLabel('Letter body').fill(body);
   await page.getByRole('button', { name: /review letter/i }).click();
+}
+
+async function prepareMailbox(page, actors = [
+  { actorKey: 'npc:104', label: 'Retired Envoy', canWrite: false, canReceive: false, canSignAs: false },
+  { actorKey: 'npc:105', label: 'Second Envoy', canWrite: false, canReceive: false, canSignAs: false },
+]) {
+  await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+  await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+  const catalog = await latestRequest(page, 'correspondence.catalog.read');
+  assert.ok(catalog, 'mailbox setup reads the authorized actor catalog');
+  await respond(page, catalog, catalogPage(actors));
+  await page.getByRole('button', { name: 'Mailboxes' }).click();
+  return page.getByLabel('Recipient mailbox');
 }
 
 async function prepareUncertainPaidLetter(page, body) {
@@ -924,6 +951,33 @@ async function main() {
       await page.close();
     });
 
+    await test('accepted Arm keeps its Pending readback feedback after controls settle', async () => {
+      const page = await authenticatedPage(browser, 'scope-pcv-arm-feedback');
+      const { activeId } = await prepareActivePcv(page, 'roster-pcv-arm-feedback');
+      await page.getByRole('button', { name: /edit scene settings/i }).click();
+      await page.getByLabel('Speaker').selectOption('npc:one');
+      await page.getByLabel('Second NPC').selectOption('npc:two');
+      await page.getByRole('button', { name: /arm conversation/i }).click();
+      const arm = await latestRequest(page, 'pcv.arm');
+      await respond(page, arm, { operationId: arm.payload.operationId, state: 'staged', activeConfigId: activeId, pendingConfigId: arm.payload.operationId,
+        active: arm.payload.configuration, pending: arm.payload.configuration });
+      const readStatus = await latestRequest(page, 'pcv.status.read');
+      await respond(page, readStatus, { state: 'pending', activeConfigId: activeId, pendingConfigId: arm.payload.operationId,
+        active: arm.payload.configuration, pending: arm.payload.configuration });
+      await page.waitForFunction(() => !document.getElementById('pcv-arm').disabled, null, { timeout: 1000 });
+      const expected = 'Arm was staged and read back as Pending. It activates on the first accepted eligible CHIM turn; Active still requires a status confirmation.';
+      assert.equal(await page.getByText(expected, { exact: true }).count(), 1,
+        `Arm feedback should survive the final control render; pcv-state is "${await page.locator('#pcv-state').innerText()}"`);
+      const actionFeedback = page.locator('#pcv-action-feedback');
+      assert.equal(await actionFeedback.innerText(), expected);
+      assert.match(await page.locator('#pcv-state').innerText(), /Nearby NPCs and Private Conversation status are current/i);
+
+      await refreshPcv(page, { state: 'pending', activeConfigId: activeId, pendingConfigId: arm.payload.operationId,
+        active: arm.payload.configuration, pending: arm.payload.configuration });
+      assert.equal(await actionFeedback.innerText(), '', 'an explicit status refresh clears the prior action result');
+      await page.close();
+    });
+
     await test('explicit native dispatched false releases a local compose refusal', async () => {
       const page = await authenticatedPage(browser);
       await prepareComposer(page, 'A locally refused draft.');
@@ -1101,6 +1155,289 @@ async function main() {
       await page.close();
     });
 
+    await test('actor selectors show neutral prompts only when eligible choices exist', async () => {
+      const actors = [
+        { actorKey: 'npc:401', label: 'Writer One', canWrite: true, canReceive: false, canSignAs: false },
+        { actorKey: 'npc:402', label: 'Recipient One', canWrite: false, canReceive: true, canSignAs: false },
+      ];
+      const page = await authenticatedPage(browser, 'scope-mail-neutral-prompts');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      let catalog = await latestRequest(page, 'correspondence.catalog.read');
+      let inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage(actors));
+      await respond(page, inventory, { inventoryRevision: 'neutral-prompt-inventory', items: [], gold: { available: 0 } });
+      await page.locator('#letter-writer').selectOption('npc:401');
+      await page.locator('#letter-recipient').selectOption('npc:402');
+      await page.getByLabel('Letter body').fill('This draft survives catalog refresh.');
+
+      const counts = await page.evaluate(() => ({
+        catalog: window.__bridgeRequests.filter((request) => request.operation === 'correspondence.catalog.read').length,
+        inventory: window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length,
+      }));
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      await page.waitForFunction((before) => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.catalog.read').length > before.catalog
+        && window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length > before.inventory, counts);
+      catalog = await latestRequest(page, 'correspondence.catalog.read');
+      inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage(actors, { revision: 'e'.repeat(64) }));
+      await respond(page, inventory, { inventoryRevision: 'neutral-prompt-inventory-2', items: [], gold: { available: 0 } });
+      assert.equal(await page.locator('#letter-writer option[value=""]').innerText(), 'Choose a writer');
+      assert.equal(await page.locator('#letter-recipient option[value=""]').innerText(), 'Choose a recipient');
+      assert.equal(await page.locator('#letter-writer').inputValue(), 'npc:401', 'eligible writer selection is preserved');
+      assert.equal(await page.locator('#letter-recipient').inputValue(), 'npc:402', 'eligible recipient selection is preserved');
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'This draft survives catalog refresh.', 'unselected draft text is preserved');
+      assert.deepEqual(await page.locator('#letter-writer option').evaluateAll((options) => options.map((option) => option.value)), ['', 'npc:401']);
+      assert.deepEqual(await page.locator('#letter-recipient option').evaluateAll((options) => options.map((option) => option.value)), ['', 'npc:402']);
+      await saveScreenshot(page, actorSelectorScreenshotPath);
+
+      const refreshedCounts = await page.evaluate(() => ({
+        catalog: window.__bridgeRequests.filter((request) => request.operation === 'correspondence.catalog.read').length,
+        inventory: window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length,
+      }));
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      await page.waitForFunction((before) => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.catalog.read').length > before.catalog
+        && window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length > before.inventory, refreshedCounts);
+      catalog = await latestRequest(page, 'correspondence.catalog.read');
+      inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage([], { revision: 'f'.repeat(64) }));
+      await respond(page, inventory, { inventoryRevision: 'neutral-prompt-inventory-3', items: [], gold: { available: 0 } });
+      assert.equal(await page.locator('#letter-writer option[value=""]').innerText(), 'No authorized writers');
+      assert.equal(await page.locator('#letter-recipient option[value=""]').innerText(), 'No authorized recipients');
+      await page.close();
+    });
+
+    await test('queues one Skyrim receipt check for the same dispatched transfer without changing its saved letter', async () => {
+      const page = await authenticatedPage(browser, 'scope-receipt-check-transfer');
+      await prepareComposer(page, 'Synthetic Jarl letter for receipt-check coverage.', {
+        inventory: { inventoryRevision: 'receipt-check-items', items: [{ itemKey: 'fixture:amethyst', label: 'Amethyst', availableQuantity: 5 }], gold: { available: 0 } },
+      });
+      await page.getByLabel('Attach Amethyst').check();
+      await page.locator('#inventory-items .inventory-quantity').fill('2');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      assert.deepEqual(compose.payload.attachments, [{ itemKey: 'fixture:amethyst', quantity: 2 }]);
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'dispatched' });
+
+      const checkButton = page.locator('#letter-receipt-check');
+      assert.equal(await checkButton.count(), 1, 'eligible saved operations expose a separate receipt check');
+      assert.equal(await checkButton.isVisible(), true);
+      await checkButton.click();
+      const check = await latestRequest(page, 'correspondence.receipt.check');
+      assert.ok(check, 'the action uses its dedicated native operation');
+      assert.deepEqual(check.payload, { operationId: compose.payload.operationId, attemptId: check.payload.attemptId });
+      assert.match(check.payload.attemptId, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+      assert.notEqual(check.payload.attemptId, compose.payload.operationId, 'the check gets its own fresh attempt ID');
+      await respond(page, check, {
+        operationId: compose.payload.operationId, queued: true, reason: null,
+        result: { operationId: compose.payload.operationId, state: 'dispatched' },
+      });
+
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.receipt.check').length), 1,
+        'one explicit click queues one receipt check');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'checking a receipt never composes or delivers another copy');
+      assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId, 'the original operation remains selected');
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Synthetic Jarl letter for receipt-check coverage.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true, 'the original transfer lock remains');
+      assert.equal(await page.getByLabel('Attach Amethyst').isChecked(), true, 'the original attachment remains selected');
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2', 'the original attachment quantity is unchanged');
+      assert.match(await page.locator('#letter-receipt').innerText(), /check.*queued.*not.*delivery receipt/i,
+        'queued acknowledges only the receipt-check command, not delivery');
+      assert.equal(await page.locator('#letter-reconcile').innerText(), 'Refresh saved status');
+      await saveScreenshot(page, receiptCheckScreenshotPath);
+      await page.close();
+    });
+
+    await test('receipt-check keeps a confirmed saved result when receivedAt is null', async () => {
+      const page = await authenticatedPage(browser, 'scope-receipt-check-null-time');
+      await prepareComposer(page, 'The saved text remains visible after receipt confirmation.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'unknown' });
+      await page.locator('#letter-receipt-check').click();
+      const check = await latestRequest(page, 'correspondence.receipt.check');
+      await respond(page, check, {
+        operationId: compose.payload.operationId, queued: true, reason: null,
+        result: { operationId: compose.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: null } },
+      });
+      await page.waitForFunction(() => document.getElementById('letter-receipt').textContent.includes('Delivery receipt confirmed'));
+      assert.match(await page.locator('#letter-receipt').innerText(), /delivery receipt confirmed/i,
+        'a nullable receipt timestamp does not downgrade confirmed delivery');
+      assert.doesNotMatch(await page.locator('#letter-receipt').innerText(), /unknown|undefined/i);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'The saved text remains visible after receipt confirmation.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'the terminal saved result releases the current editor');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.receipt.check').length), 1,
+        'the nested saved result does not queue an additional check');
+      await page.close();
+    });
+
+    await test('receipt-check retries reuse an uncertain attempt and closed queued letters cannot be checked', async () => {
+      const page = await authenticatedPage(browser, 'scope-receipt-check-retry');
+      await prepareComposer(page, 'Receipt-check retry uses its same attempt.');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'unknown' });
+      const checkButton = page.locator('#letter-receipt-check');
+      assert.equal(await checkButton.count(), 1);
+      await checkButton.click();
+      const first = await latestRequest(page, 'correspondence.receipt.check');
+      await respond(page, first, null, { ok: false, error: { code: 'unavailable', message: 'No receipt-check result was returned.' } });
+      await page.waitForFunction(() => !document.getElementById('letter-receipt-check').disabled);
+      await checkButton.click();
+      const retry = await latestRequest(page, 'correspondence.receipt.check');
+      assert.notEqual(retry.requestId, first.requestId, 'the native transport request is retried with fresh correlation');
+      assert.equal(retry.payload.operationId, compose.payload.operationId, 'retry remains on the original saved operation');
+      assert.equal(retry.payload.attemptId, first.payload.attemptId, 'response loss retries the same idempotent attempt');
+      await respond(page, retry, {
+        operationId: compose.payload.operationId, queued: false, reason: 'executor_unavailable',
+        result: { operationId: compose.payload.operationId, state: 'unknown' },
+      });
+      const receiptRefusal = await page.locator('#letter-receipt').innerText();
+      assert.match(receiptRefusal, /fresh game activity.*select Check Skyrim receipt again for this same saved letter.*do not send another copy/i,
+        'receipt-check refusal explains how to retry only the check');
+      assert.doesNotMatch(receiptRefusal, /Resume this same saved letter/i,
+        'receipt-check refusal does not reuse delivery-resume guidance');
+      const thirdCount = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.receipt.check').length);
+      await checkButton.click();
+      const nextCheck = await latestRequest(page, 'correspondence.receipt.check');
+      assert.equal(await page.evaluate((count) => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.receipt.check').length, thirdCount), thirdCount + 1);
+      assert.notEqual(nextCheck.payload.attemptId, retry.payload.attemptId, 'a later explicit check starts a fresh attempt');
+      await respond(page, nextCheck, {
+        operationId: compose.payload.operationId, queued: false, reason: null,
+        result: { operationId: compose.payload.operationId, state: 'unknown' },
+      });
+      await page.waitForFunction(() => /receipt-check result is uncertain/i.test(document.getElementById('letter-receipt').textContent)
+        && !document.getElementById('letter-receipt-check').disabled);
+      assert.match(await page.locator('#letter-receipt').innerText(), /receipt-check result is uncertain/i,
+        'a false/null DTO is malformed and does not confirm a queue refusal');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true,
+        'a malformed refusal does not release the unresolved letter lock');
+      assert.equal(await page.locator('#letter-send').isDisabled(), true,
+        'a malformed refusal does not re-enable sending');
+      await checkButton.click();
+      await waitForOperationCount(page, 'correspondence.receipt.check', 4);
+      const malformedRetry = await latestRequest(page, 'correspondence.receipt.check');
+      assert.equal(malformedRetry.payload.attemptId, nextCheck.payload.attemptId,
+        'a malformed false/null response retains the same receipt-check attempt');
+      await respond(page, malformedRetry, {
+        operationId: compose.payload.operationId, queued: false, reason: 'executor_unavailable',
+        result: { operationId: compose.payload.operationId, state: 'unknown' },
+      });
+      assert.match(await page.locator('#letter-receipt').innerText(), /fresh game activity.*select Check Skyrim receipt again for this same saved letter/i,
+        'a fixed refusal resolves the uncertain check with receipt-specific copy');
+
+      await page.close();
+      const closedPage = await authenticatedPage(browser, 'scope-receipt-check-closed');
+      await prepareComposer(closedPage, 'Closed paid letter remains unavailable.', {
+        inventory: { inventoryRevision: 'closed-500', items: [], gold: { available: 500 } },
+      });
+      await closedPage.locator('#gold-amount').fill('500');
+      await closedPage.getByRole('button', { name: /review letter/i }).click();
+      await closedPage.getByRole('button', { name: /send sealed letter/i }).click();
+      const closedCompose = await latestRequest(closedPage, 'correspondence.compose');
+      assert.equal(closedCompose.payload.goldAmount, 500, 'fixture uses a synthetic 500-gold letter');
+      await respond(closedPage, closedCompose, { operationId: closedCompose.payload.operationId, state: 'queued', queuedReason: 'operator_closed', canResume: false, operatorClosed: true });
+      assert.equal(await closedPage.locator('#letter-receipt-check').isHidden(), true, 'queued closed letters are not eligible for Skyrim receipt checks');
+      assert.equal(await closedPage.locator('#letter-send').isDisabled(), true, 'the unresolved paid letter remains locked');
+      await closedPage.evaluate(() => document.getElementById('letter-receipt-check').click());
+      assert.equal(await closedPage.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.receipt.check').length), 0,
+        'an ineligible programmatic click is a no-op');
+      assert.equal(await closedPage.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'receipt checking never sends another letter');
+      await closedPage.close();
+    });
+
+    await test('receipt-check conflict retires only the correlated attempt', async () => {
+      const page = await authenticatedPage(browser, 'scope-receipt-check-conflict');
+      const body = 'Receipt query keeps its original attached letter after an interrupted check.';
+      await prepareComposer(page, body, {
+        inventory: { inventoryRevision: 'receipt-check-conflict-items', items: [{ itemKey: 'fixture:amethyst', label: 'Amethyst', availableQuantity: 5 }], gold: { available: 0 } },
+      });
+      await page.getByLabel('Attach Amethyst').check();
+      await page.locator('#inventory-items .inventory-quantity').fill('2');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      const operationId = compose.payload.operationId;
+      await respond(page, compose, { operationId, state: 'unknown' });
+      const checkButton = page.locator('#letter-receipt-check');
+
+      await page.evaluate(() => {
+        const originalSetTimeout = window.setTimeout.bind(window);
+        window.setTimeout = (callback, delay, ...args) => originalSetTimeout(callback, delay === 20000 ? 300 : delay, ...args);
+      });
+      await checkButton.click();
+      const interrupted = await latestRequest(page, 'correspondence.receipt.check');
+      await page.waitForFunction(() => /receipt-check result is uncertain/i.test(document.getElementById('letter-receipt').textContent)
+        && !document.getElementById('letter-receipt-check').disabled, null, { timeout: 1500 });
+      assert.equal(await page.getByLabel('Letter body').inputValue(), body);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.getByLabel('Attach Amethyst').isChecked(), true);
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2');
+
+      await checkButton.click();
+      const retry = await latestRequest(page, 'correspondence.receipt.check');
+      assert.notEqual(retry.requestId, interrupted.requestId);
+      assert.equal(retry.payload.operationId, operationId);
+      assert.equal(retry.payload.attemptId, interrupted.payload.attemptId, 'an interrupted check retries with its same attempt ID');
+      await respond(page, retry, null, { ok: false, error: { code: 'conflict', message: 'The previous check attempt cannot be reused.' } });
+      await page.waitForFunction(() => /previous receipt-check attempt cannot be reused/i.test(document.getElementById('letter-receipt').textContent)
+        && !document.getElementById('letter-receipt-check').disabled);
+      const conflictCopy = await page.locator('#letter-receipt').innerText();
+      assert.match(conflictCopy, /select Check Skyrim receipt again to make a new status query for this same saved letter.*letter was not resent/i);
+      assert.doesNotMatch(conflictCopy, /no receipt check was queued|superseded/i,
+        'conflict copy does not claim the previous attempt was not queued or assert a cause');
+      assert.equal(await page.locator('#letter-operation').inputValue(), operationId);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), body);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true, 'conflict keeps the transfer lock');
+      assert.equal(await page.getByLabel('Attach Amethyst').isChecked(), true, 'conflict keeps the selected attachment');
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2');
+      assert.equal(await page.locator('#letter-send').isDisabled(), true, 'conflict cannot enable another send');
+
+      await checkButton.click();
+      const freshAttempt = await latestRequest(page, 'correspondence.receipt.check');
+      assert.notEqual(freshAttempt.payload.attemptId, retry.payload.attemptId, 'the next explicit check gets a fresh attempt');
+      assert.equal(freshAttempt.payload.operationId, operationId, 'the fresh attempt remains attached to the original operation');
+      await respond(page, freshAttempt, {
+        operationId, queued: true, reason: null, result: { operationId, state: 'unknown' },
+      });
+      assert.match(await page.locator('#letter-receipt').innerText(), /receipt check queued.*not a delivery receipt/i);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), body);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.getByLabel('Attach Amethyst').isChecked(), true);
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2');
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
+        'receipt conflict recovery never composes another letter');
+
+      await checkButton.click();
+      const wrongContextAttempt = await latestRequest(page, 'correspondence.receipt.check');
+      const wrongContext = { ...wrongContextAttempt.context, serverContext: 'different-context' };
+      assert.equal(await respond(page, wrongContextAttempt, null, {
+        ok: false, error: { code: 'conflict', message: 'Unmatched conflict must be ignored.' }, context: wrongContext,
+      }), false, 'a wrong-context conflict is ignored');
+      await page.waitForFunction(() => /receipt-check result is uncertain/i.test(document.getElementById('letter-receipt').textContent)
+        && !document.getElementById('letter-receipt-check').disabled, null, { timeout: 1500 });
+      await checkButton.click();
+      await waitForOperationCount(page, 'correspondence.receipt.check', 5);
+      const afterWrongContext = await latestRequest(page, 'correspondence.receipt.check');
+      assert.equal(afterWrongContext.payload.operationId, operationId);
+      assert.equal(afterWrongContext.payload.attemptId, wrongContextAttempt.payload.attemptId,
+        'an ignored wrong-context conflict retains the same attempt through timeout');
+      await respond(page, afterWrongContext, {
+        operationId, queued: true, reason: null, result: { operationId, state: 'unknown' },
+      });
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), body);
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
+      assert.equal(await page.getByLabel('Attach Amethyst').isChecked(), true);
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1);
+      await page.close();
+    });
+
     await test('ordinary view close and reinitialize retain the locked draft cache and unresolved operation ID', async () => {
       const scope = 'Q'.repeat(43);
       const page = await authenticatedPage(browser, 'scope-letter-ordinary-reopen', scope);
@@ -1117,7 +1454,7 @@ async function main() {
       assert.equal(await page.getByLabel('Letter body').inputValue(), 'Retained only in the current UI lifetime.');
       assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId);
       assert.equal(await page.locator('#letter-reconcile').isHidden(), false);
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       const reconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(reconcile.payload.operationId, compose.payload.operationId);
       await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No receipt yet.' } });
@@ -1159,6 +1496,14 @@ async function main() {
       await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
       await page.getByLabel('Letter body').fill('Second operation private body.');
       await page.getByRole('button', { name: /review letter/i }).click();
+      assert.equal(await page.locator('#letter-send').isDisabled(), true,
+        'the UI permits a new draft while the earlier compose is pending but serializes the compose request');
+      await respond(page, first, { operationId: first.payload.operationId, state: 'queued' });
+      await page.waitForFunction(() => !document.getElementById('letter-send').disabled);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Second operation private body.',
+        'a delayed first result does not replace the new draft');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), false,
+        'a delayed first result does not clear the new draft review');
       await page.getByRole('button', { name: /send sealed letter/i }).click();
       const second = await latestRequest(page, 'correspondence.compose');
       assert.notEqual(second.payload.operationId, first.payload.operationId);
@@ -1168,28 +1513,11 @@ async function main() {
       await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
       await page.getByLabel('Letter body').fill('Current editor stays on this newer draft.');
       await page.getByRole('button', { name: /review letter/i }).click();
-      await respond(page, first, { operationId: first.payload.operationId, state: 'queued' });
-      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Current editor stays on this newer draft.');
-      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'a delayed old result cannot relock the current editor');
-      assert.equal(await page.locator('#letter-review-summary').isHidden(), false, 'an old result cannot clear the newer review');
       const listedIds = await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean));
       assert.deepEqual(new Set(listedIds), new Set([first.payload.operationId, second.payload.operationId]));
       assert.doesNotMatch(await page.locator('#letter-operation').innerText(), /First operation private body|Second operation private body/,
         'the unresolved list contains IDs and statuses, never prior letter text');
 
-      await page.locator('#letter-operation').selectOption(first.payload.operationId);
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
-      const reconcile = await latestRequest(page, 'correspondence.reconcile');
-      assert.equal(reconcile.payload.operationId, first.payload.operationId, 'reconciliation uses the selected old operation ID');
-      await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No current receipt.' } });
-      assert.match(await page.locator('#letter-recovery-status').innerText(), /not found yet.*remains unresolved/i);
-      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Current editor stays on this newer draft.');
-      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'not_found for an old ID cannot lock the newer editor');
-      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'the reviewed newer draft remains sendable');
-      if (letterRecoveryScreenshotPath) {
-        fs.mkdirSync(path.dirname(letterRecoveryScreenshotPath), { recursive: true });
-        await page.screenshot({ path: letterRecoveryScreenshotPath, fullPage: true });
-      }
       const currentReceipt = await page.locator('#letter-receipt').innerText();
       await respond(page, second, null, { ok: false, error: { code: 'stale_revision', message: 'Detached operation was not sent.', dispatched: false } });
       await page.waitForFunction((id) => {
@@ -1202,6 +1530,26 @@ async function main() {
       assert.equal(await page.locator('#letter-receipt').innerText(), currentReceipt, 'a detached refusal cannot overwrite the newer editor status');
       assert.equal(await page.locator('#letter-send').isDisabled(), false);
 
+      await page.locator('#letter-operation').selectOption(first.payload.operationId);
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
+      const reconcile = await latestRequest(page, 'correspondence.reconcile');
+      assert.equal(reconcile.payload.operationId, first.payload.operationId, 'reconciliation uses the selected old operation ID');
+      await page.getByRole('button', { name: /new letter/i }).click();
+      await page.getByLabel('Writer').selectOption('npc:1');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('This newer draft survives a delayed not-found result.');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No current receipt.' } });
+      await page.waitForFunction(() => document.getElementById('letter-recovery-status').textContent.includes('Not found yet; this operation remains unresolved.'));
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /not found yet.*remains unresolved/i);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'This newer draft survives a delayed not-found result.');
+      assert.equal(await page.getByLabel('Letter body').isDisabled(), false, 'not_found for an old ID cannot lock the newer editor');
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'the reviewed newer draft remains sendable');
+      if (letterRecoveryScreenshotPath) {
+        fs.mkdirSync(path.dirname(letterRecoveryScreenshotPath), { recursive: true });
+        await page.screenshot({ path: letterRecoveryScreenshotPath, fullPage: true });
+      }
+
       await page.getByRole('button', { name: /send sealed letter/i }).click();
       const third = await latestRequest(page, 'correspondence.compose');
       await page.getByRole('button', { name: /new letter/i }).click();
@@ -1211,7 +1559,7 @@ async function main() {
       await page.getByRole('button', { name: /review letter/i }).click();
       await respond(page, third, { operationId: third.payload.operationId, state: 'queued' });
       await page.locator('#letter-operation').selectOption(third.payload.operationId);
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       const terminalReconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(terminalReconcile.payload.operationId, third.payload.operationId);
       await respond(page, terminalReconcile, { operationId: third.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'now' } });
@@ -1288,15 +1636,15 @@ async function main() {
       await page.getByLabel('Letter body').fill('Fourth unique letter.');
       await page.getByRole('button', { name: /review letter/i }).click();
       assert.equal(await page.locator('#letter-send').isDisabled(), true, 'the fourth unresolved send is explicitly refused at the cap');
-      assert.match(await page.locator('#letter-recovery-status').innerText(), /three unresolved operations.*none will be dropped/i);
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /three-operation limit blocks new letters.*all waiting letters remain listed.*reconcile one before sending another/i);
       assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
         [first.payload.operationId, second.payload.operationId, third.payload.operationId], 'cap exhaustion never silently evicts an unresolved ID');
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 3);
       await page.locator('#letter-operation').selectOption(first.payload.operationId);
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       const reconcile = await latestRequest(page, 'correspondence.reconcile');
       await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No receipt yet.' } });
-      assert.match(await page.locator('#letter-recovery-status').innerText(), /three unresolved operations.*not found yet.*remains unresolved/i,
+      assert.match(await page.locator('#letter-recovery-status').innerText(), /three-operation limit blocks new letters.*all waiting letters remain listed.*not found yet.*this operation remains unresolved/i,
         'at capacity, reconciliation still reports that the selected not_found operation remains unresolved');
       assert.deepEqual(await page.locator('#letter-operation option').evaluateAll((options) => options.map((option) => option.value).filter(Boolean)),
         [first.payload.operationId, second.payload.operationId, third.payload.operationId], 'not_found at capacity preserves all three IDs');
@@ -1344,17 +1692,23 @@ async function main() {
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 2);
 
       await page.locator('#letter-operation').selectOption(transfer.payload.operationId);
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       let reconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(reconcile.payload.operationId, transfer.payload.operationId);
       await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No receipt yet.' } });
       assert.equal(await page.locator('#letter-send').isDisabled(), true, 'not_found does not release a transfer reservation');
 
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       reconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(reconcile.payload.operationId, transfer.payload.operationId, 'the same ID remains available for later reconciliation');
       await respond(page, reconcile, { operationId: transfer.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'now' } });
-      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'a matching definitive receipt frees the transfer reservation');
+      await page.getByRole('button', { name: /refresh waiting letters/i }).click();
+      await waitForOperationCount(page, 'correspondence.pending.read', 2);
+      const pendingRead = await latestRequest(page, 'correspondence.pending.read');
+      await respond(page, pendingRead, { operations: [], limited: false, nextCursor: null });
+      await page.waitForFunction(() => !document.getElementById('letter-send').disabled);
+      assert.equal(await page.locator('#letter-send').isDisabled(), false,
+        'a matching definitive receipt frees the transfer reservation after a fresh complete waiting-letter scan');
       await page.getByRole('button', { name: /send sealed letter/i }).click();
       const third = await latestRequest(page, 'correspondence.compose');
       assert.notEqual(third.payload.operationId, transfer.payload.operationId);
@@ -1388,7 +1742,7 @@ async function main() {
       assert.equal(await page.locator('#letter-reconcile').isHidden(), false, 'same confirmed scope restores the original operation handle');
       assert.equal(await page.locator('#letter-operation').inputValue(), compose.payload.operationId, 'same-scope reopen restores the exact unresolved ID');
       assert.equal(await page.getByLabel('Letter body').inputValue(), '', 'same-scope recovery does not restore unauthorized compose text');
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       const reconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(reconcile.payload.operationId, compose.payload.operationId);
       await respond(page, reconcile, null, { ok: false, error: { code: 'not_found', message: 'No current receipt.' } });
@@ -1495,6 +1849,200 @@ async function main() {
       await respond(page, request, { recipientActorKey: 'npc:101', letters: [{ letterId: 'old-mail', claimedSignature: 'Old', receivedAt: 'today',
         bodyPreview: 'STALE_MAILBOX_SENTINEL', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
       assert.equal(await page.getByText('STALE_MAILBOX_SENTINEL', { exact: true }).count(), 0, 'recipient changes reject a late mailbox response');
+      await page.close();
+    });
+
+    await test('mailbox preserves receipt-confirmed letters when the projected date is null', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-null-received-at', 'C'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page, [{ actorKey: 'npc:104', label: 'Retired Envoy', canWrite: false, canReceive: false, canSignAs: false }]);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      const mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [
+        { letterId: 'letter-null-date', claimedSignature: 'Retired Envoy', receivedAt: null, bodyPreview: 'A confirmed note.', attachments: [], deliveryConfirmed: true },
+        { letterId: 'letter-iso-date', claimedSignature: 'Retired Envoy', receivedAt: '2026-11-10T12:34:56Z', bodyPreview: 'A dated note.', attachments: [], deliveryConfirmed: true },
+      ], limited: false, nextCursor: null });
+      const letter = page.locator('[data-letter-id="letter-null-date"]');
+      await letter.waitFor({ timeout: 1000 });
+      assert.equal(await page.locator('[data-letter-id="letter-iso-date"]').count(), 1, 'producer ISO timestamps remain valid');
+      assert.match(await page.locator('[data-letter-id="letter-iso-date"]').innerText(), /2026-11-10T12:34:56Z/);
+      assert.match(await letter.innerText(), /Date unavailable/);
+      await letter.click();
+      const detail = await latestRequest(page, 'correspondence.detail.read');
+      await respond(page, detail, { letterId: 'letter-null-date', claimedSignature: 'Retired Envoy', receivedAt: null, body: 'The full confirmed note.', attachments: [], deliveryConfirmed: true });
+      await page.getByText('The full confirmed note.', { exact: true }).waitFor();
+      assert.match(await page.locator('#detail-heading-secondary').innerText(), /date unavailable/i);
+      await page.close();
+    });
+
+    await test('mailbox detail opens a receipt-confirmed letter when the projected date is null', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-detail-null-date', 'G'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      const mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [{ letterId: 'letter-detail-null-date', claimedSignature: 'Retired Envoy',
+        receivedAt: '2026-11-10T12:34:56Z', bodyPreview: 'A confirmed note.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      await page.locator('[data-letter-id="letter-detail-null-date"]').click();
+      const detail = await latestRequest(page, 'correspondence.detail.read');
+      await respond(page, detail, { letterId: 'letter-detail-null-date', claimedSignature: 'Retired Envoy', receivedAt: null,
+        body: 'Full confirmed text with unavailable date.', attachments: [], deliveryConfirmed: true });
+      await page.getByText('Full confirmed text with unavailable date.', { exact: true }).waitFor({ timeout: 1000 });
+      assert.match(await page.locator('#detail-heading-secondary').innerText(), /date unavailable/i);
+      await page.close();
+    });
+
+    await test('mailbox read status distinguishes empty, malformed, transport, and authorization results', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-read-status', 'D'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page);
+      await recipient.selectOption('npc:104');
+      const status = page.locator('#mailbox-read-state-secondary');
+      assert.equal(await status.count(), 1, 'mailbox reads have a dedicated live status');
+      assert.equal(await status.textContent(), '', 'a fresh mailbox read status starts clear');
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      let request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [], limited: false, nextCursor: null });
+      await page.getByText('No receipt-confirmed delivered letters are recorded for this recipient.', { exact: true }).waitFor({ timeout: 1000 });
+      assert.equal(await page.getByText('Mailbox loaded. Opening a record does not tell an NPC anything.', { exact: true }).count(), 1,
+        'the mailbox read success remains visible after busy controls settle');
+      assert.equal(await status.count(), 1, 'mailbox reads have a dedicated live status');
+      assert.equal(await status.textContent(), 'Mailbox loaded. Opening a record does not tell an NPC anything.');
+      assert.equal(await status.getAttribute('data-state'), 'success');
+      assert.match(await page.locator('#mail-state').textContent(), /available to this Inspector/i, 'read feedback does not replace the authorization banner');
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [{ letterId: 'unconfirmed-mail', claimedSignature: 'Retired Envoy',
+        receivedAt: null, bodyPreview: 'Must not display.', attachments: [], deliveryConfirmed: false }], limited: false, nextCursor: null });
+      await page.waitForFunction(() => document.getElementById('mailbox-read-state-secondary')?.dataset.state === 'error', null, { timeout: 1000 });
+      assert.equal(await page.locator('[data-letter-id="unconfirmed-mail"]').count(), 0, 'receipt confirmation remains mandatory');
+      assert.doesNotMatch(await status.textContent(), /available to this Inspector/i);
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, null, { ok: false, error: { code: 'unavailable', message: 'Synthetic server details must stay hidden.' } });
+      await page.waitForFunction(() => document.getElementById('mailbox-read-state-secondary')?.dataset.state === 'error'
+        && document.getElementById('mailbox-read-state-secondary').textContent !== '', null, { timeout: 1000 });
+      assert.doesNotMatch(await status.textContent(), /Synthetic server details/);
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, null, { ok: false, error: { code: 'unauthorized', message: 'Synthetic authorization ended.' } });
+      await page.waitForFunction(() => document.getElementById('mailbox-read-state-secondary')?.textContent === ''
+        && /authentication is required/i.test(document.getElementById('mail-state').textContent), null, { timeout: 1000 });
+      assert.equal(await page.locator('.mail-item').count(), 0, 'authorization loss clears private mailbox rows');
+      await page.close();
+    });
+
+    await test('mailbox pages deduplicate rows and reject stale cursors and detail after recipient changes', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-pagination', 'E'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      let request = await latestRequest(page, 'correspondence.mailbox.read');
+      const firstLetter = { letterId: 'mail-page-one', claimedSignature: 'Retired Envoy', receivedAt: '2026-11-10T12:34:56Z',
+        bodyPreview: 'First page.', attachments: [], deliveryConfirmed: true };
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [firstLetter], limited: false, nextCursor: 'cursor-page-2' });
+      assert.equal(await page.locator('[data-letter-id="mail-page-one"]').count(), 1);
+      const older = page.getByRole('button', { name: 'Load older' });
+      assert.equal(await older.isDisabled(), false);
+      await older.click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      assert.deepEqual(request.payload, { recipientActorKey: 'npc:104', limit: 50, cursor: 'cursor-page-2' });
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [firstLetter,
+        { letterId: 'mail-page-two', claimedSignature: 'Retired Envoy', receivedAt: '2026-11-10T12:35:56Z', bodyPreview: 'Second page.', attachments: [], deliveryConfirmed: true }],
+      limited: false, nextCursor: 'cursor-page-3' });
+      assert.equal(await page.locator('[data-letter-id="mail-page-one"]').count(), 1, 'duplicate IDs across pages render once');
+      assert.equal(await page.locator('[data-letter-id="mail-page-two"]').count(), 1);
+
+      await older.click();
+      const stalePage = await latestRequest(page, 'correspondence.mailbox.read');
+      assert.equal(stalePage.payload.cursor, 'cursor-page-3');
+      await recipient.selectOption('npc:105');
+      await respond(page, stalePage, { recipientActorKey: 'npc:104', letters: [{ ...firstLetter, letterId: 'stale-cursor-mail', bodyPreview: 'STALE_CURSOR_SENTINEL' }],
+        limited: false, nextCursor: null });
+      assert.equal(await page.getByText('STALE_CURSOR_SENTINEL', { exact: true }).count(), 0, 'a prior recipient cursor cannot repopulate the new mailbox');
+      assert.equal(await page.locator('.mail-item').count(), 0);
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, { recipientActorKey: 'npc:105', letters: [{ letterId: 'mail-detail-stale', claimedSignature: 'Second Envoy', receivedAt: '2026-11-10T12:36:56Z',
+        bodyPreview: 'Second mailbox.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      await page.locator('[data-letter-id="mail-detail-stale"]').click();
+      const detail = await latestRequest(page, 'correspondence.detail.read');
+      await recipient.selectOption('npc:104');
+      await respond(page, detail, { letterId: 'mail-detail-stale', claimedSignature: 'Second Envoy', receivedAt: null, body: 'STALE_DETAIL_SENTINEL', attachments: [], deliveryConfirmed: true });
+      assert.equal(await page.getByText('STALE_DETAIL_SENTINEL', { exact: true }).count(), 0, 'a stale detail reply cannot cross recipients');
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true);
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [], limited: true, nextCursor: null });
+      assert.match(await page.locator('#mailbox-list-secondary').innerText(), /limited result/i);
+      assert.match(await page.locator('#mailbox-limited-secondary').innerText(), /no older-page cursor/i);
+      assert.doesNotMatch(await page.locator('#mailbox-limited-secondary').innerText(), /load older to continue/i);
+      await page.close();
+    });
+
+    await test('mailbox removes an empty first-page message when older pages contain deliveries', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-empty-page', 'H'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      let request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [], limited: false, nextCursor: 'cursor-empty-page-2' });
+      assert.match(await page.locator('#mailbox-list-secondary').innerText(), /no delivered letters on this page/i);
+      await page.getByRole('button', { name: 'Load older' }).click();
+      request = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, request, { recipientActorKey: 'npc:104', letters: [{ letterId: 'letter-after-empty-page', claimedSignature: 'Retired Envoy',
+        receivedAt: '2026-11-10T12:34:56Z', bodyPreview: 'Older delivery.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      assert.equal(await page.locator('[data-letter-id="letter-after-empty-page"]').count(), 1);
+      assert.equal(await page.locator('#mailbox-list-secondary .empty-row').count(), 0, 'the earlier empty-page message is removed when a row arrives');
+      await page.close();
+    });
+
+    await test('inspector can discover mailbox recipients without composition and removed recipients clear old data', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-discovery', 'F'.repeat(43), { access: { compose: false } });
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.getByRole('button', { name: 'Mailboxes' }).click();
+      assert.equal(await page.locator('#mailbox-recipient-secondary').isDisabled(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation.startsWith('correspondence.')).length), 0,
+        'opening Mailboxes does not scan the catalog, inventory, or inbox automatically');
+      const refreshRecipients = page.getByRole('button', { name: 'Refresh recipients' });
+      assert.equal(await refreshRecipients.count(), 1, 'Mailboxes exposes its own read-only recipient refresh');
+      await refreshRecipients.click();
+      let catalog = await latestRequest(page, 'correspondence.catalog.read');
+      assert.deepEqual(catalog.payload, { limit: 100 });
+      assert.equal(await latestRequest(page, 'correspondence.inventory.read'), null, 'Inspector discovery never reads player inventory');
+      await respond(page, catalog, catalogPage([{ actorKey: 'npc:104', label: 'Retired Envoy', canWrite: false, canReceive: false, canSignAs: false }], { nextCursor: 'catalog-page-2' }));
+      const moreRecipients = page.getByRole('button', { name: 'Load more recipients' });
+      assert.equal(await moreRecipients.isDisabled(), false);
+      await moreRecipients.click();
+      catalog = await latestRequest(page, 'correspondence.catalog.read');
+      assert.deepEqual(catalog.payload, { limit: 100, cursor: 'catalog-page-2' });
+      await respond(page, catalog, catalogPage([{ actorKey: 'npc:105', label: 'Second Envoy', canWrite: false, canReceive: false, canSignAs: false }]));
+      const recipient = page.getByLabel('Recipient mailbox');
+      assert.equal(await recipient.isDisabled(), false);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      const mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [{ letterId: 'mail-removed-recipient', claimedSignature: 'Retired Envoy',
+        receivedAt: null, bodyPreview: 'Old recipient data.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      await page.locator('[data-letter-id="mail-removed-recipient"]').click();
+      const detail = await latestRequest(page, 'correspondence.detail.read');
+      await respond(page, detail, { letterId: 'mail-removed-recipient', claimedSignature: 'Retired Envoy', receivedAt: null, body: 'Old detail.', attachments: [], deliveryConfirmed: true });
+      await page.getByText('Old detail.', { exact: true }).waitFor({ timeout: 1000 });
+      assert.notEqual(await page.locator('#mailbox-read-state-secondary').textContent(), '');
+      await page.getByRole('button', { name: 'Refresh recipients' }).click();
+      catalog = await latestRequest(page, 'correspondence.catalog.read');
+      await respond(page, catalog, catalogPage([]));
+      assert.equal(await recipient.inputValue(), '', 'a catalog refresh removed the selected actor');
+      assert.equal(await page.locator('[data-letter-id="mail-removed-recipient"]').count(), 0);
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true);
+      assert.equal(await page.locator('#mailbox-read-state-secondary').textContent(), '', 'removed-recipient status is cleared');
+      assert.equal(await latestRequest(page, 'correspondence.inventory.read'), null);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.some((item) => item.operation === 'correspondence.compose')), false);
       await page.close();
     });
 
@@ -1637,7 +2185,7 @@ async function main() {
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
         'scheduler ownership never sends a second compose request');
 
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       let reconcile = await latestRequest(page, 'correspondence.reconcile');
       assert.equal(reconcile.payload.operationId, compose.payload.operationId);
       await respond(page, reconcile, { operationId: compose.payload.operationId, state: 'unknown', operatorClosed: true });
@@ -1651,7 +2199,7 @@ async function main() {
       assert.equal(await page.locator('#letter-send').isDisabled(), true);
       await saveScreenshot(page, letterRecoveryScreenshotPath);
 
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       reconcile = await latestRequest(page, 'correspondence.reconcile');
       await respond(page, reconcile, {
         operationId: compose.payload.operationId, state: 'unknown', companionSchedulerOwned: false, operatorClosed: 'closed',
@@ -1665,7 +2213,7 @@ async function main() {
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.compose').length), 1,
         'unknown and malformed results never trigger a retry');
 
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       reconcile = await latestRequest(page, 'correspondence.reconcile');
       await respond(page, reconcile, { operationId: compose.payload.operationId, state: 'delivered', receipt: { deliveryConfirmed: true, receivedAt: 'day 20' } });
       assert.match(await page.locator('#letter-receipt').innerText(), /delivery receipt confirmed.*received day 20/i);
@@ -1678,7 +2226,7 @@ async function main() {
       await respond(page, nextCompose, { operationId: nextCompose.payload.operationId, state: 'queued' });
       recovery = await page.locator('#letter-recovery-status').innerText();
       assert.doesNotMatch(recovery, /Sealed Fates handles this letter automatically|closed without a delivery confirmation/i, 'metadata does not carry into a new operation');
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       reconcile = await latestRequest(page, 'correspondence.reconcile');
       await respond(page, reconcile, {
         operationId: compose.payload.operationId, state: 'unknown', companionSchedulerOwned: true, operatorClosed: true,
@@ -1706,7 +2254,8 @@ async function main() {
       const resume = page.locator('#letter-resume');
       assert.equal(await resume.count(), 1, 'eligible queued letters expose a distinct Resume delivery action');
       assert.equal(await resume.isVisible(), true);
-      assert.match(await page.locator('#letter-recovery-status').innerText(), /delivery service is unavailable/i);
+      assert.ok((await page.locator('#letter-recovery-status').innerText()).includes(executorUnavailableGuidance),
+        'Resume shows the current fresh-game-activity guidance for the same saved letter');
       assert.equal(await page.getByLabel('Letter body').isDisabled(), true);
       assert.equal(await page.locator('#letter-send').isDisabled(), true, 'Resume never unlocks Send');
       assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.resume').length), 0,
@@ -1797,7 +2346,7 @@ async function main() {
       assert.equal(await resume.isHidden(), true, 'legacy servers that omit resume metadata never expose Resume');
 
       const reconcile = async (data, overrides = {}) => {
-        await page.getByRole('button', { name: /reconcile same operation/i }).click();
+        await page.getByRole('button', { name: /refresh saved status/i }).click();
         const request = await latestRequest(page, 'correspondence.reconcile');
         assert.deepEqual(request.payload, { operationId }, 'status refresh sends only the original operation ID');
         if (overrides.ok === false) await respond(page, request, null, { ok: false, error: overrides.error });
@@ -1862,7 +2411,7 @@ async function main() {
       for (const [index, item] of cases.entries()) {
         let request = compose;
         if (index > 0) {
-          await page.getByRole('button', { name: /reconcile same operation/i }).click();
+          await page.getByRole('button', { name: /refresh saved status/i }).click();
           request = await latestRequest(page, 'correspondence.reconcile');
         }
         await respond(page, request, {
@@ -1874,7 +2423,7 @@ async function main() {
         const statusText = await recoveryStatus.innerText();
         if (item.code === 'executor_unavailable') {
           assert.ok(statusText.includes(executorUnavailableGuidance), 'compose shows the full version-specific, non-resending guidance');
-          await page.getByRole('button', { name: /reconcile same operation/i }).click();
+          await page.getByRole('button', { name: /refresh saved status/i }).click();
           const executorReconcile = await latestRequest(page, 'correspondence.reconcile');
           await respond(page, executorReconcile, { operationId, state: 'queued', canResume: true, queuedReason: 'executor_unavailable' });
           assert.ok((await recoveryStatus.innerText()).includes(executorUnavailableGuidance), 'reconcile shows the same guidance without auto-resuming');
@@ -1941,7 +2490,7 @@ async function main() {
       assert.equal(await respond(page, oldResume, { operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' }), false,
         'a reply from the old view cannot restore eligibility');
 
-      await page.getByRole('button', { name: /reconcile same operation/i }).click();
+      await page.getByRole('button', { name: /refresh saved status/i }).click();
       const reconcile = await latestRequest(page, 'correspondence.reconcile');
       await respond(page, reconcile, { operationId, state: 'queued', canResume: true, queuedReason: 'not_dispatched' });
       assert.equal(await page.locator('#letter-resume').isVisible(), true, 'only fresh status can requalify the retained operation');
@@ -2445,7 +2994,7 @@ async function main() {
           'discovery absence keeps the same operation available for reconciliation');
         assert.equal(await page.getByLabel('Letter body').isDisabled(), true, 'discovery absence keeps the uncertain compose locked');
 
-        await page.getByRole('button', { name: /reconcile same operation/i }).click();
+        await page.getByRole('button', { name: /refresh saved status/i }).click();
         const reconcile = await latestRequest(page, 'correspondence.reconcile');
         assert.deepEqual(reconcile.payload, { operationId: compose.payload.operationId }, 'reconciliation uses only the original ID');
         await respond(page, reconcile, { operationId: compose.payload.operationId, ...terminal });
@@ -2456,6 +3005,122 @@ async function main() {
         await page.close();
       }
     });
+    await test('Malpractice mounts on its authorized active tab and preserves an unfinished edit while hidden', async () => {
+      const page = await authenticatedAfterUnauthenticatedBootstrap(browser, 'scope-brainwash-lazy-tab');
+      const initialReads = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation.startsWith('brainwash.')).length);
+      assert.equal(initialReads, 0, 'authorized background tabs make no hidden Malpractice request');
+
+      await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+      await waitForOperationCount(page, 'brainwash.catalog.read', 1);
+      let catalog = await latestRequest(page, 'brainwash.catalog.read');
+      await respond(page, catalog, { actors: [{ actorKey: 'npc:42', label: 'Test NPC' }], limited: false,
+        source: 'nearby', state: 'ready', observedAt: null });
+      await waitForOperationCount(page, 'brainwash.card.read', 1);
+      const cardRequest = await latestRequest(page, 'brainwash.card.read');
+      await respond(page, cardRequest, { actorKey: 'npc:42', label: 'Test NPC', scope: 'player|save', revision: 'a'.repeat(64),
+        fields: { core: 'Core', npc_static_bio: 'Original biography', personality: '', appearance: '', occupation: '', skills: '', speechstyle: '', goals: '' },
+        beliefs: '', draftId: null, lastOperation: null });
+      await page.locator('#brainwash-editor summary').click();
+      const biography = page.locator('textarea[aria-label="npc static bio text"]');
+      await biography.waitFor();
+      await biography.fill('An unfinished biography edit.');
+      const readCount = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation.startsWith('brainwash.')).length);
+
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation.startsWith('brainwash.')).length), readCount,
+        'hiding a loaded editor makes no new request');
+      await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+      assert.equal(await biography.inputValue(), 'An unfinished biography edit.', 'switching tabs preserves unsaved authoring text');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation.startsWith('brainwash.')).length), readCount,
+        'reopening a loaded editor does not duplicate its catalog or card reads');
+      await page.close();
+    });
+
+    await test('Malpractice blocks hidden card follow-up and rejects old-context profile responses', async () => {
+      const page = await authenticatedAfterUnauthenticatedBootstrap(browser, 'scope-brainwash-hidden-card');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation.startsWith('brainwash.')).length), 0);
+      await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+      await waitForOperationCount(page, 'brainwash.catalog.read', 1);
+      const oldCatalog = await latestRequest(page, 'brainwash.catalog.read');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await respond(page, oldCatalog, { actors: [{ actorKey: 'npc:42', label: 'Old Scope NPC' }], limited: false,
+        source: 'nearby', state: 'ready', observedAt: null });
+      await page.evaluate(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'brainwash.card.read').length), 0,
+        'a catalog reply received while hidden cannot start its automatic card read');
+
+      await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await waitForOperationCount(page, 'brainwash.card.read', 1);
+      const oldCard = await latestRequest(page, 'brainwash.card.read');
+      const newBootstrap = await initialize(page, newUuid(), '2');
+      assert.ok(newBootstrap);
+      await respond(page, newBootstrap, authenticatedData('scope-brainwash-new', 'B'.repeat(43)));
+      const newCatalogCount = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'brainwash.catalog.read').length);
+      assert.equal(newCatalogCount, 2, 'the new authenticated scope starts one fresh catalog read');
+      assert.equal(await page.evaluate(({ request }) => window.departmentReceive(JSON.stringify({ version: 1, requestId: request.requestId,
+        operation: request.operation, context: request.context, ok: true, data: { actorKey: 'npc:42', label: 'Old Scope NPC', scope: 'old',
+          revision: 'c'.repeat(64), fields: { core: '', npc_static_bio: 'STALE_PROFILE_SENTINEL', personality: '', appearance: '', occupation: '', skills: '', speechstyle: '', goals: '' },
+          beliefs: '', draftId: null, lastOperation: null } })), { request: oldCard }), false,
+        'a profile response from the previous native/auth context is refused');
+      assert.equal(await page.getByText('STALE_PROFILE_SENTINEL', { exact: true }).count(), 0);
+      await page.close();
+    });
+
+    await test('Malpractice retains full bounded profiles, admits escaped draft requests, and keeps other response limits', async () => {
+      const page = await authenticatedAfterUnauthenticatedBootstrap(browser, 'scope-brainwash-full-profile');
+      await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
+      await waitForOperationCount(page, 'brainwash.catalog.read', 1);
+      const catalog = await latestRequest(page, 'brainwash.catalog.read');
+      await respond(page, catalog, { actors: [{ actorKey: 'npc:42', label: 'Large NPC' }], limited: false,
+        source: 'nearby', state: 'ready', observedAt: null });
+      await waitForOperationCount(page, 'brainwash.card.read', 1);
+      const cardRequest = await latestRequest(page, 'brainwash.card.read');
+      const fullField = 'P'.repeat(65536);
+      const emptyFields = { personality: '', appearance: '', occupation: '', skills: '', speechstyle: '', goals: '' };
+      assert.equal(await respond(page, cardRequest, { actorKey: 'npc:42', label: 'Large NPC', scope: 'player|save', revision: 'a'.repeat(64),
+        fields: { core: fullField, npc_static_bio: fullField, ...emptyFields }, beliefs: '', draftId: null, lastOperation: null }), true,
+        'the 131072-byte saved card passes the actual app response validator');
+      await page.locator('#brainwash-editor summary').click();
+      const biography = page.locator('textarea[aria-label="npc static bio text"]');
+      await biography.waitFor();
+      assert.equal((await biography.inputValue()).length, 65536, 'the full stored biography reaches the actual editor');
+      const biographyGroup = page.locator('fieldset[data-field="npc_static_bio"]');
+      await biographyGroup.locator('input[type="checkbox"]').check();
+      const escapedText = '\n'.repeat(65536);
+      await biography.evaluate((element, value) => { element.value = value; element.dispatchEvent(new Event('input', { bubbles: true })); }, escapedText);
+      const manualDraftButton = page.locator('#brainwash-editor button').filter({ hasText: 'Create manual draft' });
+      assert.equal(await manualDraftButton.count(), 1, `actual editor manual draft control is present: ${JSON.stringify(await page.locator('#brainwash-editor button').allTextContents())}`);
+      await manualDraftButton.click();
+      await waitForOperationCount(page, 'brainwash.draft', 1);
+      const draftRequest = await latestRequest(page, 'brainwash.draft');
+      assert.equal(draftRequest.payload.changes.npc_static_bio.length, 65536);
+      const requestBytes = Buffer.byteLength(JSON.stringify(draftRequest), 'utf8');
+      assert.ok(requestBytes > 65536 && requestBytes <= 2097152, `escaped draft envelope has a bounded size (${requestBytes} bytes)`);
+      const draftId = newUuid();
+      await respond(page, draftRequest, { actorKey: 'npc:42', scope: 'player|save', revision: 'b'.repeat(64), draftId, origin: 'manual',
+        before: { npc_static_bio: fullField }, changes: { npc_static_bio: escapedText } });
+
+      await biography.evaluate((element) => { element.value = 'X'.repeat(65537); element.dispatchEvent(new Event('input', { bubbles: true })); });
+      const draftCount = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'brainwash.draft').length);
+      await page.locator('#brainwash-editor summary').click();
+      await manualDraftButton.click();
+      await page.evaluate(() => new Promise((resolve) => window.setTimeout(resolve, 0)));
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'brainwash.draft').length), draftCount,
+        'one byte above the supported field limit is refused without sending');
+      assert.match(await page.locator('#brainwash-editor .brainwash-status').innerText(), /65536 per field/i);
+
+      await page.getByRole('tab', { name: 'Private Conversation' }).click();
+      await page.getByRole('button', { name: /refresh cast and status/i }).click();
+      const roster = await latestRequest(page, 'pcv.roster.read');
+      const oversizedResponse = JSON.stringify({ version: 1, requestId: roster.requestId, operation: roster.operation, context: roster.context,
+        ok: true, data: { padding: 'N'.repeat(65536) } });
+      assert.equal(Buffer.byteLength(oversizedResponse, 'utf8') > 65536, true);
+      assert.equal(await page.evaluate((raw) => window.departmentReceive(raw), oversizedResponse), false,
+        'a normal operation remains inside its original 65536-byte response envelope');
+      await page.close();
+    });
+
     await test('nearby-cast guidance explains missing and stale CHIM reports without requiring a first message', async () => {
       const page = await authenticatedPage(browser);
       assert.equal(await page.locator('#connection-status').innerText(), 'Connected to CHIM');

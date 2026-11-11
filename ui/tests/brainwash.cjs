@@ -21,7 +21,9 @@ function testDocument() {
   const html = fs.readFileSync(htmlPath, 'utf8');
   const css = fs.readFileSync(path.join(uiRoot, 'app.css'), 'utf8');
   const appSource = fs.readFileSync(path.join(uiRoot, 'app.js'), 'utf8');
-  const app = appSource.replace('  renderMpChoices();', '  window.__validateBrainwashDraft = validBrainwashDraft;\n  renderMpChoices();');
+  const app = appSource.replace('  renderMpChoices();', `  window.__validateBrainwashDraft = validBrainwashDraft;
+  window.__brainwashValidation = { boundedTree, validServerContext, validBrainwashCard, validBrainwashDraft, validBrainwashResponse, validBrainwashAuthoringResult };
+  renderMpChoices();`);
   assert.ok(!app.includes('</script'), 'test app source must not terminate its inline script');
   const setup = `<script>
     window.PRISMA = Object.freeze({ testSentinel: true });
@@ -62,7 +64,7 @@ async function waitForRequest(page, operation, previousCount = 0) {
 }
 
 async function respond(page, request, data, error = null) {
-  await page.evaluate(({ request, data, error }) => window.departmentReceive(JSON.stringify({
+  return page.evaluate(({ request, data, error }) => window.departmentReceive(JSON.stringify({
     version: 1, requestId: request.requestId, operation: request.operation, context: request.context,
     ...(error ? { ok: false, error } : { ok: true, data }),
   })), { request, data, error });
@@ -96,7 +98,7 @@ async function main() {
     await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
     assert.equal(await page.getByRole('tabpanel', { name: /Malpractice Makes Perfect/i }).isVisible(), true);
     assert.equal(await page.locator('#panel-brainwash > .view-heading').count(), 0, 'shared editor owns its single masthead');
-    assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.mounts), 1, 'shared editor mount API is called once');
+    assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.mounts), 0, 'an unauthorized hidden editor is not mounted');
     assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.available), false, 'unpaired bootstrap keeps editor unavailable');
 
     const nextView = newUuid();
@@ -104,6 +106,7 @@ async function main() {
     await page.evaluate((viewToken) => window.departmentInitialize(JSON.stringify({ version: 1, viewToken, nativeGeneration: '2', serverContext: null })), nextView);
     const secondBootstrap = await waitForRequest(page, 'bootstrap', priorBootstrapCount);
     await respond(page, secondBootstrap, bootstrapData(true));
+    assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.mounts), 1, 'the authorized active editor mounts on demand');
     assert.equal(await page.evaluate(() => window.__brainwashEditorSpy.available), true, 'fresh Malpractice Makes Perfect capability and scope enable the shared editor');
     await page.getByRole('tab', { name: 'Malpractice Makes Perfect' }).click();
     await page.getByRole('button', { name: 'Refresh Malpractice Makes Perfect actors' }).click();
@@ -206,6 +209,71 @@ async function main() {
       return {accepted:true,rejected,unchanged:valid(unchanged),creative:valid(creative),beliefs:valid(beliefs),legacy:valid(draft)};
     }, authoringResult);
     assert.deepEqual(assessmentChecks,{accepted:true,rejected:true,unchanged:true,creative:true,beliefs:true,legacy:true},'real shell response validator enforces field evidence and saved-baseline unchanged');
+    const profileBudgetControls = await page.evaluate(() => {
+      const validate = window.__brainwashValidation;
+      const fields = Object.fromEntries(['core','npc_static_bio','personality','appearance','occupation','skills','speechstyle','goals'].map((field) => [field, '']));
+      const card = { actorKey: 'npc:42', label: 'Lydia', scope: 'profile:1|restore:2', revision: 'a'.repeat(64),
+        fields, beliefs: '', draftId: null, lastOperation: null };
+      const catalog = { actors: [{ actorKey: 'npc:42', label: 'Lydia' }], limited: false };
+      const draft = { actorKey: 'npc:42', scope: card.scope, revision: card.revision,
+        draftId: '123e4567-e89b-12d3-a456-426614174099', origin: 'ai', before: { personality: 'Old' },
+        changes: { personality: 'New' }, authoring: { reply: 'Kept the voice.', evidence: [], historyCount: 0, historyTruncated: false } };
+      const valid = validate.validBrainwashCard(card) && validate.validBrainwashResponse('brainwash.catalog.read', catalog)
+        && validate.validBrainwashDraft(draft) && validate.validBrainwashAuthoringResult(draft.authoring, draft);
+      const tooLongLabel = structuredClone(catalog); tooLongLabel.actors[0].label = 'L'.repeat(513);
+      const tooLongScope = structuredClone(card); tooLongScope.scope = 'S'.repeat(1025);
+      const tooLongReply = structuredClone(draft); tooLongReply.authoring.reply = 'R'.repeat(2001);
+      const unknownCardKey = { ...card, unexpected: 'U'.repeat(65536) };
+      const longObjectKey = { ['K'.repeat(8193)]: 'small' };
+      return {
+        valid,
+        oversizedCatalogLabelRejected: !validate.validBrainwashResponse('brainwash.catalog.read', tooLongLabel),
+        oversizedCardScopeRejected: !validate.validBrainwashResponse('brainwash.card.read', tooLongScope),
+        oversizedAuthoringReplyRejected: !validate.validBrainwashDraft(tooLongReply),
+        oversizedServerContextRejected: !validate.validServerContext('C'.repeat(129)),
+        unknownProfileKeyRejected: !validate.validBrainwashResponse('brainwash.card.read', unknownCardKey),
+        oversizedObjectKeyRejected: !validate.boundedTree(longObjectKey, 0, 65536),
+      };
+    });
+    assert.deepEqual(profileBudgetControls, {
+      valid: true,
+      oversizedCatalogLabelRejected: true,
+      oversizedCardScopeRejected: true,
+      oversizedAuthoringReplyRejected: true,
+      oversizedServerContextRejected: true,
+      unknownProfileKeyRejected: true,
+      oversizedObjectKeyRejected: true,
+    }, 'profile-specific string budgets keep catalog, metadata, authoring replies, contexts, keys, and unknown fields bounded');
+    const largeProfileFields = Object.fromEntries(['core','npc_static_bio','personality','appearance','occupation','skills','speechstyle','goals'].map((field) => [field, '']));
+    largeProfileFields.core = 'C'.repeat(65536);
+    largeProfileFields.npc_static_bio = 'B'.repeat(65536);
+    const largeProfileCard = { actorKey: 'npc:42', label: 'Large profile', scope: 'profile:1|restore:2', revision: 'b'.repeat(64),
+      fields: largeProfileFields, beliefs: '', draftId: null, lastOperation: null };
+    const applyOperationId = '123e4567-e89b-12d3-a456-426614174020';
+    await page.evaluate((operationId) => {
+      window.__largeApplyPromise = window.__brainwashEditorSpy.request('brainwash.apply', {
+        actorKey: 'npc:42', draftId: '123e4567-e89b-12d3-a456-426614174019', operationId,
+        acceptedFields: ['personality'], acceptBeliefs: false,
+      });
+    }, applyOperationId);
+    const largeApply = await waitForRequest(page, 'brainwash.apply');
+    assert.equal(await respond(page, largeApply, { operationId: applyOperationId, state: 'applied', card: largeProfileCard }), true,
+      'apply response with a full 131072-byte card passes the actual app envelope and schema limits');
+    assert.equal(await page.evaluate(async () => {
+      try { return (await window.__largeApplyPromise).card.fields.core.length; }
+      catch (error) { return error.code; }
+    }), 65536);
+    const undoOperationId = '123e4567-e89b-12d3-a456-426614174021';
+    await page.evaluate(({ operationId, appliedOperationId }) => {
+      window.__largeUndoPromise = window.__brainwashEditorSpy.request('brainwash.undo', { actorKey: 'npc:42', operationId, appliedOperationId });
+    }, { operationId: undoOperationId, appliedOperationId: applyOperationId });
+    const largeUndo = await waitForRequest(page, 'brainwash.undo');
+    assert.equal(await respond(page, largeUndo, { operationId: undoOperationId, state: 'undone', card: largeProfileCard }), true,
+      'undo response with a full 131072-byte card passes the actual app envelope and schema limits');
+    assert.equal(await page.evaluate(async () => {
+      try { return (await window.__largeUndoPromise).card.fields.npc_static_bio.length; }
+      catch (error) { return error.code; }
+    }), 65536);
     const authoringRefusals = await page.evaluate(async () => {
       const base = window.__bridgeRequests.find((request) => request.payload.authoring).payload;
       const before = window.__bridgeRequests.length;

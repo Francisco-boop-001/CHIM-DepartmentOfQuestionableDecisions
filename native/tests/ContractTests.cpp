@@ -46,6 +46,29 @@ namespace
 			{ "beliefs", "" }, { "draftId", nullptr }, { "lastOperation", nullptr }
 		};
 	}
+
+	Json MakeBrainwashFields(std::string core, std::string personality)
+	{
+		return Json{
+			{ "core", std::move(core) }, { "npc_static_bio", "" }, { "personality", std::move(personality) },
+			{ "appearance", "" }, { "occupation", "" }, { "skills", "" }, { "speechstyle", "" }, { "goals", "" }
+		};
+	}
+
+	Json MakeBrainwashDraftPayload(Json changes, Json workingCard = Json::object())
+	{
+		Json payload{
+			{ "actorKey", "npc:42" }, { "expectedRevision", std::string(64, 'a') }, { "operationId", kToken },
+			{ "mode", workingCard.empty() ? "manual" : "ai" }, { "changes", std::move(changes) }, { "instruction", "A bounded fixture request." }
+		};
+		if (!workingCard.empty()) {
+			payload["authoring"] = Json{
+				{ "workingCard", std::move(workingCard) }, { "conversation", Json::array() },
+				{ "historyLimit", 0 }, { "intent", "creative" }
+			};
+		}
+		return payload;
+	}
 }
 
 int main(int argc, char** argv)
@@ -98,6 +121,17 @@ int main(int argc, char** argv)
 		"{\"operationId\":\"not-a-uuid\",\"attemptId\":\"" + resumeAttemptId + "\"}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.resume", "\"scope-1\"",
 		"{\"operationId\":\"" + kToken + "\",\"attemptId\":42}")).envelope.has_value());
+	const auto receiptCheckPayload = "{\"operationId\":\"" + kToken + "\",\"attemptId\":\"" + resumeAttemptId + "\"}";
+	const auto receiptCheckRequest = dql::contract::ParseRequest(MakeRequest("correspondence.receipt.check", "\"scope-1\"", receiptCheckPayload));
+	CHECK(receiptCheckRequest.envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.receipt.check", "\"scope-1\"",
+		"{\"operationId\":\"" + kToken + "\"}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.receipt.check", "\"scope-1\"",
+		"{\"operationId\":\"" + kToken + "\",\"attemptId\":\"" + kToken + "\",\"extra\":true}")).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.receipt.check", "\"scope-1\"",
+		"{\"operationId\":\"bad\",\"attemptId\":\"" + resumeAttemptId + "\"}")).envelope.has_value());
+	CHECK(dql::contract::ParseRequest(MakeRequest("correspondence.reconcile", "\"scope-1\"",
+		"{\"operationId\":\"" + kToken + "\"}")).envelope.has_value());
 	const auto pendingRequest = dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\""));
 	CHECK(pendingRequest.envelope.has_value());
 	CHECK(pendingRequest.envelope->payload.empty());
@@ -115,6 +149,49 @@ int main(int argc, char** argv)
 		"{\"cursor\":\"" + maxPendingCursor + "x\"}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("correspondence.pending.read", "\"scope-1\"",
 		"{\"cursor\":\"next\",\"extra\":true}")).envelope.has_value());
+	const Json receiptResult{
+		{ "operationId", kToken }, { "state", "queued" }, { "companionSchedulerOwned", false },
+		{ "operatorClosed", false }, { "canResume", true }, { "queuedReason", "executor_unavailable" }
+	};
+	const Json receiptCheckData{
+		{ "operationId", kToken }, { "queued", false }, { "reason", "executor_unavailable" }, { "result", receiptResult }
+	};
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, receiptCheckData).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	auto nullReceiptCheckRefusalReason = receiptCheckData;
+	nullReceiptCheckRefusalReason["reason"] = nullptr;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, nullReceiptCheckRefusalReason).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	const Json confirmedReceiptData{
+		{ "operationId", kToken }, { "queued", true }, { "reason", nullptr },
+		{ "result", Json{{ "operationId", kToken }, { "state", "delivered" },
+			{ "receipt", Json{{ "deliveryConfirmed", true }, { "receivedAt", nullptr }} }} }
+	};
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, confirmedReceiptData).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	auto wrongReceiptOperationId = receiptCheckData;
+	wrongReceiptOperationId["operationId"] = resumeAttemptId;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, wrongReceiptOperationId).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	auto unsafeReceiptReason = receiptCheckData;
+	unsafeReceiptReason["reason"] = "authorization_token_leaked";
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, unsafeReceiptReason).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	auto contradictoryReceipt = receiptCheckData;
+	contradictoryReceipt["queued"] = true;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, contradictoryReceipt).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	auto wrongReceiptResultId = receiptCheckData;
+	wrongReceiptResultId["result"]["operationId"] = resumeAttemptId;
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*receiptCheckRequest.envelope, wrongReceiptResultId).dump(),
+		*receiptCheckRequest.envelope).value.has_value());
+	const auto profileTooLargeError = dql::contract::MakeError(*receiptCheckRequest.envelope,
+		"profile_too_large", "The saved profile exceeds its supported limit.");
+	const auto profileTooLargeParsed = dql::contract::ParseServerResponse(profileTooLargeError.dump(), *receiptCheckRequest.envelope);
+	CHECK(profileTooLargeParsed.value.has_value());
+	auto malformedError = profileTooLargeError;
+	malformedError["error"]["authorization"] = "Bearer PROFILE_SENTINEL";
+	CHECK(dql::contract::ParseServerResponse(malformedError.dump(), *receiptCheckRequest.envelope).errorCode == "invalid_response");
 	const Json pendingOperation{
 		{ "operationId", kToken }, { "recipientLabel", "Lydia" }, { "state", "queued" },
 		{ "hasTransfer", true }, { "canResume", true }, { "queuedReason", "executor_unavailable" },
@@ -251,7 +328,47 @@ int main(int argc, char** argv)
 		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"Brusque.\"},\"instruction\":\"\",\"relationships\":\"protected\"}")).envelope.has_value());
 	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
 		"{\"actorKey\":\"npc:42\",\"expectedRevision\":\"" + std::string(64, 'a') +
-		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"" + std::string(8193, 'x') + "\"},\"instruction\":\"\"}")).envelope.has_value());
+		"\",\"operationId\":\"" + kToken + "\",\"mode\":\"manual\",\"changes\":{\"personality\":\"" + std::string(65'537, 'x') + "\"},\"instruction\":\"\"}")).envelope.has_value());
+	const auto profileFieldMax = std::string(65'536, 'p');
+	const auto profileFieldOver = std::string(65'537, 'p');
+	const auto exactProfileFieldRequest = MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"core", profileFieldMax}}).dump());
+	CHECK(dql::contract::ParseRequest(exactProfileFieldRequest).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"core", profileFieldOver}}).dump())).envelope.has_value());
+	const auto exactAggregateRequest = MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"core", profileFieldMax}, {"personality", profileFieldMax}}).dump());
+	CHECK(dql::contract::ParseRequest(exactAggregateRequest).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"core", profileFieldMax}, {"personality", profileFieldMax}, {"appearance", "x"}}).dump())).envelope.has_value());
+	const auto exactWorkingCardRequest = MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"personality", "Brusque."}}, MakeBrainwashFields(profileFieldMax, profileFieldMax)).dump());
+	CHECK(dql::contract::ParseRequest(exactWorkingCardRequest).envelope.has_value());
+	auto overAggregateWorkingCard = MakeBrainwashFields(profileFieldMax, profileFieldMax);
+	overAggregateWorkingCard["appearance"] = "x";
+	CHECK(!dql::contract::ParseRequest(MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"personality", "Brusque."}}, overAggregateWorkingCard).dump())).envelope.has_value());
+	const auto tooLargeNormalRequest = MakeRequest("view.close", "\"scope-1\"", "{\"extra\":\"" + std::string(65'536, 'x') + "\"}");
+	CHECK(tooLargeNormalRequest.size() > 65'536);
+	CHECK(!dql::contract::ParseRequest(tooLargeNormalRequest).envelope.has_value());
+	CHECK(!dql::contract::ParseRequest(MakeRequest("view.close", "\"scope-1\"",
+		"{\"extra\":\"" + std::string(8'193, 'x') + "\"}")).envelope.has_value());
+	std::string escapedProfileText;
+	escapedProfileText.reserve(65'536);
+	for (std::size_t i = 0; i < 65'536; ++i) escapedProfileText.push_back(i % 100 == 0 ? '"' : (i % 100 == 1 ? '\\' : '\x01'));
+	const auto escapedProfilePayload = MakeBrainwashDraftPayload(
+		Json{{"core", escapedProfileText}, {"personality", escapedProfileText}},
+		MakeBrainwashFields(escapedProfileText, escapedProfileText));
+	const auto escapedProfileRequest = MakeRequest("brainwash.draft", "\"scope-1\"", escapedProfilePayload.dump());
+	CHECK(escapedProfileRequest.size() > 1'500'000);
+	CHECK(escapedProfileRequest.size() < 2'097'152);
+	CHECK(dql::contract::ParseRequest(escapedProfileRequest).envelope.has_value());
+	std::string exactDraftEnvelope = MakeRequest("brainwash.draft", "\"scope-1\"",
+		MakeBrainwashDraftPayload(Json{{"core", "x"}}).dump());
+	exactDraftEnvelope.append(2'097'152 - exactDraftEnvelope.size(), ' ');
+	CHECK(dql::contract::ParseRequest(exactDraftEnvelope).envelope.has_value());
+	exactDraftEnvelope.push_back(' ');
+	CHECK(!dql::contract::ParseRequest(exactDraftEnvelope).envelope.has_value());
 	CHECK(dql::contract::ParseRequest(MakeRequest("brainwash.apply", "\"scope-1\"",
 		"{\"actorKey\":\"npc:42\",\"draftId\":\"" + kToken + "\",\"operationId\":\"" + kToken +
 		"\",\"acceptedFields\":[\"personality\"],\"acceptBeliefs\":false}")).envelope.has_value());
@@ -292,6 +409,34 @@ int main(int argc, char** argv)
 	CHECK(brainwashCardRequest.envelope.has_value());
 	const auto brainwashCardResponse = dql::contract::MakeResponse(*brainwashCardRequest.envelope, MakeBrainwashCardData());
 	CHECK(dql::contract::ParseServerResponse(brainwashCardResponse.dump(), *brainwashCardRequest.envelope).value.has_value());
+	auto largeBrainwashCardData = MakeBrainwashCardData();
+	largeBrainwashCardData["fields"] = MakeBrainwashFields(profileFieldMax, profileFieldMax);
+	const auto largeBrainwashCardResponse = dql::contract::MakeResponse(*brainwashCardRequest.envelope, largeBrainwashCardData).dump();
+	CHECK(largeBrainwashCardResponse.size() > 65'536);
+	CHECK(largeBrainwashCardResponse.size() < 2'097'152);
+	CHECK(dql::contract::ParseServerResponse(largeBrainwashCardResponse, *brainwashCardRequest.envelope).value.has_value());
+	largeBrainwashCardData["fields"]["appearance"] = "x";
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*brainwashCardRequest.envelope, largeBrainwashCardData).dump(),
+		*brainwashCardRequest.envelope).value.has_value());
+	largeBrainwashCardData = MakeBrainwashCardData();
+	largeBrainwashCardData["fields"] = MakeBrainwashFields(profileFieldOver, "");
+	CHECK(!dql::contract::ParseServerResponse(dql::contract::MakeResponse(*brainwashCardRequest.envelope, largeBrainwashCardData).dump(),
+		*brainwashCardRequest.envelope).value.has_value());
+	auto largeCardForWrites = MakeBrainwashCardData();
+	largeCardForWrites["fields"] = MakeBrainwashFields(profileFieldMax, profileFieldMax);
+	const auto applyRequest = dql::contract::ParseRequest(MakeRequest("brainwash.apply", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"draftId\":\"" + kToken + "\",\"operationId\":\"" + kToken +
+		"\",\"acceptedFields\":[\"core\"],\"acceptBeliefs\":false}"));
+	CHECK(applyRequest.envelope.has_value());
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*applyRequest.envelope,
+		Json{{"operationId", kToken}, {"state", "applied"}, {"card", largeCardForWrites}}).dump(),
+		*applyRequest.envelope).value.has_value());
+	const auto undoRequest = dql::contract::ParseRequest(MakeRequest("brainwash.undo", "\"scope-1\"",
+		"{\"actorKey\":\"npc:42\",\"operationId\":\"" + kToken + "\",\"appliedOperationId\":\"" + resumeAttemptId + "\"}"));
+	CHECK(undoRequest.envelope.has_value());
+	CHECK(dql::contract::ParseServerResponse(dql::contract::MakeResponse(*undoRequest.envelope,
+		Json{{"operationId", kToken}, {"state", "undone"}, {"card", largeCardForWrites}}).dump(),
+		*undoRequest.envelope).value.has_value());
 	auto longBrainwashCardLabel = brainwashCardResponse;
 	longBrainwashCardLabel["data"]["label"] = std::string(512, 'L');
 	CHECK(dql::contract::ParseServerResponse(longBrainwashCardLabel.dump(), *brainwashCardRequest.envelope).value.has_value());
@@ -311,6 +456,18 @@ int main(int argc, char** argv)
 	};
 	const auto brainwashDraftResponse = dql::contract::MakeResponse(*brainwashDraftRequest.envelope, brainwashDraftData);
 	CHECK(dql::contract::ParseServerResponse(brainwashDraftResponse.dump(), *brainwashDraftRequest.envelope).value.has_value());
+	auto largeBrainwashDraftData = brainwashDraftData;
+	largeBrainwashDraftData["before"] = MakeBrainwashFields(escapedProfileText, escapedProfileText);
+	largeBrainwashDraftData["changes"] = MakeBrainwashFields(escapedProfileText, escapedProfileText);
+	const auto largeBrainwashDraftResponse = dql::contract::MakeResponse(*brainwashDraftRequest.envelope, largeBrainwashDraftData).dump();
+	CHECK(largeBrainwashDraftResponse.size() > 1'500'000);
+	CHECK(largeBrainwashDraftResponse.size() < 2'097'152);
+	CHECK(dql::contract::ParseServerResponse(largeBrainwashDraftResponse, *brainwashDraftRequest.envelope).value.has_value());
+	auto exactProfileResponse = largeBrainwashDraftResponse;
+	exactProfileResponse.append(2'097'152 - exactProfileResponse.size(), ' ');
+	CHECK(dql::contract::ParseServerResponse(exactProfileResponse, *brainwashDraftRequest.envelope).value.has_value());
+	exactProfileResponse.push_back(' ');
+	CHECK(!dql::contract::ParseServerResponse(exactProfileResponse, *brainwashDraftRequest.envelope).value.has_value());
 	const Json beliefOnlyDraftData = {
 		{ "actorKey", "npc:42" }, { "scope", "profile:1|restore:2" }, { "revision", std::string(64, 'a') },
 		{ "draftId", kToken }, { "origin", "manual" }, { "before", Json::object() }, { "changes", Json::object() },
@@ -470,6 +627,29 @@ int main(int argc, char** argv)
 		.serverContext = "scope-current", .authenticated = true, .compose = true, .correspondenceReady = false
 	};
 	CHECK(!dql::policy::CanUseCorrespondence(unavailableCorrespondence, "scope-current"));
+	const auto successHttpLog = dql::policy::FormatHttpResultLogLine("department_http", "brainwash.card.read", kToken,
+		"completed", 200, "none", "none");
+	CHECK(successHttpLog == "stage=department_http operation=brainwash.card.read request_id=" + kToken +
+		" result=completed http=200 error=none server_error=none");
+	const auto refusalHttpLog = dql::policy::FormatHttpResultLogLine("department_http", "correspondence.receipt.check", kToken,
+		"completed", 403, "none", "forbidden");
+	CHECK(refusalHttpLog.find("operation=correspondence.receipt.check") != std::string::npos &&
+		refusalHttpLog.find("server_error=forbidden") != std::string::npos);
+	const auto profileLimitHttpLog = dql::policy::FormatHttpResultLogLine("department_http", "brainwash.draft", kToken,
+		"completed", 422, "none", "profile_too_large");
+	CHECK(profileLimitHttpLog.find("server_error=profile_too_large") != std::string::npos);
+	const auto transportFailureHttpLog = dql::policy::FormatHttpResultLogLine("department_http", "brainwash.draft", kToken,
+		"unknown", 0, "timeout", "none");
+	CHECK(transportFailureHttpLog.find("result=unknown http=0 error=timeout server_error=none") != std::string::npos);
+	const auto malformedHttpLog = dql::policy::FormatHttpResultLogLine("department_http", "correspondence.receipt.check", kToken,
+		"completed", 502, "none", "invalid_response");
+	CHECK(malformedHttpLog.find("server_error=invalid_response") != std::string::npos);
+	const std::string privacySentinel = "PROFILE_SENTINEL letter_body inventory Authorization Bearer_TOKEN serverContext";
+	const auto privacyHttpLog = dql::policy::FormatHttpResultLogLine(privacySentinel, privacySentinel, privacySentinel,
+		privacySentinel, 500, privacySentinel, privacySentinel);
+	CHECK(privacyHttpLog.find("PROFILE_SENTINEL") == std::string::npos && privacyHttpLog.find("letter_body") == std::string::npos &&
+		privacyHttpLog.find("inventory") == std::string::npos && privacyHttpLog.find("Authorization") == std::string::npos &&
+		privacyHttpLog.find("Bearer_TOKEN") == std::string::npos && privacyHttpLog.find("serverContext") == std::string::npos);
 	const dql::policy::NativeAccessState pcvAccess{
 		.serverContext = "scope-current", .authenticated = true, .pcv = true, .pcvReady = true
 	};

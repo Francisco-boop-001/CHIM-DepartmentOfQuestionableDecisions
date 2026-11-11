@@ -77,6 +77,8 @@ namespace dql::http
 		using Completion = std::function<void(HttpResult)>;
 		static constexpr std::size_t kMaxEnvelopeBytes = 65'536;
 		static constexpr std::size_t kMaxResponseBytes = 65'536;
+		static constexpr std::size_t kMaxProfileEnvelopeBytes = 2'097'152;
+		static constexpr std::size_t kMaxProfileResponseBytes = 2'097'152;
 
 		explicit HttpTransport(std::size_t maxPending = 16);
 		~HttpTransport();

@@ -145,12 +145,14 @@ namespace
 			"dql::inventory::GoldAmountFromInventory("));
 		CHECK(ContainsBetween(source, "ComposeResult PrepareComposePayload(", "void LoadOpenKey()",
 			"dql::inventory::GoldAmountFromInventory(player->GetInventory())"));
-		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.21.0\"_v,") != std::string::npos);
-		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_0_19\")") != std::string::npos);
+		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.22.0\"_v,") != std::string::npos);
+		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_22_0\")") != std::string::npos);
 		CHECK(source.find("void RespondPreDispatchError(") != std::string::npos);
 		CHECK(source.find("dql::contract::MakePreDispatchError(request, code, message)") != std::string::npos);
 		CHECK(source.find("dql::contract::MakeError(request, code, message, dispatched)") != std::string::npos);
-		CHECK(source.find("std::string_view(\"actor_unavailable\")") != std::string::npos);
+		CHECK(source.find("return dql::policy::SafeServerErrorCode(code);") != std::string::npos);
+		CHECK(source.find("dql::policy::FormatHttpResultLogLine(stage, operation, requestId,") != std::string::npos);
+		CHECK(source.find("dql::contract::kMaxProfileEnvelopeBytes + 1") != std::string::npos);
 		CHECK(ContainsBetween(source,
 			"if (!managedRosterReady_ || !managedActorKeys_.contains(actorKey)",
 			"if (!HasCompanionOperationCapacity())", "RespondPreDispatchError(request, \"actor_unavailable\""));
@@ -161,6 +163,14 @@ namespace
 			"RespondPreDispatchError("));
 		CHECK(ContainsBetween(source, "if (!serverAuthenticated_)",
 			"if (request.operation == \"correspondence.inventory.read\")", "RespondPreDispatchError("));
+		const auto receiptCheckStart = source.find("if (request.operation == \"correspondence.receipt.check\")");
+		const auto receiptCheckEnd = source.find("if (request.operation == \"correspondence.compose\")", receiptCheckStart);
+		CHECK(receiptCheckStart != std::string::npos && receiptCheckEnd > receiptCheckStart);
+		const auto receiptCheckBranch = std::string_view(source).substr(receiptCheckStart, receiptCheckEnd - receiptCheckStart);
+		CHECK(receiptCheckBranch.find("CanUseCorrespondence") != std::string_view::npos);
+		CHECK(receiptCheckBranch.find("SubmitServerRequest(request, request.payload)") != std::string_view::npos);
+		CHECK(receiptCheckBranch.find("BuildInventorySnapshot") == std::string_view::npos &&
+			receiptCheckBranch.find("PrepareComposePayload") == std::string_view::npos);
 		CHECK(ContainsBetween(source, "if (request.operation == \"correspondence.compose\")",
 			"auto prepared = PrepareComposePayload(request);", "RespondPreDispatchError("));
 		CHECK(ContainsBetween(source, "if (!prepared.payload)", "const bool isPcvOperation",
@@ -168,6 +178,8 @@ namespace
 		CHECK(source.find("request.operation == \"pcv.arm\"") != std::string::npos);
 		CHECK(source.find("request.operation == \"pcv.end\"") != std::string::npos);
 		CHECK(ContainsBetween(source, "static bool IsServerWriteOperation(", "bool IsCurrentRequest(", "correspondence.resume"));
+		CHECK(ContainsBetween(source, "static bool IsServerWriteOperation(", "bool IsCurrentRequest(", "correspondence.receipt.check"));
+		CHECK(!ContainsBetween(source, "static bool IsServerWriteOperation(", "bool IsCurrentRequest(", "correspondence.reconcile"));
 		CHECK(!ContainsBetween(source, "static bool IsServerWriteOperation(", "bool IsCurrentRequest(", "correspondence.pending.read"));
 		const auto pendingStart = source.find("if (request.operation == \"correspondence.pending.read\")");
 		const auto pendingEnd = source.find("if (request.operation == \"correspondence.resume\")", pendingStart);
@@ -194,7 +206,20 @@ namespace
 			"if (IsServerWriteOperation(request.operation)) {\n\t\t\t\t\tRespondPreDispatchError("));
 		CHECK(ContainsBetween(source, "if (!submitted.queued)", "return true;",
 			"RespondPreDispatchError(request, submitted.errorCode == dql::http::ErrorCode::queueFull"));
-		CHECK(ContainsBetween(source, "void OnServerCompletion(", "const auto parsed = dql::contract::ParseServerResponse",
+		const auto serverCompletionStart = source.find("void OnServerCompletion(");
+		const auto serverCompletionEnd = source.find("const auto& response = *parsed.value;", serverCompletionStart);
+		CHECK(serverCompletionStart != std::string::npos && serverCompletionEnd > serverCompletionStart);
+		const auto serverCompletion = std::string_view(source).substr(serverCompletionStart,
+			serverCompletionEnd - serverCompletionStart);
+		const auto staleCompletionStart = serverCompletion.find("if (!IsCurrentRequest(request))");
+		const auto responseParseStart = serverCompletion.find("ParseServerResponse(result.body, request)");
+		CHECK(staleCompletionStart != std::string_view::npos && responseParseStart != std::string_view::npos &&
+			staleCompletionStart < responseParseStart);
+		const auto staleCompletion = serverCompletion.substr(staleCompletionStart,
+			responseParseStart - staleCompletionStart);
+		CHECK(staleCompletion.find("LogHttpResult(stage, request.operation, request.requestId, result, \"other\")") != std::string_view::npos);
+		CHECK(staleCompletion.find("LogEvent(stage, \"stale_completion\")") != std::string_view::npos);
+		CHECK(ContainsBetween(source, "void OnServerCompletion(", "const auto& response = *parsed.value;",
 			"RespondServerWriteState(request, result.outcome == dql::http::Outcome::rejected ? \"rejected\" : \"unknown\")"));
 		CHECK(ContainsBetween(source, "void HandleConnectionOperation(", "void OnConnectionCompletion(",
 			"transport_.HasInFlightWrites()"));

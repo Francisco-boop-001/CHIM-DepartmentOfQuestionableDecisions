@@ -288,6 +288,73 @@ function qd_journal_assert_pointer_record(array $pointer, string $operationKey, 
     }
 }
 
+function qd_journal_receipt_check_can_resume(array $pointer, array $record, string $operationKey, string $pairId, string $scopeHash, string $semanticHash): bool
+{
+    if (($pointer['operationKey'] ?? null) !== $operationKey) {
+        throw new QDServerFault('unavailable');
+    }
+    $semanticKey = qd_journal_semantic_key($pairId, $scopeHash, 'correspondence.receipt.check', $semanticHash);
+    if (!qd_journal_record_is_valid($record)
+        || ($record['operation'] ?? null) !== 'correspondence.receipt.check'
+        || ($record['pairId'] ?? null) !== $pairId
+        || ($record['scopeHash'] ?? null) !== $scopeHash
+        || ($record['semanticHash'] ?? null) !== $semanticHash
+        || ($record['state'] ?? null) !== 'pending') {
+        return false;
+    }
+    qd_journal_assert_pointer_record($pointer, $operationKey, $semanticKey, $record);
+    return true;
+}
+
+function qd_journal_receipt_check_retired_record(array $record): array
+{
+    if (!qd_journal_record_is_valid($record)
+        || ($record['operation'] ?? null) !== 'correspondence.receipt.check'
+        || ($record['state'] ?? null) !== 'pending') {
+        throw new QDServerFault('unavailable');
+    }
+    // This is only a query-journal tombstone. It does not state that the owner delivered a letter.
+    $record['commitEntered'] = true;
+    $record['state'] = 'completed';
+    $record['dataJson'] = null;
+    return $record;
+}
+
+function qd_journal_retire_receipt_check_pointer(
+    string $directory,
+    string $webRoot,
+    string $semanticKey,
+    array $pointer,
+    array $record,
+    string $pairId,
+    string $scopeHash,
+    string $semanticHash,
+    ?string $privateRoot = null,
+): void {
+    $operationKey = $pointer['operationKey'] ?? null;
+    if (!is_string($operationKey)
+        || !qd_journal_receipt_check_can_resume($pointer, $record, $operationKey, $pairId, $scopeHash, $semanticHash)) {
+        throw new QDServerFault('conflict');
+    }
+    if (($pointer['version'] ?? null) !== 2) {
+        throw new QDServerFault('unavailable');
+    }
+    if (($pointer['commitEntered'] ?? null) !== true) {
+        qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot), [
+            'version' => 2,
+            'operationKey' => $operationKey,
+            'commitEntered' => true,
+        ], 256);
+    }
+    if ($record['commitEntered'] !== true) {
+        $record['commitEntered'] = true;
+        qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $operationKey . '.json', $privateRoot), $record, QD_JOURNAL_RECORD_BYTES);
+    }
+    $retired = qd_journal_receipt_check_retired_record($record);
+    qd_journal_write_json(qd_journal_file_path($directory, $webRoot, $operationKey . '.json', $privateRoot), $retired, QD_JOURNAL_RECORD_BYTES);
+    qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $semanticKey . '.pending.json', $privateRoot));
+}
+
 function qd_journal_outstanding_count(string $directory, string $webRoot, ?string $privateRoot = null): int
 {
     $managed = is_string($privateRoot) && qd_path_is_lexically_within($directory, $privateRoot);
@@ -352,18 +419,43 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
         if ($existing !== null) {
             $existingSemanticKey = qd_journal_semantic_key($existing['pairId'], $existing['scopeHash'], $existing['operation'], $existing['semanticHash']);
             qd_journal_assert_record_identity($existing, $key, $existingSemanticKey);
-            $existingPointer = qd_journal_semantic_pointer($directory, $webRoot, $existingSemanticKey, $privateRoot);
-            if (($existing['state'] ?? null) === 'pending' && $existingPointer === null) {
-                throw new QDServerFault('unavailable');
-            }
-            if ($existingPointer !== null) {
-                qd_journal_assert_pointer_record($existingPointer, $key, $existingSemanticKey, $existing);
-                if (($existing['state'] ?? null) === 'completed') {
-                    qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $existingSemanticKey . '.pending.json', $privateRoot));
-                }
-            }
             if (($existing['payloadHash'] ?? null) !== $payloadHash || ($existing['semanticHash'] ?? null) !== $semanticHash) {
                 throw new QDServerFault('conflict');
+            }
+            $existingPointer = qd_journal_semantic_pointer($directory, $webRoot, $existingSemanticKey, $privateRoot);
+            if (($existing['state'] ?? null) === 'pending') {
+                if ($existingPointer === null) {
+                    throw new QDServerFault('unavailable');
+                }
+                if ($operation === 'correspondence.receipt.check'
+                    && qd_journal_receipt_check_can_resume($existingPointer, $existing, $key, $pairId, $scopeHash, $semanticHash)) {
+                    return ['action' => 'dispatch', 'key' => $key];
+                }
+                qd_journal_assert_pointer_record($existingPointer, $key, $existingSemanticKey, $existing);
+                throw new QDServerFault('conflict');
+            }
+            if ($existingPointer !== null) {
+                if (($existingPointer['operationKey'] ?? null) === $key) {
+                    qd_journal_assert_pointer_record($existingPointer, $key, $existingSemanticKey, $existing);
+                    if (($existing['state'] ?? null) === 'completed') {
+                        qd_journal_delete_file(qd_journal_file_path($directory, $webRoot, $existingSemanticKey . '.pending.json', $privateRoot));
+                    }
+                } elseif ($operation === 'correspondence.receipt.check') {
+                    $pointedKey = $existingPointer['operationKey'];
+                    $pointedRecord = qd_journal_load_record($directory, $webRoot, $pointedKey, $privateRoot);
+                    if ($pointedRecord === null) {
+                        if (($existingPointer['version'] ?? null) !== 2 || $existingPointer['commitEntered'] !== false) {
+                            throw new QDServerFault('unavailable');
+                        }
+                    } else {
+                        qd_journal_assert_pointer_record($existingPointer, $pointedKey, $existingSemanticKey, $pointedRecord);
+                        if (($pointedRecord['operation'] ?? null) !== 'correspondence.receipt.check') {
+                            throw new QDServerFault('unavailable');
+                        }
+                    }
+                } else {
+                    qd_journal_assert_pointer_record($existingPointer, $key, $existingSemanticKey, $existing);
+                }
             }
             if (($existing['state'] ?? null) === 'completed' && $ownerIdempotent) {
                 return ['action' => 'owner_replay'];
@@ -393,10 +485,28 @@ function qd_journal_begin(array $settings, string $pairId, string $scopeHash, st
             } else {
                 qd_journal_assert_pointer_record($pointer, $pointer['operationKey'], $semanticKey, $pointedRecord);
                 if (($pointedRecord['state'] ?? null) === 'pending') {
-                    throw new QDServerFault('conflict');
+                    if ($operation !== 'correspondence.receipt.check'
+                        || !qd_journal_receipt_check_can_resume($pointer, $pointedRecord, $pointer['operationKey'], $pairId, $scopeHash, $semanticHash)) {
+                        throw new QDServerFault('conflict');
+                    }
+                    qd_journal_retire_receipt_check_pointer(
+                        $directory,
+                        $webRoot,
+                        $semanticKey,
+                        $pointer,
+                        $pointedRecord,
+                        $pairId,
+                        $scopeHash,
+                        $semanticHash,
+                        $privateRoot,
+                    );
+                } else {
+                    qd_journal_delete_file($pointerPath);
                 }
             }
-            qd_journal_delete_file($pointerPath);
+            if ($pointedRecord === null) {
+                qd_journal_delete_file($pointerPath);
+            }
         }
 
         if (qd_journal_outstanding_count($directory, $webRoot, $privateRoot) >= QD_JOURNAL_MAX_OUTSTANDING) {

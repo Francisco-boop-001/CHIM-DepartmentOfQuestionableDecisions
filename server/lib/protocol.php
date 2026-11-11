@@ -2,6 +2,8 @@
 declare(strict_types=1);
 
 const QD_MAX_BODY_BYTES = 65536;
+const QD_MAX_PROFILE_REQUEST_BYTES = 2097152;
+const QD_MAX_PROFILE_RESPONSE_BYTES = 2097152;
 const QD_MAX_JSON_DEPTH = 8;
 const QD_MAX_OBJECT_PROPERTIES = 64;
 const QD_MAX_ARRAY_ITEMS = 128;
@@ -11,6 +13,8 @@ const QD_MAX_TEXT_CHARACTERS = 2000;
 const QD_MAX_TEXT_BYTES = 8000;
 const QD_MAX_JOURNAL_RESULT_BYTES = 16384;
 const QD_BRAINWASH_FIELDS = ['core', 'npc_static_bio', 'personality', 'appearance', 'occupation', 'skills', 'speechstyle', 'goals'];
+const QD_BRAINWASH_FIELD_BYTES = 65536;
+const QD_BRAINWASH_CARD_BYTES = 131072;
 const QD_PENDING_QUEUED_REASONS = ['executor_unavailable', 'renderer_unavailable', 'identity_changed', 'mapping_unavailable', 'companion_owned', 'operator_closed', 'interaction_unavailable', 'integrity_unavailable', 'not_dispatched', 'operation_unavailable'];
 
 const QD_OPERATION_REQUIREMENTS = [
@@ -30,6 +34,7 @@ const QD_OPERATION_REQUIREMENTS = [
     'correspondence.compose' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'correspondence.reconcile' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'correspondence.resume' => ['scope' => 'compose', 'capability' => 'correspondence'],
+    'correspondence.receipt.check' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'correspondence.pending.read' => ['scope' => 'compose', 'capability' => 'correspondence'],
     'brainwash.catalog.read' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
     'brainwash.card.read' => ['scope' => 'brainwash', 'capability' => 'brainwash'],
@@ -51,6 +56,7 @@ const QD_ERROR_MESSAGES = [
     'unsupported_media_type' => 'Content type must be application/json.',
     'method_not_allowed' => 'Only POST is supported.',
     'payload_too_large' => 'Request body exceeds the size limit.',
+    'profile_too_large' => 'This stored profile exceeds the editor limit (65536 UTF-8 bytes per field; 131072 total). No profile text was changed.',
 ];
 
 final class QDServerFault extends RuntimeException
@@ -77,20 +83,20 @@ function qd_text_characters(string $value): int
     return $count === false ? PHP_INT_MAX : $count;
 }
 
-function qd_validate_json_tree(mixed $value, int $depth = 1): ?string
+function qd_validate_json_tree(mixed $value, int $depth = 1, int $maxStringBytes = QD_MAX_STRING_BYTES): ?string
 {
     if ($depth > QD_MAX_JSON_DEPTH) {
         return 'invalid_request';
     }
     if (is_string($value)) {
-        return strlen($value) <= QD_MAX_STRING_BYTES && qd_is_utf8($value) ? null : 'invalid_request';
+        return strlen($value) <= $maxStringBytes && qd_is_utf8($value) ? null : 'invalid_request';
     }
     if (is_array($value)) {
         if (!array_is_list($value) || count($value) > QD_MAX_ARRAY_ITEMS) {
             return 'invalid_request';
         }
         foreach ($value as $item) {
-            if (($error = qd_validate_json_tree($item, $depth + 1)) !== null) {
+            if (($error = qd_validate_json_tree($item, $depth + 1, $maxStringBytes)) !== null) {
                 return $error;
             }
         }
@@ -102,7 +108,7 @@ function qd_validate_json_tree(mixed $value, int $depth = 1): ?string
             return 'invalid_request';
         }
         foreach ($properties as $key => $item) {
-            if (strlen((string)$key) > QD_MAX_STRING_BYTES || qd_validate_json_tree($item, $depth + 1) !== null) {
+            if (strlen((string)$key) > QD_MAX_STRING_BYTES || qd_validate_json_tree($item, $depth + 1, $maxStringBytes) !== null) {
                 return 'invalid_request';
             }
         }
@@ -128,6 +134,20 @@ function qd_exact_properties(object $object, array $required, array $optional = 
         }
     }
     return true;
+}
+
+function qd_request_body_limit(?string $operation): int
+{
+    return $operation === 'brainwash.draft' && isset(QD_OPERATION_REQUIREMENTS[$operation])
+        ? QD_MAX_PROFILE_REQUEST_BYTES
+        : QD_MAX_BODY_BYTES;
+}
+
+function qd_response_body_limit(?string $operation): int
+{
+    return in_array($operation, ['brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'], true)
+        ? QD_MAX_PROFILE_RESPONSE_BYTES
+        : QD_MAX_BODY_BYTES;
 }
 
 function qd_valid_string(mixed $value, int $maxBytes = QD_MAX_STRING_BYTES, bool $allowEmpty = false): bool
@@ -169,11 +189,11 @@ function qd_brainwash_valid_changes(mixed $changes, bool $allowEmpty = false): b
     }
     $bytes = 0;
     foreach ($properties as $field => $value) {
-        if (!in_array($field, QD_BRAINWASH_FIELDS, true) || !qd_valid_string($value, 8192, true)) {
+        if (!in_array($field, QD_BRAINWASH_FIELDS, true) || !qd_valid_string($value, QD_BRAINWASH_FIELD_BYTES, true)) {
             return false;
         }
         $bytes += strlen($value);
-        if ($bytes > 20000) return false;
+        if ($bytes > QD_BRAINWASH_CARD_BYTES) return false;
     }
     return true;
 }
@@ -480,6 +500,11 @@ function qd_validate_payload(string $operation, object $payload): string
                 && qd_is_uuid($payload->operationId)
                 && qd_is_uuid($payload->attemptId) ? 'ok' : 'invalid_request';
 
+        case 'correspondence.receipt.check':
+            return qd_exact_properties($payload, ['operationId', 'attemptId'])
+                && qd_is_uuid($payload->operationId)
+                && qd_is_uuid($payload->attemptId) ? 'ok' : 'invalid_request';
+
         case 'correspondence.pending.read':
             return qd_exact_properties($payload, [], ['cursor'])
                 && (!property_exists($payload, 'cursor') || qd_valid_string($payload->cursor, 512))
@@ -538,9 +563,9 @@ function qd_validate_payload(string $operation, object $payload): string
     }
 }
 
-function qd_validate_request(mixed $request): ?string
+function qd_validate_request(mixed $request, ?int $bodyBytes = null): ?string
 {
-    if (!is_object($request) || ($treeError = qd_validate_json_tree($request)) !== null) {
+    if (!is_object($request)) {
         return 'invalid_request';
     }
     if (!qd_exact_properties($request, ['version', 'requestId', 'operation', 'context', 'payload'])
@@ -557,14 +582,25 @@ function qd_validate_request(mixed $request): ?string
         || !is_object($request->payload)) {
         return 'invalid_request';
     }
+    if ($request->operation === 'bootstrap' ? $request->context->serverContext !== null : $request->context->serverContext === null) {
+        return 'invalid_request';
+    }
+    if ($bodyBytes === null) {
+        try {
+            $encoded = json_encode($request, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        } catch (Throwable) {
+            return 'invalid_request';
+        }
+        $bodyBytes = strlen($encoded);
+    }
+    if ($bodyBytes > qd_request_body_limit($request->operation)) {
+        return 'payload_too_large';
+    }
     if (!array_key_exists($request->operation, QD_OPERATION_REQUIREMENTS)) {
         return 'unsupported_operation';
     }
-    if ($request->operation === 'bootstrap') {
-        if ($request->context->serverContext !== null) {
-            return 'invalid_request';
-        }
-    } elseif ($request->context->serverContext === null) {
+    $maxStringBytes = $request->operation === 'brainwash.draft' ? QD_BRAINWASH_FIELD_BYTES : QD_MAX_STRING_BYTES;
+    if (qd_validate_json_tree($request, 1, $maxStringBytes) !== null) {
         return 'invalid_request';
     }
     $payloadResult = qd_validate_payload($request->operation, $request->payload);
@@ -573,7 +609,7 @@ function qd_validate_request(mixed $request): ?string
 
 function qd_parse_json_request(string $raw): array
 {
-    if (strlen($raw) > QD_MAX_BODY_BYTES) {
+    if (strlen($raw) > QD_MAX_PROFILE_REQUEST_BYTES) {
         return ['request' => null, 'error' => 'payload_too_large'];
     }
     try {
@@ -581,7 +617,7 @@ function qd_parse_json_request(string $raw): array
     } catch (JsonException) {
         return ['request' => null, 'error' => 'invalid_request'];
     }
-    $error = qd_validate_request($request);
+    $error = qd_validate_request($request, strlen($raw));
     return ['request' => is_object($request) ? $request : null, 'error' => $error];
 }
 
@@ -627,6 +663,7 @@ function qd_http_status_for_error(string $code): int
         'forbidden' => 403,
         'not_found' => 404,
         'conflict', 'stale_context', 'stale_revision' => 409,
+        'profile_too_large' => 422,
         'unavailable' => 503,
         default => 400,
     };

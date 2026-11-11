@@ -165,7 +165,7 @@ using dql::http::Route;
 					}
 					if (request.size() >= expectedSize) break;
 				}
-				if (request.size() > 70000) break;
+				if (request.size() > HttpTransport::kMaxProfileEnvelopeBytes + 65'536) break;
 			}
 			{
 				std::lock_guard lock(mutex_);
@@ -294,6 +294,33 @@ using dql::http::Route;
 		Check(response.outcome == Outcome::completed && response.statusCode == 200,
 			"authoring waits for a model response beyond the ordinary 15-second deadline");
 		transport.Shutdown();
+	}
+
+	void TestCorrespondenceReceiptCheckUsesWriteQueue()
+	{
+		LocalServer writeServer(Response(200, "OK", "{}"), true);
+		std::promise<HttpResult> writePromise;
+		auto writeResult = writePromise.get_future();
+		HttpTransport writeTransport;
+		const auto writeSubmit = writeTransport.Submit(MakeRequest(writeServer.BaseUrl(), "correspondence.receipt.check", true),
+			[&](HttpResult value) { writePromise.set_value(std::move(value)); });
+		Check(writeSubmit.queued && writeServer.WaitForRequest(), "receipt check reaches the loopback write route");
+		Check(writeTransport.HasInFlightWrites(), "receipt check is tracked as a Department mutation");
+		writeServer.Release();
+		Check(AwaitResult(writeResult).outcome == Outcome::completed, "receipt check write completes");
+		writeTransport.Shutdown();
+
+		LocalServer readServer(Response(200, "OK", "{}"), true);
+		std::promise<HttpResult> readPromise;
+		auto readResult = readPromise.get_future();
+		HttpTransport readTransport;
+		const auto readSubmit = readTransport.Submit(MakeRequest(readServer.BaseUrl(), "correspondence.reconcile"),
+			[&](HttpResult value) { readPromise.set_value(std::move(value)); });
+		Check(readSubmit.queued && readServer.WaitForRequest(), "status-only reconcile retains its read route");
+		Check(!readTransport.HasInFlightWrites(), "status-only reconcile remains outside Department mutation tracking");
+		readServer.Release();
+		Check(AwaitResult(readResult).outcome == Outcome::completed, "status-only reconcile completes as a read");
+		readTransport.Shutdown();
 	}
 
 	void TestFixedPostAndRedirectPolicy()
@@ -556,6 +583,67 @@ using dql::http::Route;
 		transport.Shutdown();
 	}
 
+	void TestProfileEnvelopeLimit()
+	{
+		LocalServer server(Response(200, "OK", "{}"));
+		HttpTransport transport;
+		auto exact = MakeRequest(server.BaseUrl(), "brainwash.draft", true);
+		exact.envelopeJson.assign(HttpTransport::kMaxProfileEnvelopeBytes - 2, ' ');
+		exact.envelopeJson += "{}";
+		Check(exact.envelopeJson.size() == HttpTransport::kMaxProfileEnvelopeBytes,
+			"profile draft request uses the exact 2 MiB transport ceiling");
+		std::promise<HttpResult> promise;
+		auto result = promise.get_future();
+		const auto submitted = transport.Submit(std::move(exact), [&](HttpResult value) {
+			promise.set_value(std::move(value));
+		});
+		Check(submitted.queued, "exact-limit profile draft request queues");
+		Check(AwaitResult(result).outcome == Outcome::completed, "exact-limit profile draft reaches loopback");
+		Check(server.WaitForRequest(), "exact-limit profile draft reaches its fixture");
+		Check(server.RequestText().find("Content-Length: 2097152\r\n") != std::string::npos,
+			"WinHTTP transmits the complete exact-limit request body");
+
+		auto overDraft = MakeRequest(server.BaseUrl(), "brainwash.draft", true);
+		overDraft.envelopeJson.assign(HttpTransport::kMaxProfileEnvelopeBytes + 1, ' ');
+		const auto overDraftResult = transport.Submit(std::move(overDraft), [](HttpResult) {});
+		Check(!overDraftResult.queued && overDraftResult.errorCode == ErrorCode::requestTooLarge,
+			"profile draft request one byte over its cap is refused before network");
+		auto expandedCardRead = MakeRequest(server.BaseUrl(), "brainwash.card.read");
+		expandedCardRead.envelopeJson.assign(HttpTransport::kMaxEnvelopeBytes + 1, ' ');
+		const auto cardReadResult = transport.Submit(std::move(expandedCardRead), [](HttpResult) {});
+		Check(!cardReadResult.queued && cardReadResult.errorCode == ErrorCode::requestTooLarge,
+			"profile card read request retains the original 64 KiB cap");
+		Check(!server.WaitForRequestCount(2, 250ms), "refused oversized requests open no second loopback connection");
+		transport.Shutdown();
+	}
+
+	void TestProfileResponseLimit()
+	{
+		LocalServer exactServer(Response(200, "OK", std::string(HttpTransport::kMaxProfileResponseBytes, 'x')));
+		std::promise<HttpResult> exactPromise;
+		auto exactResult = exactPromise.get_future();
+		HttpTransport exactTransport;
+		const auto exactSubmit = exactTransport.Submit(MakeRequest(exactServer.BaseUrl(), "brainwash.card.read"),
+			[&](HttpResult value) { exactPromise.set_value(std::move(value)); });
+		Check(exactSubmit.queued, "exact-limit profile response request queues");
+		const auto exact = AwaitResult(exactResult);
+		Check(exact.outcome == Outcome::completed && exact.body.size() == HttpTransport::kMaxProfileResponseBytes,
+			"profile response at the exact 2 MiB cap is retained whole");
+		exactTransport.Shutdown();
+
+		LocalServer overServer(Response(200, "OK", std::string(HttpTransport::kMaxProfileResponseBytes + 1, 'x')));
+		std::promise<HttpResult> overPromise;
+		auto overResult = overPromise.get_future();
+		HttpTransport overTransport;
+		const auto overSubmit = overTransport.Submit(MakeRequest(overServer.BaseUrl(), "brainwash.card.read"),
+			[&](HttpResult value) { overPromise.set_value(std::move(value)); });
+		Check(overSubmit.queued, "over-limit profile response request queues");
+		const auto over = AwaitResult(overResult);
+		Check(over.outcome == Outcome::rejected && over.errorCode == ErrorCode::responseTooLarge && over.body.empty(),
+			"profile response one byte over its cap is rejected without a partial body");
+		overTransport.Shutdown();
+	}
+
 	void TestCloseCancelsReadsButPreservesAcceptedWrites()
 	{
 		const std::array<std::pair<std::string_view, bool>, 3> requests{{
@@ -730,6 +818,7 @@ int main()
 {
 	TestBrainwashOperationsReachTransport();
 	TestBrainwashWaitsForModelResponse();
+	TestCorrespondenceReceiptCheckUsesWriteQueue();
 	TestFixedPostAndRedirectPolicy();
 	TestRejectsUnsafeRequestInputsBeforeNetwork();
 	TestNonLiteralHttpRequiresExactNativeDestination();
@@ -740,6 +829,8 @@ int main()
 	TestInstallationPathPrefixIsPreserved();
 	TestUnauthenticatedBootstrapOmitsAuthorization();
 	TestResponseLimit();
+	TestProfileEnvelopeLimit();
+	TestProfileResponseLimit();
 	TestCloseCancelsReadsButPreservesAcceptedWrites();
 	TestGenerationInvalidationCancelsQueuedWrites();
 	TestPendingQueueIsBounded();

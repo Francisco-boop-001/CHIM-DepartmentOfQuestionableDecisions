@@ -6,7 +6,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/journal.php';
 require_once __DIR__ . '/overlay_setup.php';
 
-const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose', 'correspondence.resume', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
+const QD_MUTATION_OPERATIONS = ['pcv.arm', 'pcv.end', 'correspondence.compose', 'correspondence.resume', 'correspondence.receipt.check', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
 const QD_OWNER_IDEMPOTENT_MUTATIONS = ['brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
 
 function qd_false_capabilities(): array
@@ -441,13 +441,15 @@ function qd_bootstrap_authenticated_response(object $request, ?string $authoriza
 
 function qd_operation_id(object $request): string
 {
-    return $request->operation === 'correspondence.resume' ? $request->payload->attemptId : $request->payload->operationId;
+    return in_array($request->operation, ['correspondence.resume', 'correspondence.receipt.check'], true)
+        ? $request->payload->attemptId
+        : $request->payload->operationId;
 }
 
 function qd_operation_semantic_payload(object $request): stdClass
 {
     $semanticPayload = clone $request->payload;
-    unset($semanticPayload->{$request->operation === 'correspondence.resume' ? 'attemptId' : 'operationId'});
+    unset($semanticPayload->{in_array($request->operation, ['correspondence.resume', 'correspondence.receipt.check'], true) ? 'attemptId' : 'operationId'});
     return $semanticPayload;
 }
 
@@ -580,6 +582,54 @@ function qd_operation_has_cursor(string $operation): bool
     return in_array($operation, ['mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.mailbox.read', 'correspondence.pending.read'], true);
 }
 
+function qd_validate_brainwash_profile_object(mixed $value, bool $fullCard): ?string
+{
+    if (!is_object($value)) return 'invalid_request';
+    $properties = get_object_vars($value);
+    if (count($properties) > count(QD_BRAINWASH_FIELDS) || ($fullCard && count($properties) !== count(QD_BRAINWASH_FIELDS))) return 'invalid_request';
+    $bytes = 0;
+    foreach ($properties as $field => $text) {
+        if (!in_array($field, QD_BRAINWASH_FIELDS, true) || !is_string($text) || !qd_is_utf8($text)) return 'invalid_request';
+        $bytes += strlen($text);
+        if (strlen($text) > QD_BRAINWASH_FIELD_BYTES) return 'profile_too_large';
+    }
+    return $bytes > QD_BRAINWASH_CARD_BYTES ? 'profile_too_large' : null;
+}
+
+function qd_validate_brainwash_response_tree(mixed $value, string $operation, int $depth = 1, array $path = []): ?string
+{
+    if ($depth > QD_MAX_JSON_DEPTH) return 'invalid_request';
+    $profilePaths = match ($operation) {
+        'brainwash.card.read' => [['data', 'fields']],
+        'brainwash.draft' => [['data', 'before'], ['data', 'changes'], ['data', 'authoring', 'workingCard']],
+        'brainwash.apply', 'brainwash.undo' => [['data', 'card', 'fields']],
+        default => [],
+    };
+    if (in_array($path, $profilePaths, true)) {
+        $fullCard = in_array($path, [['data', 'fields'], ['data', 'authoring', 'workingCard'], ['data', 'card', 'fields']], true);
+        return qd_validate_brainwash_profile_object($value, $fullCard);
+    }
+    if (is_string($value)) return strlen($value) <= QD_MAX_STRING_BYTES && qd_is_utf8($value) ? null : 'invalid_request';
+    if (is_array($value)) {
+        if (!array_is_list($value) || count($value) > QD_MAX_ARRAY_ITEMS) return 'invalid_request';
+        foreach ($value as $index => $item) {
+            if (($error = qd_validate_brainwash_response_tree($item, $operation, $depth + 1, [...$path, $index])) !== null) return $error;
+        }
+        return null;
+    }
+    if (is_object($value)) {
+        $properties = get_object_vars($value);
+        if (count($properties) > QD_MAX_OBJECT_PROPERTIES) return 'invalid_request';
+        foreach ($properties as $key => $item) {
+            if (strlen((string)$key) > QD_MAX_STRING_BYTES) return 'invalid_request';
+            if (($error = qd_validate_brainwash_response_tree($item, $operation, $depth + 1, [...$path, (string)$key])) !== null) return $error;
+        }
+        return null;
+    }
+    if (is_float($value) && !is_finite($value)) return 'invalid_request';
+    return is_null($value) || is_bool($value) || is_int($value) || is_float($value) ? null : 'invalid_request';
+}
+
 function qd_response_with_bounded_data(object $request, mixed $rawData, bool $authorDetail): array
 {
     if (!is_array($rawData) && !is_object($rawData)) {
@@ -595,8 +645,33 @@ function qd_response_with_bounded_data(object $request, mixed $rawData, bool $au
     if (!$authorDetail && property_exists($data, 'recordedAuthor')) {
         unset($data->recordedAuthor);
     }
+    if ($request->operation === 'correspondence.receipt.check') {
+        $keys = array_keys(get_object_vars($data));
+        sort($keys, SORT_STRING);
+        $result = $data->result ?? null;
+        $reason = $data->reason ?? null;
+        if ($keys !== ['operationId', 'queued', 'reason', 'result']
+            || !qd_is_uuid($data->operationId ?? null)
+            || !is_string($request->payload->operationId ?? null)
+            || strtolower($data->operationId) !== strtolower($request->payload->operationId)
+            || !is_bool($data->queued ?? null)
+            || ($reason !== null && (!is_string($reason) || !in_array($reason, QD_PENDING_QUEUED_REASONS, true)))
+            || $data->queued !== ($reason === null)
+            || !is_object($result)
+            || !qd_is_uuid($result->operationId ?? null)
+            || strtolower($result->operationId) !== strtolower($request->payload->operationId)
+            || !in_array($result->state ?? null, ['queued', 'dispatched', 'delivered', 'rejected', 'partial', 'unknown'], true)) {
+            throw new QDServerFault('unavailable');
+        }
+    }
     if ($request->operation === 'mp.relationships.read'
         && !qd_validate_mp_projection($data, $request->payload->perspectiveActorKey)) {
+        throw new QDServerFault('unavailable');
+    }
+    if (($request->operation === 'brainwash.card.read' && !is_object($data->fields ?? null))
+        || ($request->operation === 'brainwash.draft' && (!is_object($data->before ?? null) || !is_object($data->changes ?? null)))
+        || (in_array($request->operation, ['brainwash.apply', 'brainwash.undo'], true)
+            && (!is_object($data->card ?? null) || !is_object($data->card->fields ?? null)))) {
         throw new QDServerFault('unavailable');
     }
 
@@ -639,9 +714,15 @@ function qd_response_with_bounded_data(object $request, mixed $rawData, bool $au
 
     while (true) {
         $response = qd_success_response($request, $data);
-        $treeError = qd_validate_json_tree(qd_to_json_value($response));
+        $profileOperation = in_array($request->operation, ['brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo'], true);
+        $treeError = $profileOperation
+            ? qd_validate_brainwash_response_tree(qd_to_json_value($response), $request->operation)
+            : qd_validate_json_tree(qd_to_json_value($response));
+        if ($profileOperation && $treeError !== null) {
+            throw new QDServerFault($treeError === 'profile_too_large' ? 'profile_too_large' : 'unavailable');
+        }
         $encoded = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
-        if ($treeError === null && strlen($encoded) <= QD_MAX_BODY_BYTES) {
+        if ($treeError === null && strlen($encoded) <= qd_response_body_limit($request->operation)) {
             return $response;
         }
         if ($field === null || !property_exists($data, $field) || !is_array($data->$field) || $data->$field === []) {

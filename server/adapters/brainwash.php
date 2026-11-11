@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.6';
+const QD_BRAINWASH_EXPECTED_VERSION = '0.1.0-dev.7';
 const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
     '0.1.0-dev.3' => [
         'api.php' => ['lf' => 'b26658695d86654d10ab2d8c38df0b4ebbf5e37c0d3d42a5cf64ba489f7ff20c', 'windowsCrlf' => '1bdcd95cc3e9b3305d2aa374fcc64b7329e998e2b537879043bbb7d18e502eae'],
@@ -47,12 +47,25 @@ const QD_BRAINWASH_EXPECTED_SOURCE_HASHES_BY_VERSION = [
         'manifest.json' => ['lf' => '4f352f91a78380b28af3ecb261cbba9740949768a96c4d8ae685663a7ce1190f', 'windowsCrlf' => '35a36130254f2b8ec58c66facabaa956fcbbc569d0684c8737df88ad97edb462'],
         'runtime.php' => ['lf' => '3cf5af02bff7cd423d6d0fd226011c8726200a438c6e469881c16181fd72d3fb', 'windowsCrlf' => 'a5548f50f8cf4facd28e8226e71ec31eefe739f4db8d1dcef11321ea61d7a50a'],
     ],
+    '0.1.0-dev.7' => [
+        'api.php' => ['lf' => 'd8656a642597ee7941eabd6b17597944741e963a4a16d66d2c12b75d066d8246', 'windowsCrlf' => '666b049717f5ff9a8983fdb7a2dc23b67493d33078602463d02c777e271069b7'],
+        'assets/editor.css' => ['lf' => '5c52ec2e17a4dc72bb3d7029d6a23d3d9bd55f8039ef12d82cf7524ca3d8a954', 'windowsCrlf' => '6b5357d4568682c3de100125d9fb36f702202ee9e9b71c80e3f5619350edb097'],
+        'assets/editor.js' => ['lf' => '3472f1f3378fb8e16af1050f5dd012afe14a113dd93248e56fff458cc077960f', 'windowsCrlf' => '0e29b4d700a212f22cf7a65641d60ddc91ba6239e156576ebace76b5b089e8f0'],
+        'assets/web.js' => ['lf' => 'e7cd45f6664a7ba0ec92a3dd7d65917fadc7f672689d7b847e303b1ca92288dc', 'windowsCrlf' => '12eab2fe1c7cc75d30cc34b180a40c51facf10bdda4d2db3edc974d19f567e46'],
+        'context_pre.php' => ['lf' => '67f73134e4818ca513b1269ee1b2365f7696f737793ff6d48ee57b4cebd9120a', 'windowsCrlf' => '2604c771b6c57c0020495f68ed15606a3469b9dedc853f8ebaf163f6d5e75d5f'],
+        'index.php' => ['lf' => 'afdabe1ff5119c16c021e11f4d9157c8601db4bf1672d2fa4508c49aa791decd', 'windowsCrlf' => '54ae8db99e5ef24ea38b9ef9752720fab422c34c073cfed115715e7c4324c94d'],
+        'lib/authoring.php' => ['lf' => 'a01a1954053e20503b553c284e0654a2f110329dfaa4d188474e8eb1eebb5bb5', 'windowsCrlf' => 'c5281752fe4d0e7b125f468b82da4252ae569647247e6f8047b0fad8932c8ae6'],
+        'lib/service.php' => ['lf' => 'fda5dbc9b7695a195c63816d9c9535e88480f41920841979ab41172a4db9818a', 'windowsCrlf' => '2dbfbbf3ef11744afacef68894f5a239bd94fa940fa408de44bcd2a11357d123'],
+        'lib/web.php' => ['lf' => 'c287d08cdcf67ed79a81e1395305f9def6fe4adff12014fd23332a57631037c3', 'windowsCrlf' => 'b5b904f8a1a0334f06f6dd4e69bcb48ef0e4137e3f7aa4c75cf45c0214258686'],
+        'manifest.json' => ['lf' => 'eada20ca045bf0efc30fbe3bbd36b2749ac0bd0b464481119084881e9f00380b', 'windowsCrlf' => '88d3755d1ead8bd453952eab64f50b966097b53c5f09159646108f113b8ebdb6'],
+        'runtime.php' => ['lf' => 'ec0fc904811b35dfc13f8b1b6bc1dcca7a5072d21f1f982f9d3b605d66451c3f', 'windowsCrlf' => '926f8a5ffc368876b77b9c5159147ca4192672431d0bb6893a134f79587acb69'],
+    ],
 ];
 const QD_BRAINWASH_OPERATIONS = [
     'brainwash.catalog.read', 'brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo',
 ];
 const QD_BRAINWASH_MUTATIONS = ['brainwash.draft', 'brainwash.apply', 'brainwash.undo'];
-const QD_BRAINWASH_ERROR_CODES = ['invalid_request', 'not_found', 'stale_revision', 'stale_context', 'conflict', 'unavailable', 'forbidden'];
+const QD_BRAINWASH_ERROR_CODES = ['invalid_request', 'not_found', 'stale_revision', 'stale_context', 'conflict', 'unavailable', 'forbidden', 'profile_too_large'];
 
 function qd_brainwash_source_root(): string
 {

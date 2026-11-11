@@ -15,6 +15,8 @@ namespace dql::contract
 		class BoundedSax final : public Json::json_sax_t
 		{
 		public:
+			explicit BoundedSax(std::size_t maxStringBytes) : maxStringBytes_(maxStringBytes) {}
+
 			bool null() override { return Add(Json(nullptr)); }
 			bool boolean(bool value) override { return Add(Json(value)); }
 			bool number_integer(number_integer_t value) override { return Add(Json(value)); }
@@ -137,7 +139,7 @@ namespace dql::contract
 
 			bool ValidString(std::string_view value)
 			{
-				if (value.size() > kMaxStringBytes) {
+				if (value.size() > maxStringBytes_) {
 					return Fail("string_too_large");
 				}
 				for (std::size_t i = 0; i < value.size();) {
@@ -182,6 +184,7 @@ namespace dql::contract
 			std::vector<Frame> frames_;
 			std::optional<Json> root_;
 			std::string errorCode_;
+			std::size_t maxStringBytes_;
 			bool failed_{ false };
 		};
 
@@ -222,7 +225,7 @@ namespace dql::contract
 				"bootstrap", "view.close", "pcv.roster.read", "pcv.status.read", "pcv.arm", "pcv.end", "pcv.send", "pcv.send.status",
 				"mp.relationships.read", "sas.issues.read", "correspondence.catalog.read", "correspondence.inventory.read",
 				"correspondence.mailbox.read", "correspondence.detail.read", "correspondence.compose", "correspondence.reconcile",
-				"correspondence.pending.read", "correspondence.resume",
+				"correspondence.pending.read", "correspondence.resume", "correspondence.receipt.check",
 				"brainwash.catalog.read", "brainwash.card.read", "brainwash.draft", "brainwash.apply", "brainwash.undo",
 				"connection.begin", "connection.status"
 			};
@@ -294,13 +297,13 @@ namespace dql::contract
 				&& value.get_ref<const std::string&>().size() <= maximum;
 		}
 
-		bool IsBrainwashFields(const Json& value, bool allowEmpty, std::size_t maximumBytes = 20000)
+		bool IsBrainwashFields(const Json& value, bool allowEmpty, std::size_t maximumBytes = kMaxBrainwashCardBytes)
 		{
 			constexpr std::array fields{ "core", "npc_static_bio", "personality", "appearance", "occupation", "skills", "speechstyle", "goals" };
 			if (!value.is_object() || value.size() > fields.size() || (!allowEmpty && value.empty())) return false;
 			std::size_t bytes = 0;
 			for (const auto& [key, field] : value.items()) {
-				if (std::find(fields.begin(), fields.end(), key) == fields.end() || !IsBrainwashText(field, 8192)) return false;
+				if (std::find(fields.begin(), fields.end(), key) == fields.end() || !IsBrainwashText(field, kMaxBrainwashFieldBytes)) return false;
 				bytes += field.get_ref<const std::string&>().size();
 				if (bytes > maximumBytes) return false;
 			}
@@ -551,6 +554,17 @@ namespace dql::contract
 			return data.dump(-1, ' ', false).size() <= 48'000;
 		}
 
+		bool IsCorrespondenceQueueReason(const Json& reason)
+		{
+			constexpr std::array<std::string_view, 10> reasons{
+				"executor_unavailable", "renderer_unavailable", "identity_changed", "mapping_unavailable",
+				"companion_owned", "operator_closed", "interaction_unavailable", "integrity_unavailable",
+				"not_dispatched", "operation_unavailable"
+			};
+			return reason.is_null() || (reason.is_string() &&
+				std::find(reasons.begin(), reasons.end(), reason.get_ref<const std::string&>()) != reasons.end());
+		}
+
 		bool IsCorrespondencePendingResponseData(const Json& data)
 		{
 			if (!HasOnlyKeys(data, { "operations", "limited", "nextCursor" }) || !data["operations"].is_array() ||
@@ -562,11 +576,6 @@ namespace dql::contract
 			constexpr std::array<std::string_view, 5> states{
 				"stored", "queued", "dispatched", "unknown", "partial"
 			};
-			constexpr std::array<std::string_view, 10> reasons{
-				"executor_unavailable", "renderer_unavailable", "identity_changed", "mapping_unavailable",
-				"companion_owned", "operator_closed", "interaction_unavailable", "integrity_unavailable",
-				"not_dispatched", "operation_unavailable"
-			};
 			for (const auto& operation : data["operations"]) {
 				if (!HasOnlyKeys(operation, { "operationId", "recipientLabel", "state", "hasTransfer", "canResume", "queuedReason", "operatorClosed" }) ||
 					!IsUuid(operation["operationId"]) || !operation["recipientLabel"].is_string() ||
@@ -575,10 +584,41 @@ namespace dql::contract
 					!operation["hasTransfer"].is_boolean() || !operation["canResume"].is_boolean() ||
 					!operation["operatorClosed"].is_boolean()) return false;
 				const auto& reason = operation["queuedReason"];
-				if (!reason.is_null() && (!reason.is_string() ||
-					std::find(reasons.begin(), reasons.end(), reason.get_ref<const std::string&>()) == reasons.end())) return false;
+				if (!IsCorrespondenceQueueReason(reason)) return false;
 			}
 			return true;
+		}
+
+		bool IsCorrespondenceLetterResult(const Json& result, const Json& expectedOperationId)
+		{
+			if (!HasExactProperties(result, { "operationId", "state" },
+				{ "receipt", "companionSchedulerOwned", "operatorClosed", "canResume", "queuedReason" }) ||
+				!IsUuid(result["operationId"]) || result["operationId"] != expectedOperationId || !result["state"].is_string()) return false;
+			const auto& state = result["state"].get_ref<const std::string&>();
+			constexpr std::array<std::string_view, 6> states{ "queued", "dispatched", "unknown", "delivered", "rejected", "partial" };
+			if (std::find(states.begin(), states.end(), state) == states.end()) return false;
+			if (result.contains("receipt")) {
+				const auto& receipt = result["receipt"];
+				if (state != "delivered" || !HasOnlyKeys(receipt, { "deliveryConfirmed", "receivedAt" }) ||
+					!receipt["deliveryConfirmed"].is_boolean() || !receipt["deliveryConfirmed"].get<bool>() ||
+					!(receipt["receivedAt"].is_null() || IsBrainwashText(receipt["receivedAt"], 128, false))) return false;
+			} else if (state == "delivered") {
+				return false;
+			}
+			for (const auto key : { "companionSchedulerOwned", "operatorClosed", "canResume" }) {
+				if (result.contains(key) && !result[key].is_boolean()) return false;
+			}
+			return !result.contains("queuedReason") || IsCorrespondenceQueueReason(result["queuedReason"]);
+		}
+
+		bool IsCorrespondenceReceiptCheckResponseData(const Json& data, const Json& payload)
+		{
+			return HasOnlyKeys(data, { "operationId", "queued", "reason", "result" }) &&
+				IsUuid(payload["operationId"]) && IsUuid(data["operationId"]) &&
+				data["operationId"] == payload["operationId"] && data["queued"].is_boolean() &&
+				(data["queued"].get<bool>() == data["reason"].is_null()) &&
+				IsCorrespondenceQueueReason(data["reason"]) &&
+				IsCorrespondenceLetterResult(data["result"], payload["operationId"]);
 		}
 
 		bool IsCorrespondencePendingRequestPayload(const Json& payload)
@@ -590,12 +630,67 @@ namespace dql::contract
 			return !cursor.empty() && cursor.size() <= 512;
 		}
 
-		JsonParseResult ParseBoundedJsonImpl(std::string_view raw)
+		bool IsBrainwashProfileResponse(std::string_view operation)
 		{
-			if (raw.empty() || raw.size() > kMaxEnvelopeBytes) {
+			return operation == "brainwash.card.read" || operation == "brainwash.draft" ||
+				operation == "brainwash.apply" || operation == "brainwash.undo";
+		}
+
+		bool IsExtendedBrainwashFieldPath(std::string_view operation, bool response,
+			const std::vector<std::string_view>& path)
+		{
+			constexpr std::array fields{ "core", "npc_static_bio", "personality", "appearance", "occupation", "skills", "speechstyle", "goals" };
+			if (path.empty() || std::find(fields.begin(), fields.end(), path.back()) == fields.end()) return false;
+			if (!response && operation == "brainwash.draft") {
+				return (path.size() == 3 && path[0] == "payload" && path[1] == "changes") ||
+					(path.size() == 4 && path[0] == "payload" && path[1] == "authoring" && path[2] == "workingCard");
+			}
+			if (response && operation == "brainwash.card.read") {
+				return path.size() == 3 && path[0] == "data" && path[1] == "fields";
+			}
+			if (response && operation == "brainwash.draft") {
+				return path.size() == 3 && path[0] == "data" && (path[1] == "before" || path[1] == "changes");
+			}
+			return response && (operation == "brainwash.apply" || operation == "brainwash.undo") &&
+				path.size() == 4 && path[0] == "data" && path[1] == "card" && path[2] == "fields";
+		}
+
+		bool JsonStringsWithinBounds(const Json& value, std::string_view operation, bool response,
+			std::vector<std::string_view>& path)
+		{
+			if (value.is_string()) {
+				const auto maximum = IsExtendedBrainwashFieldPath(operation, response, path) ? kMaxBrainwashFieldBytes : kMaxStringBytes;
+				return value.get_ref<const std::string&>().size() <= maximum;
+			}
+			if (value.is_object()) {
+				for (const auto& [key, child] : value.items()) {
+					if (key.size() > kMaxStringBytes) return false;
+					path.push_back(key);
+					const bool valid = JsonStringsWithinBounds(child, operation, response, path);
+					path.pop_back();
+					if (!valid) return false;
+				}
+			} else if (value.is_array()) {
+				for (const auto& child : value) {
+					if (!JsonStringsWithinBounds(child, operation, response, path)) return false;
+				}
+			}
+			return true;
+		}
+
+		bool JsonStringsWithinBounds(const Json& value, std::string_view operation, bool response)
+		{
+			std::vector<std::string_view> path;
+			return JsonStringsWithinBounds(value, operation, response, path);
+		}
+
+		JsonParseResult ParseBoundedJsonImpl(std::string_view raw,
+			std::size_t maxBytes = kMaxEnvelopeBytes, std::size_t maxStringBytes = kMaxStringBytes)
+		{
+			if (raw.empty() || raw.size() > maxBytes) {
 				return { std::nullopt, "payload_too_large" };
 			}
-			BoundedSax sax;
+			BoundedSax sax(maxStringBytes);
 			const auto parsed = Json::sax_parse(raw.begin(), raw.end(), &sax, Json::input_format_t::json, true);
 			if (!parsed || !sax.Complete()) {
 				return { std::nullopt, sax.ErrorCode().empty() ? "malformed_json" : sax.ErrorCode() };
@@ -653,8 +748,9 @@ namespace dql::contract
 
 	ParseResult ParseRequest(std::string_view raw)
 	{
-		auto parsed = ParseBoundedJson(raw);
+		auto parsed = ParseBoundedJsonImpl(raw, kMaxProfileEnvelopeBytes, kMaxBrainwashFieldBytes);
 		if (!parsed.value) {
+			if (raw.size() > kMaxEnvelopeBytes) return { std::nullopt, "payload_too_large" };
 			return { std::nullopt, std::move(parsed.errorCode) };
 		}
 		const auto& root = *parsed.value;
@@ -667,6 +763,10 @@ namespace dql::contract
 		if (!IsKnownOperation(operation)) {
 			return { std::nullopt, "unsupported_operation" };
 		}
+		if (raw.size() > (operation == "brainwash.draft" ? kMaxProfileEnvelopeBytes : kMaxEnvelopeBytes)) {
+			return { std::nullopt, "payload_too_large" };
+		}
+		if (!JsonStringsWithinBounds(root, operation, false)) return { std::nullopt, "string_too_large" };
 		const auto& context = root["context"];
 		if (!HasOnlyKeys(context, { "viewToken", "nativeGeneration", "serverContext" }) ||
 			!IsUuid(context["viewToken"]) || !IsGeneration(context["nativeGeneration"]) ||
@@ -694,6 +794,11 @@ namespace dql::contract
 				!IsUuid(root["payload"]["operationId"]) || !IsUuid(root["payload"]["attemptId"]))) {
 			return { std::nullopt, "invalid_request" };
 		}
+		if (operation == "correspondence.receipt.check" &&
+			(!HasOnlyKeys(root["payload"], { "operationId", "attemptId" }) ||
+				!IsUuid(root["payload"]["operationId"]) || !IsUuid(root["payload"]["attemptId"]))) {
+			return { std::nullopt, "invalid_request" };
+		}
 		if (operation.starts_with("brainwash.") && !IsBrainwashRequestPayload(operation, root["payload"])) {
 			return { std::nullopt, "invalid_request" };
 		}
@@ -710,9 +815,13 @@ namespace dql::contract
 
 	JsonParseResult ParseServerResponse(std::string_view raw, const Envelope& request)
 	{
-		auto parsed = ParseBoundedJson(raw);
+		auto parsed = IsBrainwashProfileResponse(request.operation) ?
+			ParseBoundedJsonImpl(raw, kMaxProfileEnvelopeBytes, kMaxBrainwashFieldBytes) : ParseBoundedJson(raw);
 		if (!parsed.value) {
 			return parsed;
+		}
+		if (IsBrainwashProfileResponse(request.operation) && !JsonStringsWithinBounds(*parsed.value, request.operation, true)) {
+			return { std::nullopt, "invalid_response" };
 		}
 		const auto& root = *parsed.value;
 		const Json expectedContext{
@@ -735,6 +844,10 @@ namespace dql::contract
 				return { std::nullopt, "invalid_response" };
 			}
 			if (request.operation == "correspondence.pending.read" && !IsCorrespondencePendingResponseData(root["data"])) {
+				return { std::nullopt, "invalid_response" };
+			}
+			if (request.operation == "correspondence.receipt.check" &&
+				!IsCorrespondenceReceiptCheckResponseData(root["data"], request.payload)) {
 				return { std::nullopt, "invalid_response" };
 			}
 			if (request.operation.starts_with("brainwash.") && !IsBrainwashResponseData(request.operation, root["data"])) {

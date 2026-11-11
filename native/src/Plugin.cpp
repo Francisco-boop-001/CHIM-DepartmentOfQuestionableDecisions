@@ -114,30 +114,19 @@ namespace
 		return "invalid";
 	}
 
-	void LogHttpResult(std::string_view stage, const dql::http::HttpResult& result) noexcept
+	void LogHttpResult(std::string_view stage, std::string_view operation, std::string_view requestId,
+		const dql::http::HttpResult& result, std::string_view serverError = "none") noexcept
 	{
 		try {
-			if (gNativeLogger) {
-				gNativeLogger->info("stage={} result={} http={} error={}", stage,
-					HttpOutcomeName(result.outcome), result.statusCode, HttpErrorName(result.errorCode));
-			}
+			if (gNativeLogger) gNativeLogger->info("{}", dql::policy::FormatHttpResultLogLine(stage, operation, requestId,
+				HttpOutcomeName(result.outcome), result.statusCode, HttpErrorName(result.errorCode), serverError));
 		} catch (...) {
 		}
 	}
 
 	std::string_view SafeErrorCode(std::string_view code) noexcept
 	{
-		constexpr std::array codes{
-			std::string_view("actor_unavailable"), std::string_view("busy"), std::string_view("connection_secure_storage_failed"),
-			std::string_view("connection_setup_required"), std::string_view("forbidden"),
-			std::string_view("invalid_request"), std::string_view("invalid_response"),
-			std::string_view("stale_context"), std::string_view("stale_revision"),
-			std::string_view("unauthorized"), std::string_view("unavailable")
-		};
-		for (const auto known : codes) {
-			if (code == known) return known;
-		}
-		return "other";
+		return dql::policy::SafeServerErrorCode(code);
 	}
 
 	bool IsBootstrapData(const dql::contract::Envelope& request, const dql::contract::Json& response)
@@ -730,8 +719,8 @@ namespace
 			if (!argument) {
 				return;
 			}
-			const auto length = strnlen_s(argument, dql::contract::kMaxEnvelopeBytes + 1);
-			if (length == 0 || length > dql::contract::kMaxEnvelopeBytes) {
+			const auto length = strnlen_s(argument, dql::contract::kMaxProfileEnvelopeBytes + 1);
+			if (length == 0 || length > dql::contract::kMaxProfileEnvelopeBytes) {
 				return;
 			}
 			auto raw = std::string(argument, length);
@@ -1712,7 +1701,7 @@ namespace
 		static bool IsServerWriteOperation(std::string_view operation) noexcept
 		{
 			return operation == "pcv.arm" || operation == "pcv.end" || operation == "correspondence.compose" ||
-				operation == "correspondence.resume" || operation == "brainwash.draft" ||
+				operation == "correspondence.resume" || operation == "correspondence.receipt.check" || operation == "brainwash.draft" ||
 				operation == "brainwash.apply" || operation == "brainwash.undo";
 		}
 
@@ -1763,8 +1752,12 @@ namespace
 
 		void RespondRaw(const dql::contract::Envelope& request, std::string_view raw)
 		{
-			if (!IsCurrentRequest(request) || raw.empty() || raw.size() > dql::contract::kMaxEnvelopeBytes) return;
-			const std::string value(raw);
+			const auto maxResponseBytes = request.operation == "brainwash.card.read" || request.operation == "brainwash.draft" ||
+				request.operation == "brainwash.apply" || request.operation == "brainwash.undo" ?
+				dql::contract::kMaxProfileEnvelopeBytes : dql::contract::kMaxEnvelopeBytes;
+			if (!IsCurrentRequest(request) || raw.empty() || raw.size() > maxResponseBytes) return;
+			std::string value(raw);
+			StringWiper wipeValue(value);
 			prisma_->InteropCall(view_, "departmentReceive", value.c_str());
 		}
 
@@ -1898,7 +1891,16 @@ namespace
 		{
 			[[maybe_unused]] const ConnectionFlightGuard flightGuard(connectionRequestInFlight_);
 			StringWiper wipeBody(result.body);
-			LogHttpResult("connection_http", result);
+			dql::contract::JsonParseResult parsed;
+			std::optional<dql::connection::ClaimResponse> claim;
+			if (result.outcome == dql::http::Outcome::completed && result.statusCode >= 200 && result.statusCode < 300) {
+				parsed = dql::contract::ParseBoundedJson(result.body);
+				if (parsed.value) claim = dql::connection::ParseClaimResponse(*parsed.value, context.claimId);
+			}
+			const auto serverError = result.outcome != dql::http::Outcome::completed ? std::string_view("none") :
+				result.statusCode < 200 || result.statusCode >= 300 ? std::string_view("unavailable") :
+				claim ? std::string_view("none") : std::string_view("invalid_response");
+			LogHttpResult("connection_http", context.uiRequest.operation, context.uiRequest.requestId, result, serverError);
 			const auto& request = context.uiRequest;
 			if (!IsCurrentRequest(request)) return;
 			if (serverAuthenticated_) {
@@ -1918,12 +1920,10 @@ namespace
 				RespondError(request, "unavailable", "The connection service did not return a complete response.");
 				return;
 			}
-			const auto parsed = dql::contract::ParseBoundedJson(result.body);
 			if (!parsed.value) {
 				RespondError(request, "invalid_response", "The connection service returned an invalid response.");
 				return;
 			}
-			const auto claim = dql::connection::ParseClaimResponse(*parsed.value, context.claimId);
 			if (!claim) {
 				RespondError(request, "invalid_response", "The connection service returned an invalid approval state.");
 				return;
@@ -2051,11 +2051,20 @@ namespace
 		{
 			const bool bootstrap = request.operation == "bootstrap";
 			const auto stage = bootstrap ? std::string_view("bootstrap_http") : std::string_view("department_http");
-			LogHttpResult(stage, result);
 			if (!IsCurrentRequest(request)) {
+				LogHttpResult(stage, request.operation, request.requestId, result, "other");
 				LogEvent(stage, "stale_completion");
 				return;
 			}
+			dql::contract::JsonParseResult parsed;
+			if (result.outcome == dql::http::Outcome::completed) {
+				parsed = dql::contract::ParseServerResponse(result.body, request);
+			}
+			const auto serverError = result.outcome != dql::http::Outcome::completed ? std::string_view("none") :
+				!parsed.value ? std::string_view("invalid_response") :
+				parsed.value->at("ok").get<bool>() ? std::string_view("none") :
+				SafeErrorCode(parsed.value->at("error").at("code").get_ref<const std::string&>());
+			LogHttpResult(stage, request.operation, request.requestId, result, serverError);
 			if (result.outcome != dql::http::Outcome::completed) {
 				if (bootstrap) LogEvent("bootstrap", "transport_incomplete");
 				if (request.operation == "bootstrap") ClearServerAccess();
@@ -2068,7 +2077,6 @@ namespace
 				}
 				return;
 			}
-			const auto parsed = dql::contract::ParseServerResponse(result.body, request);
 			if (!parsed.value) {
 				if (bootstrap) LogEvent("bootstrap", SafeErrorCode(parsed.errorCode));
 				if (request.operation == "bootstrap") ClearServerAccess();
@@ -2717,6 +2725,15 @@ namespace
 				SubmitServerRequest(request, request.payload);
 				return;
 			}
+			if (request.operation == "correspondence.receipt.check") {
+				if (!dql::policy::CanUseCorrespondence(AccessState(), *request.serverContext)) {
+					RespondPreDispatchError(request, serverAccessCompose_ ? "unavailable" : "forbidden",
+						"The current pairing cannot check correspondence receipts.");
+					return;
+				}
+				SubmitServerRequest(request, request.payload);
+				return;
+			}
 			if (request.operation == "correspondence.compose") {
 				if (!dql::policy::CanUseCorrespondence(AccessState(), *request.serverContext)) {
 					RespondPreDispatchError(request, serverAccessCompose_ ? "unavailable" : "forbidden",
@@ -2945,7 +2962,7 @@ extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.21.0"_v,
+SKSEPluginInfo(.Version = "0.1.22.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
@@ -2957,7 +2974,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	SKSE::Init(skse);
 	InitializeNativeLogger();
 	LogEvent("startup", "skse_initialized");
-	LogEvent("startup", "version_0_1_0_19");
+	LogEvent("startup", "version_0_1_22_0");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
 	if (!messaging || !papyrus) {

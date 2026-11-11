@@ -10,7 +10,8 @@ function qd_api_handle(string $method, ?string $contentType, string $body, ?stri
 {
     $error = null;
     $request = null;
-    $parsed = strlen($body) <= QD_MAX_BODY_BYTES ? qd_parse_json_request($body) : ['request' => null, 'error' => 'payload_too_large'];
+    $stage = 'request';
+    $parsed = strlen($body) <= QD_MAX_PROFILE_REQUEST_BYTES ? qd_parse_json_request($body) : ['request' => null, 'error' => 'payload_too_large'];
     if (is_object($parsed['request']) && qd_valid_echo_metadata($parsed['request'])) {
         $request = $parsed['request'];
     }
@@ -18,7 +19,7 @@ function qd_api_handle(string $method, ?string $contentType, string $body, ?stri
         $error = 'method_not_allowed';
     } elseif (!is_string($contentType) || preg_match('/\A\s*application\/json\s*(?:;\s*charset\s*=\s*utf-8\s*)?\z/iD', $contentType) !== 1) {
         $error = 'unsupported_media_type';
-    } elseif (strlen($body) > QD_MAX_BODY_BYTES) {
+    } elseif (strlen($body) > QD_MAX_PROFILE_REQUEST_BYTES) {
         $error = 'payload_too_large';
     } elseif ($parsed['error'] !== null) {
         $error = $parsed['error'];
@@ -27,6 +28,7 @@ function qd_api_handle(string $method, ?string $contentType, string $body, ?stri
     if ($error !== null) {
         $response = qd_error_response($request, $error);
     } else {
+        $stage = 'dispatch';
         $bufferLevel = ob_get_level();
         if (!ob_start()) {
             $response = qd_error_response($request, 'unavailable');
@@ -43,15 +45,21 @@ function qd_api_handle(string $method, ?string $contentType, string $body, ?stri
     $code = ($response['ok'] ?? false) === false ? (string)($response['error']['code'] ?? 'unavailable') : '';
     $status = $code === '' ? 200 : qd_http_status_for_error($code);
     try {
+        if ($code === '') $stage = 'serialize';
         $encoded = json_encode($response, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     } catch (Throwable) {
         $status = 503;
+        $code = 'unavailable';
+        $stage = 'serialize';
         $encoded = json_encode(qd_error_response(null, 'unavailable'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
-    if (strlen($encoded) > QD_MAX_BODY_BYTES) {
+    if (strlen($encoded) > qd_response_body_limit($request->operation ?? null)) {
         $status = 503;
+        $code = 'unavailable';
+        $stage = 'response_size';
         $encoded = json_encode(qd_error_response(null, 'unavailable'), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
     }
+    if ($code !== '') qd_api_log_diagnostic($request, $code, $status, $stage);
     $headers = [
         'Content-Type' => 'application/json; charset=utf-8',
         'Cache-Control' => 'no-store, max-age=0',
@@ -62,6 +70,32 @@ function qd_api_handle(string $method, ?string $contentType, string $body, ?stri
         $headers['Allow'] = 'POST';
     }
     return ['status' => $status, 'headers' => $headers, 'body' => $encoded];
+}
+
+function qd_api_log_diagnostic(?object $request, string $code, int $status, string $stage, ?callable $logger = null): void
+{
+    $operation = is_string($request->operation ?? null) && array_key_exists($request->operation, QD_OPERATION_REQUIREMENTS)
+        ? $request->operation
+        : null;
+    $requestId = qd_is_uuid($request->requestId ?? null) ? $request->requestId : null;
+    if (!array_key_exists($code, QD_ERROR_MESSAGES)) $code = 'unavailable';
+    if ($status !== qd_http_status_for_error($code)) $status = qd_http_status_for_error($code);
+    if (!in_array($stage, ['request', 'dispatch', 'serialize', 'response_size'], true)) $stage = 'request';
+    $event = [
+        'operation' => $operation,
+        'requestId' => $requestId,
+        'code' => $code,
+        'status' => $status,
+        'stage' => $stage,
+        'at' => gmdate('Y-m-d\TH:i:s\Z'),
+    ];
+    try {
+        $encoded = json_encode($event, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);
+        $write = $logger ?? static fn(string $line): bool => @error_log($line);
+        $write('QD_API_DIAGNOSTIC ' . $encoded);
+    } catch (Throwable) {
+        // Diagnostics must not change the API result when the logger is unavailable.
+    }
 }
 
 function qd_valid_echo_metadata(object $request): bool
@@ -139,7 +173,7 @@ function qd_api_runtime_dependencies(): array
 function qd_api_emit(): void
 {
     $stream = @fopen('php://input', 'rb');
-    $body = $stream === false ? '' : stream_get_contents($stream, QD_MAX_BODY_BYTES + 1);
+    $body = $stream === false ? '' : stream_get_contents($stream, QD_MAX_PROFILE_REQUEST_BYTES + 1);
     if (is_resource($stream)) {
         fclose($stream);
     }

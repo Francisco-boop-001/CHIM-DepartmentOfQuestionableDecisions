@@ -262,13 +262,13 @@
       }
       const payload = selectionPayload(mode);
       const bytes = (text) => new TextEncoder().encode(text).length;
-      if (bytes(state.instruction) > 2000 || FIELDS.some((field) => bytes(state.edits[field] || '') > 8192) || FIELDS.reduce((sum, field) => sum + bytes(state.edits[field] || ''), 0) > 20000 || bytes(state.beliefs) > 4000) {
-        setStatus('Input exceeds the UTF-8 byte limit. Shorten it explicitly; your text is retained.'); return;
+      if (bytes(state.instruction) > 2000 || FIELDS.some((field) => bytes(state.edits[field] || '') > 65536) || FIELDS.reduce((sum, field) => sum + bytes(state.edits[field] || ''), 0) > 131072 || bytes(state.beliefs) > 4000) {
+        setStatus('Input exceeds the UTF-8 byte limit (65536 per field; 131072 for the full card; 2000 direction; 4000 beliefs). Your text is retained.'); return;
       }
       if (mode === 'ai' && (state.conversation.length > 8 || state.conversation.some((turn) => bytes(turn.content) > 2000) || state.conversation.reduce((sum, turn) => sum + bytes(turn.content), 0) > 12000)) {
         setStatus('Conversation exceeds the 8-turn / 2000-byte per turn / 12000-byte total limit. Edit or clear conversation explicitly.'); return;
       }
-      if (bytes(JSON.stringify({ operation: 'brainwash.draft', payload })) > 65536) { setStatus('Request exceeds 65536 UTF-8 bytes. Shorten input explicitly; all text is retained.'); return; }
+      if (bytes(JSON.stringify({ operation: 'brainwash.draft', payload })) > 2097152) { setStatus('Request exceeds 2097152 UTF-8 bytes. Shorten input explicitly; all text is retained.'); return; }
       const token = epoch;
       const actorKey = state.actorKey;
       try {

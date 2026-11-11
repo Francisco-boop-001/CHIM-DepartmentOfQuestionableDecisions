@@ -250,13 +250,19 @@ namespace dql::http
 		{
 			return operation == "pcv.arm" || operation == "pcv.end" || operation == "pcv.companion.stage" ||
 				operation == "pcv.companion.cancel" || operation == "correspondence.compose" ||
-				operation == "correspondence.resume" || operation == "brainwash.draft" ||
+				operation == "correspondence.resume" || operation == "correspondence.receipt.check" || operation == "brainwash.draft" ||
 				operation == "brainwash.apply" || operation == "brainwash.undo" || operation == "connection.begin";
+		}
+
+		[[nodiscard]] bool IsBrainwashProfileResponse(std::string_view operation) noexcept
+		{
+			return operation == "brainwash.card.read" || operation == "brainwash.draft" ||
+				operation == "brainwash.apply" || operation == "brainwash.undo";
 		}
 
 		[[nodiscard]] bool IsAllowedOperation(std::string_view operation) noexcept
 		{
-			static constexpr std::array<std::string_view, 24> allowed{
+			static constexpr std::array<std::string_view, 25> allowed{
 				"bootstrap",
 				"pcv.roster.read",
 				"pcv.status.read",
@@ -274,6 +280,7 @@ namespace dql::http
 				"correspondence.reconcile",
 				"correspondence.pending.read",
 				"correspondence.resume",
+				"correspondence.receipt.check",
 				"brainwash.catalog.read", "brainwash.card.read", "brainwash.draft", "brainwash.apply", "brainwash.undo",
 				"connection.begin",
 				"connection.status"
@@ -534,7 +541,9 @@ namespace dql::http
 				(isConnectionOperation != (request.route == Route::connection))) {
 				return ErrorCode::invalidRequest;
 			}
-			if (request.envelopeJson.size() > HttpTransport::kMaxEnvelopeBytes) return ErrorCode::requestTooLarge;
+			const auto maxRequestBytes = request.operation == "brainwash.draft" ?
+				HttpTransport::kMaxProfileEnvelopeBytes : HttpTransport::kMaxEnvelopeBytes;
+			if (request.envelopeJson.size() > maxRequestBytes) return ErrorCode::requestTooLarge;
 			if (!IsValidUtf8JsonBytes(request.envelopeJson)) return ErrorCode::invalidRequest;
 			if (request.bearerToken.empty()) {
 				if (request.operation != "bootstrap" && !isConnectionOperation) return ErrorCode::invalidBearer;
@@ -897,11 +906,13 @@ namespace dql::http
 			}
 
 			std::string responseBody;
+			const auto maxResponseBytes = IsBrainwashProfileResponse(request.operation) ?
+				kMaxProfileResponseBytes : kMaxResponseBytes;
 			for (;;) {
 				if (!SetRemainingTimeouts(httpRequest.get(), deadline)) {
 				return failAsync(AsyncWaitResult::completed, GetLastError(), statusCode);
 				}
-				const std::size_t remaining = kMaxResponseBytes - responseBody.size();
+				const std::size_t remaining = maxResponseBytes - responseBody.size();
 				const DWORD wanted = static_cast<DWORD>(std::min<std::size_t>(remaining + 1, asyncState->readBuffer.size()));
 				auto read = waitFor(WINHTTP_CALLBACK_STATUS_READ_COMPLETE, [&] {
 					return WinHttpReadData(httpRequest.get(), asyncState->readBuffer.data(), wanted, nullptr);

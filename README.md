@@ -4,6 +4,16 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.36: Sealed Fates dev.33 and mailbox recovery
+
+[Download the Department MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.36/WorldOfDramaLlama-0.1.0-prealpha.36.zip). Sealed Fates still uses its [own installable ZIP](https://github.com/Francisco-boop-001/CHIM-SealedFates/releases). Exit Skyrim, replace the old enabled copies in MO2, and let CHIM synchronize the server packages. You can stay on Sealed Fates dev.32 or update to dev.33.
+
+In Sealed Fates → **Mailboxes**, load recipients, select one, and refresh. Confirmed deliveries now show even when a display date is unavailable. Empty mailboxes, limited results and failed refreshes have distinct messages. **Check receipt** looks up the same letter; it does not send it again. Private Conversation now keeps the result of Arm or End visible.
+
+This package supports Private Conversation 0.1.25, Mind Poisoning 0.1.30, Sworn & Scorned 0.1.12, Sealed Fates dev.31–33, and Malpractice Makes Perfect dev.6. It includes the dev.7 Malpractice server package and its full profile editor. The Department still uses its own companion DLL and keeps the original Private Conversation input available.
+
+Verification used offline owner packages and synthetic receipts and UI sessions. Installed CHIM, Skyrim input and actual delivery were outside this check.
+
 ## Prealpha.34: Sealed Fates dev.32 compatibility
 
 Download the [Department prealpha.34 MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.34/WorldOfDramaLlama-0.1.0-prealpha.34.zip) and the separate [Sealed Fates dev.32 MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-SealedFates/releases/tag/correspondence-v0.1.0-dev.32). Close Skyrim before replacing the previous enabled copy of each mod. Each mod ships its own CHIM server package in its regular ZIP.

@@ -2,7 +2,10 @@
   'use strict';
 
   const MAX_ENVELOPE_BYTES = 65536;
+  const MAX_PROFILE_ENVELOPE_BYTES = 2097152;
   const MAX_STRING_BYTES = 8192;
+  const MAX_PROFILE_FIELD_BYTES = 65536;
+  const MAX_PROFILE_CARD_BYTES = 131072;
   const MAX_ROWS = 100;
   const MAX_CATALOG_ACTORS = 10000;
   const MAX_UNRESOLVED_LETTERS = 3;
@@ -24,7 +27,7 @@
   const OPS = new Set([
     'bootstrap', 'view.close', 'connection.begin', 'connection.status', 'pcv.roster.read', 'pcv.status.read', 'pcv.arm', 'pcv.end', 'pcv.send', 'pcv.send.status',
     'mp.relationships.read', 'sas.issues.read', 'correspondence.catalog.read', 'correspondence.inventory.read',
-    'correspondence.mailbox.read', 'correspondence.detail.read', 'correspondence.compose', 'correspondence.reconcile', 'correspondence.resume', 'correspondence.pending.read',
+    'correspondence.mailbox.read', 'correspondence.detail.read', 'correspondence.compose', 'correspondence.reconcile', 'correspondence.receipt.check', 'correspondence.resume', 'correspondence.pending.read',
     'brainwash.catalog.read', 'brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo',
   ]);
   const BRAINWASH_FIELDS = ['core', 'npc_static_bio', 'personality', 'appearance', 'occupation', 'skills', 'speechstyle', 'goals'];
@@ -33,7 +36,7 @@
     'mp.relationships.read': 'mp', 'sas.issues.read': 'sas',
     'correspondence.catalog.read': 'correspondence', 'correspondence.inventory.read': 'correspondence',
     'correspondence.mailbox.read': 'correspondence', 'correspondence.detail.read': 'correspondence',
-    'correspondence.compose': 'correspondence', 'correspondence.reconcile': 'correspondence', 'correspondence.resume': 'correspondence', 'correspondence.pending.read': 'correspondence',
+    'correspondence.compose': 'correspondence', 'correspondence.reconcile': 'correspondence', 'correspondence.receipt.check': 'correspondence', 'correspondence.resume': 'correspondence', 'correspondence.pending.read': 'correspondence',
     'brainwash.catalog.read': 'brainwash', 'brainwash.card.read': 'brainwash', 'brainwash.draft': 'brainwash',
     'brainwash.apply': 'brainwash', 'brainwash.undo': 'brainwash',
   };
@@ -42,7 +45,7 @@
     'mp.relationships.read': 'inspector', 'sas.issues.read': 'inspector',
     'correspondence.inventory.read': 'compose',
     'correspondence.mailbox.read': 'inspector', 'correspondence.detail.read': 'inspector',
-    'correspondence.compose': 'compose', 'correspondence.reconcile': 'compose', 'correspondence.resume': 'compose', 'correspondence.pending.read': 'compose',
+    'correspondence.compose': 'compose', 'correspondence.reconcile': 'compose', 'correspondence.receipt.check': 'compose', 'correspondence.resume': 'compose', 'correspondence.pending.read': 'compose',
     'brainwash.catalog.read': 'brainwash', 'brainwash.card.read': 'brainwash', 'brainwash.draft': 'brainwash',
     'brainwash.apply': 'brainwash', 'brainwash.undo': 'brainwash',
   };
@@ -66,6 +69,7 @@
     COMPONENT_MISMATCH: 'The Department game mod and server package do not match. Reinstall the Department game mod and included server package from the same release, restart Skyrim and CHIM, then reopen the game interface.',
     CONNECTION_SETUP_REQUIRED: 'CHIM’s server address could not be determined. Check that CHIM is connected, then restart Skyrim.',
     CONNECTION_SECURE_STORAGE_FAILED: 'Windows could not save this game’s connection. Connection was not started.',
+    PROFILE_TOO_LARGE: 'This stored NPC profile exceeds the supported display limit. The saved profile remains unchanged; no text was truncated.',
   };
   const BOOTSTRAP_TIMEOUT_COPY = 'The bootstrap request timed out. No automatic retry was made.';
   const BOOTSTRAP_FAILURE_NEXT_STEP = 'Select Retry connection to try again.';
@@ -75,18 +79,18 @@
     stale_revision: 'STALE_REVISION', conflict: 'CONFLICT', not_found: 'NOT_FOUND',
     unsupported_media_type: 'UNSUPPORTED_MEDIA_TYPE', method_not_allowed: 'METHOD_NOT_ALLOWED',
     payload_too_large: 'REQUEST_TOO_LARGE', actor_unavailable: 'ACTOR_UNAVAILABLE', invalid_input: 'INVALID_INPUT',
-    busy: 'BUSY', unavailable: 'UNAVAILABLE', rate_limited: 'RATE_LIMITED', too_large: 'TOO_LARGE',
+    busy: 'BUSY', unavailable: 'UNAVAILABLE', rate_limited: 'RATE_LIMITED', too_large: 'TOO_LARGE', profile_too_large: 'PROFILE_TOO_LARGE',
     invalid_response: 'COMPONENT_MISMATCH',
     connection_setup_required: 'CONNECTION_SETUP_REQUIRED', connection_secure_storage_failed: 'CONNECTION_SECURE_STORAGE_FAILED',
   };
   // Only native-owned errors can vouch for a pre-dispatch marker.
   const PRE_DISPATCH_ERRORS = new Set([
     'unauthorized', 'forbidden', 'stale_context', 'stale_revision', 'actor_unavailable', 'invalid_input',
-    'busy', 'unavailable', 'rate_limited', 'too_large', 'invalid_response',
+    'busy', 'unavailable', 'rate_limited', 'too_large', 'profile_too_large', 'invalid_response',
     'connection_setup_required', 'connection_secure_storage_failed',
   ]);
   const QUEUED_REASON_COPY = {
-    executor_unavailable: 'CHIM delivery is waiting for fresh game activity. With Sealed Fates dev.31, leave Skyrim unpaused so normal CHIM polling can update it. Earlier supported versions need a recent managed-NPC report. Keep CHIM Interaction On where that setting is available. Resume this same saved letter; do not send a new copy.',
+    executor_unavailable: 'CHIM delivery is waiting for fresh game activity. With Sealed Fates dev.31 or later, leave Skyrim unpaused so normal CHIM polling can update it. Earlier supported versions need a recent managed-NPC report. Keep CHIM Interaction On where that setting is available. Resume this same saved letter; do not send a new copy.',
     renderer_unavailable: 'CHIM cannot prepare this letter for delivery right now. Refresh its status before continuing.',
     identity_changed: 'The character no longer matches the one for this letter. Refresh status before continuing.',
     mapping_unavailable: 'CHIM cannot confirm which character this letter is addressed to. Refresh status before continuing.',
@@ -97,7 +101,12 @@
     not_dispatched: 'CHIM has not started delivery for this letter. Resume delivery will retry the same letter when you choose it.',
     operation_unavailable: 'CHIM cannot confirm a delivery path for this letter right now. Refresh status before continuing.',
   };
+  const RECEIPT_CHECK_REASON_COPY = {
+    executor_unavailable: 'CHIM needs fresh game activity to check for a receipt. With Sealed Fates dev.31 or later, leave Skyrim unpaused so normal CHIM polling can update it. Keep CHIM Interaction On where available, then select Check Skyrim receipt again for this same saved letter. Do not send another copy.',
+  };
   const NON_RESUMABLE_QUEUED_REASONS = new Set(['companion_owned', 'operator_closed', 'identity_changed', 'integrity_unavailable']);
+  const RECEIPT_CHECKABLE_STATES = new Set(['dispatched', 'unknown', 'partial']);
+  const PROFILE_RESPONSE_OPERATIONS = new Set(['brainwash.card.read', 'brainwash.draft', 'brainwash.apply', 'brainwash.undo']);
 
   function createConnectionState() {
     return {
@@ -132,15 +141,15 @@
 
   function bytes(value) { return new TextEncoder().encode(value).length; }
   function isPlainObject(value) { return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype; }
-  function boundedTree(value, depth = 0) {
+  function boundedTree(value, depth = 0, maxStringBytes = MAX_STRING_BYTES) {
     if (depth > 8) return false;
-    if (typeof value === 'string') return bytes(value) <= MAX_STRING_BYTES;
+    if (typeof value === 'string') return bytes(value) <= maxStringBytes;
     if (typeof value === 'number') return Number.isFinite(value);
     if (value === null || typeof value === 'boolean') return true;
-    if (Array.isArray(value)) return value.length <= 128 && value.every((item) => boundedTree(item, depth + 1));
+    if (Array.isArray(value)) return value.length <= 128 && value.every((item) => boundedTree(item, depth + 1, maxStringBytes));
     if (!isPlainObject(value)) return false;
     const entries = Object.entries(value);
-    return entries.length <= 64 && entries.every(([key, item]) => bytes(key) <= MAX_STRING_BYTES && boundedTree(item, depth + 1));
+    return entries.length <= 64 && entries.every(([key, item]) => bytes(key) <= MAX_STRING_BYTES && boundedTree(item, depth + 1, maxStringBytes));
   }
   function validUuid(value) { return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value); }
   function validBrainwashActorKey(value) {
@@ -149,13 +158,13 @@
     return digits.length < 19 || digits <= '9223372036854775807';
   }
   function validBrainwashRevision(value) { return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value); }
-  function validBrainwashFields(value, allowEmpty, maximum = 20000) {
+  function validBrainwashFields(value, allowEmpty, maximum = MAX_PROFILE_CARD_BYTES) {
     if (!isPlainObject(value)) return false;
     const entries = Object.entries(value);
     if (entries.length > BRAINWASH_FIELDS.length || (!allowEmpty && entries.length === 0)) return false;
     let total = 0;
     for (const [field, content] of entries) {
-      if (!BRAINWASH_FIELDS.includes(field) || !boundedString(content, 8192)) return false;
+      if (!BRAINWASH_FIELDS.includes(field) || !boundedString(content, MAX_PROFILE_FIELD_BYTES)) return false;
       total += bytes(content);
       if (total > maximum) return false;
     }
@@ -311,6 +320,7 @@
       'correspondence.mailbox.read': ['recipientActorKey', 'limit', 'cursor'], 'correspondence.detail.read': ['recipientActorKey', 'letterId'],
       'correspondence.compose': ['operationId', 'writerActorKey', 'recipientActorKey', 'signatureActorKey', 'body', 'inventoryRevision', 'attachments', 'goldAmount'],
       'correspondence.reconcile': ['operationId'],
+      'correspondence.receipt.check': ['operationId', 'attemptId'],
       'correspondence.resume': ['operationId', 'attemptId'],
       'correspondence.pending.read': ['cursor'],
       'brainwash.catalog.read': ['query', 'nearby'], 'brainwash.card.read': ['actorKey'],
@@ -343,6 +353,8 @@
       if (new Set(payload.attachments.map((item) => item.itemKey)).size !== payload.attachments.length) return false;
     }
     if (operation === 'correspondence.reconcile' && !validUuid(payload.operationId)) return false;
+    if (operation === 'correspondence.receipt.check' && (!exactKeys(payload, ['operationId', 'attemptId'])
+      || !validUuid(payload.operationId) || !validUuid(payload.attemptId))) return false;
     if (operation === 'correspondence.resume' && (!exactKeys(payload, ['operationId', 'attemptId'])
       || !validUuid(payload.operationId) || !validUuid(payload.attemptId))) return false;
     if (operation === 'correspondence.pending.read' && (!exactKeys(payload, [], ['cursor'])
@@ -379,7 +391,7 @@
       if (operation === 'correspondence.mailbox.read' && (!boundedString(payload.recipientActorKey, 128) || !payload.recipientActorKey)) return false;
     }
     if (operation === 'correspondence.detail.read' && (!boundedString(payload.recipientActorKey, 128) || !payload.recipientActorKey || !boundedString(payload.letterId, 128) || !payload.letterId)) return false;
-    return boundedTree(payload);
+    return boundedTree(payload, 0, operation === 'brainwash.draft' ? MAX_PROFILE_FIELD_BYTES : MAX_STRING_BYTES);
   }
   function validBrainwashCard(value) {
     if (!exactKeys(value, ['actorKey', 'label', 'scope', 'revision', 'fields', 'beliefs', 'draftId', 'lastOperation'])
@@ -444,12 +456,15 @@
     if (!['bootstrap', 'view.close', 'connection.begin', 'connection.status'].includes(operation)
       && (!validServerContext(context.serverContext) || context.serverContext === null)) return Promise.reject(failLocal('CONTEXT_STALE'));
     const envelope = { version: 1, requestId: newUuid(), operation, context, payload };
-    if (!validUuid(envelope.requestId) || !validUuid(context.viewToken) || !validGeneration(context.nativeGeneration) || !validServerContext(context.serverContext) || !boundedTree(envelope)) {
+    const maxStringBytes = operation === 'brainwash.draft' ? MAX_PROFILE_FIELD_BYTES : MAX_STRING_BYTES;
+    if (!validUuid(envelope.requestId) || !validUuid(context.viewToken) || !validGeneration(context.nativeGeneration) || !validServerContext(context.serverContext)
+      || !boundedTree(envelope, 0, maxStringBytes)) {
       return Promise.reject(failLocal('INVALID_INPUT', 'The request exceeded a safe transport limit.'));
     }
     let serialized;
     try { serialized = JSON.stringify(envelope); } catch { return Promise.reject(failLocal('INVALID_INPUT')); }
-    if (bytes(serialized) > MAX_ENVELOPE_BYTES || typeof window.departmentRequest !== 'function') return Promise.reject(failLocal('UNAVAILABLE'));
+    const maxEnvelopeBytes = operation === 'brainwash.draft' ? MAX_PROFILE_ENVELOPE_BYTES : MAX_ENVELOPE_BYTES;
+    if (bytes(serialized) > maxEnvelopeBytes || typeof window.departmentRequest !== 'function') return Promise.reject(failLocal('UNAVAILABLE'));
     return new Promise((resolve, reject) => {
       const timer = window.setTimeout(() => {
         state.pending.delete(envelope.requestId);
@@ -489,13 +504,24 @@
   function resetBrainwashEditor() {
     brainwashEditorAvailable = false;
     try { if (brainwashEditor) brainwashEditor.reset(); } catch { /* Keep the shared editor closed if reset fails. */ }
+    try { if (brainwashEditor) brainwashEditor.setAvailable(false); } catch { /* Keep the shared editor closed if reset fails. */ }
+  }
+  function brainwashPanelActive() {
+    const tab = $('tab-brainwash');
+    const panel = $('panel-brainwash');
+    return Boolean(tab && panel && tab.getAttribute('aria-selected') === 'true' && !panel.hidden);
   }
   function syncBrainwashEditor() {
     const available = state.initialized && !state.closed && !state.closing && !state.bootstrapping
       && state.authenticated && state.capabilities.brainwash === true && state.access.brainwash === true;
-    if (brainwashEditorAvailable && !available) resetBrainwashEditor();
-    brainwashEditorAvailable = available;
-    try { if (brainwashEditor) brainwashEditor.setAvailable(available); } catch { resetBrainwashEditor(); }
+    if (!available) {
+      if (brainwashEditorAvailable) resetBrainwashEditor();
+      return;
+    }
+    brainwashEditorAvailable = true;
+    if (!brainwashPanelActive()) return;
+    if (!brainwashEditor) mountBrainwashEditor();
+    try { if (brainwashEditor) brainwashEditor.setAvailable(true); } catch { resetBrainwashEditor(); }
   }
   function mountBrainwashEditor() {
     const root = $('brainwash-editor');
@@ -506,7 +532,10 @@
       return;
     }
     try {
-      brainwashEditor = window.BrainwashEditor.mount(root, { request: (operation, payload) => request(operation, payload) });
+      brainwashEditor = window.BrainwashEditor.mount(root, { request: (operation, payload) => {
+        if (!brainwashEditorAvailable || !brainwashPanelActive()) return Promise.reject(failLocal('CONTEXT_STALE'));
+        return request(operation, payload);
+      } });
       if (!brainwashEditor || typeof brainwashEditor.reset !== 'function' || typeof brainwashEditor.setAvailable !== 'function') {
         throw new Error('Invalid Malpractice Makes Perfect editor module.');
       }
@@ -561,10 +590,13 @@
     return result;
   }
   function receive(raw) {
-    if (typeof raw !== 'string' || bytes(raw) > MAX_ENVELOPE_BYTES) return false;
+    if (typeof raw !== 'string' || bytes(raw) > MAX_PROFILE_ENVELOPE_BYTES) return false;
     let response;
     try { response = JSON.parse(raw); } catch { return false; }
-    if (!boundedTree(response) || !isPlainObject(response) || response.version !== 1 || !validUuid(response.requestId) || !OPS.has(response.operation) || typeof response.ok !== 'boolean') return false;
+    if (!isPlainObject(response) || response.version !== 1 || !validUuid(response.requestId) || !OPS.has(response.operation) || typeof response.ok !== 'boolean') return false;
+    const profileResponse = response.ok && PROFILE_RESPONSE_OPERATIONS.has(response.operation);
+    if (bytes(raw) > (profileResponse ? MAX_PROFILE_ENVELOPE_BYTES : MAX_ENVELOPE_BYTES)
+      || !boundedTree(response, 0, profileResponse ? MAX_PROFILE_FIELD_BYTES : MAX_STRING_BYTES)) return false;
     const responseKeys = response.ok ? ['version', 'requestId', 'operation', 'context', 'ok', 'data'] : ['version', 'requestId', 'operation', 'context', 'ok', 'error'];
     if (Object.keys(response).length !== responseKeys.length || Object.keys(response).some((key) => !responseKeys.includes(key))) return false;
     const context = response.context;
@@ -714,6 +746,7 @@
   }
 
   function clearScopeBoundOperations() {
+    setStatus('pcv-action-feedback', '');
     clearPcvSendStatusPoll();
     resetBrainwashEditor();
     state.pcv.mutationPending = false;
@@ -745,6 +778,7 @@
 
   function clearPrivateViews() {
     state.pcv.roster = null; state.pcv.status = null;
+    setStatus('pcv-action-feedback', '');
     state.mp = { records: [], nextCursor: null, limited: false }; state.sas = { issues: [], nextCursor: null, limited: false };
     state.mail.actors = []; state.mail.catalogLimited = false; state.mail.catalogRevision = null; state.mail.catalogNextCursor = null; state.mail.catalogError = null; state.mail.inventory = null; state.mail.inventoryLoaded = false; state.mail.items = [];
     state.mail.letters = []; state.mail.selectedLetter = null; state.mail.mailboxNextCursor = null; state.mail.mailboxLimited = false; state.mail.reviewed = false;
@@ -756,6 +790,7 @@
     $('letter-detail-secondary').hidden = true;
     text('detail-signature-secondary', ''); text('detail-author-secondary', ''); text('detail-body-secondary', ''); $('detail-attachments-secondary').replaceChildren();
     text('mp-limited', ''); text('sas-limited', ''); text('mail-limited', '');
+    text('mailbox-read-state-secondary', ''); text('mailbox-limited-secondary', '');
     renderPcvStatus(); renderRoster(); renderInventory(); clearSelectsForMail();
   }
   function resetTransientControls() {
@@ -1552,6 +1587,7 @@
   }
   function readPcv() {
     if (state.inFlight.has('pcv.roster.read') || state.inFlight.has('pcv.status.read')) return;
+    setStatus('pcv-action-feedback', '');
     requireCapability('pcv.roster.read');
     const context = makeContext();
     let resolvedMutationId = null;
@@ -1625,11 +1661,12 @@
     const operationId = newUuid();
     state.pcv.mutationOperationId = operationId;
     if (!configuration || !payloadFieldsValid('pcv.arm', { operationId, expectedActiveConfigId: status.activeConfigId, expectedPendingConfigId: status.pendingConfigId, configuration })) {
-      setStatus('pcv-state', 'Review the scene settings before Arm.', 'error'); return;
+      setStatus('pcv-action-feedback', 'Review the scene settings before Arm.', 'error'); return;
     }
     const payload = { operationId, expectedActiveConfigId: status.activeConfigId, expectedPendingConfigId: status.pendingConfigId, configuration };
     const context = makeContext();
     state.pcv.mutationPending = true;
+    setStatus('pcv-action-feedback', 'Arm request is pending.');
     renderPcvAccess();
     let mutationMayHaveApplied = false;
     try {
@@ -1641,7 +1678,7 @@
       if (result.state !== 'staged') {
         state.pcv.mutationUnknown = true;
         state.pcv.mutationOperationId = result.state === 'unknown' ? operationId : null;
-        setStatus('pcv-state', result.state === 'unknown' ? 'Arm outcome is unknown. Refresh owner status before another change.' : 'PCV rejected this Arm request. Refresh to confirm the current owner status before another change.', 'error');
+        setStatus('pcv-action-feedback', result.state === 'unknown' ? 'Arm outcome is unknown. Refresh owner status before another change.' : 'PCV rejected this Arm request. Refresh to confirm the current owner status before another change.', 'error');
         return;
       }
       const readback = await request('pcv.status.read', {});
@@ -1652,7 +1689,7 @@
       if (refreshed.state === 'unavailable') {
         state.pcv.mutationUnknown = true;
         state.pcv.mutationOperationId = operationId;
-        setStatus('pcv-state', 'Arm was accepted, but PCV status is unavailable. Its outcome remains uncertain; refresh before another change.', 'error');
+        setStatus('pcv-action-feedback', 'Arm was accepted, but PCV status is unavailable. Its outcome remains uncertain; refresh before another change.', 'error');
         renderPcvStatus();
         return;
       }
@@ -1667,13 +1704,13 @@
         : activated
           ? 'The staged configuration is now Active, confirmed by PCV status.'
           : 'PCV accepted Arm, but the current status no longer matches that operation. Review the refreshed owner state before another change.';
-      setStatus('pcv-state', message, stagedPending || activated ? 'success' : 'error');
+      setStatus('pcv-action-feedback', message, stagedPending || activated ? 'success' : 'error');
       renderPcvStatus();
     } catch (error) {
       if (!isCurrentContext(context)) return;
       state.pcv.mutationUnknown = mutationMayHaveApplied || error.dispatched === true;
       state.pcv.mutationOperationId = state.pcv.mutationUnknown ? operationId : null;
-      setStatus('pcv-state', state.pcv.mutationUnknown ? `${localError(error)} Refresh status before another mutation.` : `${localError(error)} No Arm request was sent; review and try again.`, 'error');
+      setStatus('pcv-action-feedback', state.pcv.mutationUnknown ? `${localError(error)} Refresh status before another mutation.` : `${localError(error)} No Arm request was sent; review and try again.`, 'error');
     } finally {
       if (isCurrentView(context.viewToken, context.nativeGeneration)) {
         state.pcv.mutationPending = false;
@@ -1684,9 +1721,10 @@
   async function endPcv() {
     if (state.pcv.mutationPending || state.pcv.mutationUnknown) return;
     const status = state.pcv.status;
-    if (!status) { setStatus('pcv-state', 'Refresh owner state before End now.', 'error'); return; }
+    if (!status) { setStatus('pcv-action-feedback', 'Refresh owner state before End now.', 'error'); return; }
     const context = makeContext();
     state.pcv.mutationPending = true;
+    setStatus('pcv-action-feedback', 'End request is pending.');
     renderPcvAccess();
     const payload = { operationId: newUuid(), expectedActiveConfigId: status.activeConfigId, expectedPendingConfigId: status.pendingConfigId };
     state.pcv.mutationOperationId = payload.operationId;
@@ -1700,7 +1738,7 @@
       if (result.state !== 'ended') {
         state.pcv.mutationUnknown = true;
         state.pcv.mutationOperationId = result.state === 'unknown' ? payload.operationId : null;
-        setStatus('pcv-state', result.state === 'unknown' ? 'End outcome is unknown. Refresh owner status before another change.' : 'PCV rejected End. Refresh to confirm the current owner status before another change.', 'error');
+        setStatus('pcv-action-feedback', result.state === 'unknown' ? 'End outcome is unknown. Refresh owner status before another change.' : 'PCV rejected End. Refresh to confirm the current owner status before another change.', 'error');
         return;
       }
       const readback = await request('pcv.status.read', {});
@@ -1711,20 +1749,20 @@
       if (refreshed.state === 'unavailable') {
         state.pcv.mutationUnknown = true;
         state.pcv.mutationOperationId = payload.operationId;
-        setStatus('pcv-state', 'End was accepted, but PCV status is unavailable. Off is not confirmed; refresh before another change.', 'error');
+        setStatus('pcv-action-feedback', 'End was accepted, but PCV status is unavailable. Off is not confirmed; refresh before another change.', 'error');
         renderPcvStatus();
         return;
       }
       state.pcv.mutationUnknown = false;
       const off = refreshed.state === 'off' && !refreshed.active && !refreshed.pending;
       state.pcv.mutationOperationId = null;
-      setStatus('pcv-state', off ? 'PCV confirms the scene is Off. Any audio already queued may continue.' : 'End was accepted, but a current Active or Pending configuration is now present; review the refreshed status.', off ? 'success' : 'error');
+      setStatus('pcv-action-feedback', off ? 'PCV confirms the scene is Off. Any audio already queued may continue.' : 'End was accepted, but a current Active or Pending configuration is now present; review the refreshed status.', off ? 'success' : 'error');
       renderPcvStatus();
     } catch (error) {
       if (!isCurrentContext(context)) return;
       state.pcv.mutationUnknown = mutationMayHaveApplied || error.dispatched === true;
       state.pcv.mutationOperationId = state.pcv.mutationUnknown ? payload.operationId : null;
-      setStatus('pcv-state', state.pcv.mutationUnknown ? `${localError(error)} Off is not confirmed. Refresh before another change.` : `${localError(error)} No End request was sent.`, 'error');
+      setStatus('pcv-action-feedback', state.pcv.mutationUnknown ? `${localError(error)} Off is not confirmed. Refresh before another change.` : `${localError(error)} No End request was sent.`, 'error');
     } finally {
       if (isCurrentView(context.viewToken, context.nativeGeneration)) {
         state.pcv.mutationPending = false;
@@ -2010,19 +2048,34 @@
     }
     return { inventoryRevision: data.inventoryRevision, items, goldAvailable: availableGold };
   }
-  function renderCatalogSelect(id, placeholder, actors, predicate, preserve = '') {
+  function renderCatalogSelect(id, placeholder, actors, predicate, preserve = '', eligiblePlaceholder = placeholder) {
     const select = $(id);
     const old = preserve || select.value;
+    const eligible = actors.filter(predicate);
     select.replaceChildren();
-    appendOption(select, '', placeholder);
-    for (const actor of actors.filter(predicate)) appendOption(select, actor.actorKey, actor.label);
-    select.value = actors.some((actor) => actor.actorKey === old && predicate(actor)) ? old : '';
+    appendOption(select, '', eligible.length ? eligiblePlaceholder : placeholder);
+    for (const actor of eligible) appendOption(select, actor.actorKey, actor.label);
+    select.value = eligible.some((actor) => actor.actorKey === old) ? old : '';
   }
   function syncMailboxRecipients() {
     // The authorized catalog bounds mailbox choices; compose eligibility is unrelated to archive access.
+    const previous = $('mailbox-recipient-secondary').value;
     renderCatalogSelect('mailbox-recipient-secondary', 'Choose a recipient mailbox', state.mail.actors, () => true);
-    const selected = $('mailbox-recipient-secondary').value;
-    if (selected) $('mailbox-recipient-secondary').value = selected;
+    if (previous !== $('mailbox-recipient-secondary').value) clearMailboxView();
+  }
+  function clearMailboxView() {
+    state.mail.letters = []; state.mail.mailboxNextCursor = null; state.mail.mailboxLimited = false; state.mail.selectedLetter = null;
+    const authorized = state.authenticated && state.capabilities.correspondence && state.access.inspector && !state.closed;
+    const empty = document.createElement('p'); empty.className = 'empty-row';
+    empty.textContent = !authorized ? 'No authorized records are loaded.'
+      : $('mailbox-recipient-secondary').value ? 'Refresh this recipient mailbox.' : 'Select a recipient and refresh.';
+    $('mailbox-list-secondary').replaceChildren(empty);
+    $('letter-detail-secondary').hidden = true;
+    text('detail-heading-secondary', 'Letter detail'); text('detail-signature-secondary', ''); text('detail-author-secondary', ''); text('detail-body-secondary', '');
+    $('detail-author-secondary').hidden = true;
+    $('detail-attachments-secondary').replaceChildren();
+    setStatus('mailbox-read-state-secondary', '');
+    text('mailbox-limited-secondary', '');
   }
   function renderInventory() {
     const container = $('inventory-items');
@@ -2130,6 +2183,18 @@
       && operation.companionSchedulerOwned !== true && operation.operatorClosed !== true
       && !NON_RESUMABLE_QUEUED_REASONS.has(operation.queuedReason));
   }
+  function canCheckLetterReceipt(operation) {
+    return Boolean(state.authenticated && !state.closed && state.capabilities.correspondence && state.access.compose
+      && operation && RECEIPT_CHECKABLE_STATES.has(operation.state));
+  }
+  function validReceiptCheckResponse(data, operationId) {
+    return exactKeys(data, ['operationId', 'queued', 'reason', 'result']) && data.operationId === operationId
+      && typeof data.queued === 'boolean'
+      && (data.queued ? data.reason === null
+        : typeof data.reason === 'string' && Object.prototype.hasOwnProperty.call(QUEUED_REASON_COPY, data.reason))
+      && isPlainObject(data.result) && data.result.operationId === operationId
+      && ['queued', 'dispatched', 'unknown', 'partial', 'delivered', 'rejected'].includes(data.result.state);
+  }
   function selectedUnresolvedOperation() {
     const selectedId = $('letter-operation').value;
     return operationFor(selectedId) || operationFor(state.mail.currentOperationId) || state.mail.operations[0] || null;
@@ -2146,6 +2211,8 @@
       $('letter-recovery').hidden = true;
       $('letter-reconcile').hidden = true;
       $('letter-reconcile').disabled = true;
+      $('letter-receipt-check').hidden = true;
+      $('letter-receipt-check').disabled = true;
       $('letter-resume').hidden = true;
       $('letter-resume').disabled = true;
       $('letter-pending-refresh').hidden = true;
@@ -2231,17 +2298,21 @@
     text('letter-recovery-result', state.mail.recoveryNotice);
     $('letter-reconcile').hidden = !selected;
     $('letter-reconcile').disabled = !selected || state.mail.composePending
-      || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume');
+      || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.receipt.check');
+    const receiptCheckEligible = canCheckLetterReceipt(selected);
+    $('letter-receipt-check').hidden = !receiptCheckEligible;
+    $('letter-receipt-check').disabled = !receiptCheckEligible || state.mail.composePending
+      || state.inFlight.has('correspondence.receipt.check') || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume');
     const resumeEligible = canResumeLetter(selected);
     $('letter-resume').hidden = !resumeEligible;
     $('letter-resume').disabled = !resumeEligible || state.mail.composePending
-      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.receipt.check');
     $('letter-pending-refresh').hidden = false;
     $('letter-pending-refresh').disabled = state.inFlight.has('correspondence.pending.read') || state.mail.composePending
-      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.receipt.check');
     $('letter-pending-continue').hidden = state.mail.pendingReadStatus !== 'incomplete' || !state.mail.pendingReadCursor;
     $('letter-pending-continue').disabled = state.inFlight.has('correspondence.pending.read') || state.mail.composePending
-      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile');
+      || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.receipt.check');
     $('letter-new').hidden = false;
     $('letter-new').disabled = false;
     return { fingerprint, transferBlocked, duplicateBlocked, pendingTransferBlocked };
@@ -2254,6 +2325,8 @@
     const canCatalog = canCompose || canInspect;
     $('mail-refresh').disabled = !canCatalog || state.inFlight.has('correspondence.catalog.read') || (!canCompose && state.inFlight.has('correspondence.inventory.read'));
     $('mail-catalog-more').disabled = !canCatalog || !state.mail.catalogNextCursor || !state.mail.catalogRevision || state.inFlight.has('correspondence.catalog.read');
+    $('mailbox-catalog-refresh').disabled = !canCatalog || state.inFlight.has('correspondence.catalog.read');
+    $('mailbox-catalog-more').disabled = !canCatalog || !state.mail.catalogNextCursor || !state.mail.catalogRevision || state.inFlight.has('correspondence.catalog.read');
     $('mailbox-recipient-secondary').disabled = !canInspect || state.mail.actors.length === 0;
     $('mailbox-refresh-secondary').disabled = !canInspect || !state.mail.actors.some((actor) => actor.actorKey === $('mailbox-recipient-secondary').value) || state.inFlight.has('correspondence.mailbox.read');
     $('mailbox-more-secondary').disabled = !canInspect || !state.mail.mailboxNextCursor || state.inFlight.has('correspondence.mailbox.read');
@@ -2290,8 +2363,8 @@
     }
   }
   function clearSelectsForMail() {
-    renderCatalogSelect('letter-writer', 'No authorized writers', state.mail.actors, (actor) => actor.canWrite);
-    renderCatalogSelect('letter-recipient', 'No authorized recipients', state.mail.actors, (actor) => actor.canReceive);
+    renderCatalogSelect('letter-writer', 'No authorized writers', state.mail.actors, (actor) => actor.canWrite, '', 'Choose a writer');
+    renderCatalogSelect('letter-recipient', 'No authorized recipients', state.mail.actors, (actor) => actor.canReceive, '', 'Choose a recipient');
     renderCatalogSelect('letter-signature', 'Choose an authorized signature', state.mail.actors, (actor) => actor.canSignAs);
     syncMailboxRecipients();
   }
@@ -2451,11 +2524,17 @@
     });
   }
   async function loadMoreCatalog() {
-    if (state.inFlight.has('correspondence.catalog.read') || !state.mail.catalogNextCursor) return;
+    await loadCatalogPage(true);
+  }
+  async function refreshMailboxCatalog() {
+    await loadCatalogPage(false);
+  }
+  async function loadCatalogPage(loadMore) {
+    if (state.inFlight.has('correspondence.catalog.read') || (loadMore && !state.mail.catalogNextCursor)) return;
     const context = makeContext();
     state.inFlight.add('correspondence.catalog.read');
     renderMailAccess();
-    try { await refreshCatalog(true); }
+    try { await refreshCatalog(loadMore); }
     finally {
       if (isCurrentView(context.viewToken, context.nativeGeneration)) {
         state.inFlight.delete('correspondence.catalog.read');
@@ -2687,7 +2766,8 @@
   async function reconcileLetter() {
     if (state.mail.composePending) return;
     const selected = selectedUnresolvedOperation();
-    if (!selected || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume')) return;
+    if (!selected || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume')
+      || state.inFlight.has('correspondence.receipt.check')) return;
     const operationId = selected.operationId;
     const context = makeContext();
     invalidatePendingReadForMutation();
@@ -2719,10 +2799,62 @@
       }
     });
   }
+  async function checkLetterReceipt() {
+    if (state.mail.composePending) return;
+    const selected = selectedUnresolvedOperation();
+    if (!canCheckLetterReceipt(selected) || state.inFlight.has('correspondence.receipt.check')
+      || state.inFlight.has('correspondence.reconcile') || state.inFlight.has('correspondence.resume')) return;
+    const operationId = selected.operationId;
+    const attemptId = validUuid(selected.receiptCheckAttemptId) ? selected.receiptCheckAttemptId : newUuid();
+    selected.receiptCheckAttemptId = attemptId;
+    const context = makeContext();
+    invalidatePendingReadForMutation();
+    renderMailAccess();
+    setReceiptText('Checking Skyrim for a receipt on this saved letter. The letter will not be sent again.');
+    await withBusy('correspondence.receipt.check', $('letter-receipt-check'), async () => {
+      let replyReceived = false;
+      try {
+        requireCapability('correspondence.receipt.check');
+        const data = await request('correspondence.receipt.check', { operationId, attemptId });
+        if (!isCurrentContext(context)) return;
+        replyReceived = true;
+        if (!validReceiptCheckResponse(data, operationId)) throw failLocal('UNAVAILABLE');
+        if (!applyComposeResult(data.result, operationId)) throw failLocal('UNAVAILABLE');
+        const operation = operationFor(operationId);
+        if (operation) {
+          delete operation.receiptCheckAttemptId;
+          const refusal = RECEIPT_CHECK_REASON_COPY[data.reason] || QUEUED_REASON_COPY[data.reason];
+          const message = data.queued
+            ? 'Skyrim receipt check queued. This confirms only that the check was queued; it is not a delivery receipt. Refresh saved status for the receipt result.'
+            : `${refusal} No receipt check was queued; the saved letter remains unresolved.`;
+          if (state.mail.currentOperationId === operationId) setReceiptText(message, data.queued ? '' : 'error');
+          else state.mail.recoveryNotice = message;
+        }
+        renderMailAccess();
+      } catch (error) {
+        if (!isCurrentContext(context)) return;
+        const operation = operationFor(operationId);
+        if (!operation) return;
+        const previousAttemptConflict = error.boundaryCode === 'conflict';
+        if (previousAttemptConflict) delete operation.receiptCheckAttemptId;
+        else if (replyReceived || error.dispatched !== false || error.code === 'VIEW_INVALIDATED') operation.receiptCheckAttemptId = attemptId;
+        else delete operation.receiptCheckAttemptId;
+        const message = previousAttemptConflict
+          ? 'The previous receipt-check attempt cannot be reused. Select Check Skyrim receipt again to make a new status query for this same saved letter. The letter was not resent.'
+          : replyReceived || error.dispatched !== false || error.code === 'VIEW_INVALIDATED'
+            ? 'The receipt-check result is uncertain. Retry this same check later; do not send the letter again.'
+            : `${localError(error)} No Skyrim receipt check was queued.`;
+        if (state.mail.currentOperationId === operationId) setReceiptText(message, 'error');
+        else state.mail.recoveryNotice = message;
+        renderMailAccess();
+      }
+    });
+  }
   async function resumeLetter() {
     if (state.mail.composePending) return;
     const selected = selectedUnresolvedOperation();
-    if (!canResumeLetter(selected) || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile')) return;
+    if (!canResumeLetter(selected) || state.inFlight.has('correspondence.resume') || state.inFlight.has('correspondence.reconcile')
+      || state.inFlight.has('correspondence.receipt.check')) return;
     const operationId = selected.operationId;
     const attemptId = newUuid();
     const context = makeContext();
@@ -2766,7 +2898,7 @@
     for (const row of data.letters) {
       if (!isPlainObject(row) || Object.keys(row).length !== rowFields.length || Object.keys(row).some((key) => !rowFields.includes(key))
         || !boundedString(row.letterId, 128) || !row.letterId || seen.has(row.letterId) || !boundedString(row.claimedSignature, 256)
-        || !boundedString(row.receivedAt, 256) || !boundedString(row.bodyPreview, 128) || row.deliveryConfirmed !== true
+        || !(row.receivedAt === null || boundedString(row.receivedAt, 256)) || !boundedString(row.bodyPreview, 128) || row.deliveryConfirmed !== true
         || !Array.isArray(row.attachments) || row.attachments.length > 8) return null;
       seen.add(row.letterId);
       const attachments = [];
@@ -2788,8 +2920,13 @@
     state.mail.mailboxLimited = data.limited;
     const list = $('mailbox-list-secondary');
     if (!append) list.replaceChildren();
+    else list.querySelectorAll('.empty-row').forEach((row) => row.remove());
     if (!state.mail.letters.length) {
-      const empty = document.createElement('p'); empty.className = 'empty-row'; empty.textContent = data.limited ? 'No delivered letters in the bounded sample; older records may exist.' : 'No receipt-confirmed delivered letters are recorded for this recipient.'; list.append(empty);
+      const empty = document.createElement('p'); empty.className = 'empty-row';
+      empty.textContent = data.nextCursor ? 'No delivered letters on this page; load older to continue.'
+        : data.limited ? 'No delivered letters are in this limited result; no older-page cursor is available.'
+          : 'No receipt-confirmed delivered letters are recorded for this recipient.';
+      list.append(empty);
     }
     for (const letter of data.letters) {
       if (append && [...list.querySelectorAll('.mail-item')].some((item) => item.dataset.letterId === letter.letterId)) continue;
@@ -2797,19 +2934,21 @@
       button.dataset.letterId = letter.letterId;
       const title = document.createElement('strong'); title.textContent = `Letter signed as ${letter.claimedSignature || 'unknown'}`;
       const stage = document.createElement('span'); stage.className = 'stage'; stage.textContent = 'Delivered · receipt confirmed';
-      const meta = document.createElement('small'); meta.textContent = `${letter.receivedAt} · OOC recipient view · ${letter.attachments.length} attachment types`;
+      const meta = document.createElement('small'); meta.textContent = `${letter.receivedAt ?? 'Date unavailable'} · OOC recipient view · ${letter.attachments.length} attachment types`;
       const action = document.createElement('small'); action.textContent = 'Open detail';
       const preview = document.createElement('span'); preview.className = 'body-preview'; preview.textContent = letter.bodyPreview;
       button.append(title, stage, preview, meta, action);
       button.addEventListener('click', () => { state.mail.selectedLetter = letter.letterId; list.querySelectorAll('.mail-item').forEach((item) => item.setAttribute('aria-pressed', String(item === button))); readLetterDetail(letter); });
       list.append(button);
     }
-    text('mail-limited', data.limited || data.nextCursor ? 'Showing a bounded page of receipt-confirmed deliveries; load older to continue.' : '');
+    text('mailbox-limited-secondary', data.nextCursor
+      ? 'Showing a bounded page of receipt-confirmed deliveries; load older to continue.'
+      : data.limited ? 'This mailbox result is limited; no older-page cursor is available.' : '');
     $('mailbox-more-secondary').disabled = !state.authenticated || !state.access.inspector || !state.mail.mailboxNextCursor || state.inFlight.has('correspondence.mailbox.read');
   }
   async function refreshMailbox(loadOlder = false) {
     const recipientActorKey = $('mailbox-recipient-secondary').value;
-    if (!recipientActorKey) { setStatus('mail-state', 'Choose a recipient mailbox first.', 'error'); return; }
+    if (!recipientActorKey) { setStatus('mailbox-read-state-secondary', 'Choose a recipient mailbox first.', 'error'); return; }
     const payload = { recipientActorKey, limit: 50 };
     const requestedCursor = loadOlder ? state.mail.mailboxNextCursor : null;
     if (loadOlder) {
@@ -2825,8 +2964,11 @@
       const result = validMailbox(data, recipientActorKey);
       if (!result) throw failLocal('UNAVAILABLE');
       renderMailbox(result, loadOlder);
-      setStatus('mail-state', result.limited || result.nextCursor ? 'Bounded receipt-confirmed mailbox page loaded.' : 'Mailbox loaded. Opening a record does not tell an NPC anything.', 'success');
-    }, 'mail-state', 'Reading the selected mailbox…', () => $('mailbox-recipient-secondary').value === recipientActorKey
+      setStatus('mailbox-read-state-secondary', result.nextCursor
+        ? 'Bounded receipt-confirmed mailbox page loaded. Load older to continue.'
+        : result.limited ? 'Mailbox result is limited; no older-page cursor is available.'
+          : 'Mailbox loaded. Opening a record does not tell an NPC anything.', 'success');
+    }, 'mailbox-read-state-secondary', 'Reading the selected mailbox…', () => $('mailbox-recipient-secondary').value === recipientActorKey
       && (loadOlder ? state.mail.mailboxNextCursor === requestedCursor : state.mail.mailboxNextCursor === null));
   }
   function validLetterDetail(data, expectedId) {
@@ -2835,7 +2977,7 @@
       || !['letterId', 'claimedSignature', 'body', 'receivedAt', 'deliveryConfirmed', 'attachments'].every((key) => Object.prototype.hasOwnProperty.call(data, key))
       || (Object.prototype.hasOwnProperty.call(data, 'recordedAuthor') && !state.access.authorDetail)
       || data.letterId !== expectedId || data.deliveryConfirmed !== true || !boundedString(data.claimedSignature, 256)
-      || !boundedString(data.receivedAt, 256) || !boundedString(data.body, 8192) || Array.from(data.body).length > 2000 || !Array.isArray(data.attachments) || data.attachments.length > 8) return null;
+      || !(data.receivedAt === null || boundedString(data.receivedAt, 256)) || !boundedString(data.body, 8192) || Array.from(data.body).length > 2000 || !Array.isArray(data.attachments) || data.attachments.length > 8) return null;
     const attachments = [];
     for (const item of data.attachments) {
       if (!isPlainObject(item) || Object.keys(item).length !== 2 || Object.keys(item).some((key) => !['label', 'quantity'].includes(key))
@@ -2853,6 +2995,7 @@
     const isRelevant = () => $('mailbox-recipient-secondary').value === recipientActorKey
       && state.mail.selectedLetter === letterId
       && state.mail.letters.some((row) => row.letterId === letterId && row.deliveryConfirmed !== false);
+    setStatus('mailbox-read-state-secondary', 'Reading the selected letter…');
     await withBusy('correspondence.detail.read', null, async () => {
       try {
         requireCapability('correspondence.detail.read');
@@ -2861,15 +3004,15 @@
         const detail = validLetterDetail(data, letterId);
         if (!detail) throw failLocal('UNAVAILABLE');
         $('letter-detail-secondary').hidden = false;
-        text('detail-heading-secondary', `Letter received ${detail.receivedAt}`);
+        text('detail-heading-secondary', detail.receivedAt === null ? 'Letter date unavailable' : `Letter received ${detail.receivedAt}`);
         text('detail-signature-secondary', `Signed as ${detail.claimedSignature} · signature is a claim`);
         $('detail-author-secondary').hidden = !detail.recordedAuthor;
         text('detail-author-secondary', detail.recordedAuthor ? `Recorded author · director-only: ${detail.recordedAuthor}` : '');
         text('detail-body-secondary', detail.body);
         const attachments = $('detail-attachments-secondary'); attachments.replaceChildren();
         for (const item of detail.attachments) { const li = document.createElement('li'); li.textContent = `${item.label} · ${item.quantity}`; attachments.append(li); }
-        setStatus('mail-state', 'Receipt-confirmed letter opened in this OOC view. NPC exposure and read receipt were not created.', 'success');
-      } catch (error) { if (isCurrentContext(context) && isRelevant()) setStatus('mail-state', localError(error), 'error'); }
+        setStatus('mailbox-read-state-secondary', 'Receipt-confirmed letter opened in this OOC view. NPC exposure and read receipt were not created.', 'success');
+      } catch (error) { if (isCurrentContext(context) && isRelevant()) setStatus('mailbox-read-state-secondary', localError(error), 'error'); }
     });
   }
 
@@ -2901,6 +3044,7 @@
       const panel = $(item.getAttribute('aria-controls'));
       if (panel) panel.hidden = !selected;
     });
+    syncBrainwashEditor();
     if (focus) focusAndReveal(tabs[index]);
   }
   function visibleControls() {
@@ -3071,12 +3215,12 @@
     $('sas-perspective').addEventListener('change', () => { state.sas = { issues: [], nextCursor: null, limited: false }; renderIssueList($('sas-grievances'), [], 'No retained grievances for this perspective.'); renderIssueList($('sas-promises'), [], 'No retained promises for this perspective.'); renderSasChoices(); });
     $('mail-refresh').addEventListener('click', () => invoke(refreshCatalogAndInventory, 'mail-state'));
     $('mail-catalog-more').addEventListener('click', () => invoke(loadMoreCatalog, 'mail-state'));
+    $('mailbox-catalog-refresh').addEventListener('click', () => invoke(refreshMailboxCatalog, 'mail-state'));
+    $('mailbox-catalog-more').addEventListener('click', () => invoke(loadMoreCatalog, 'mail-state'));
     $('mailbox-refresh-secondary').addEventListener('click', () => invoke(() => refreshMailbox(false), 'mail-state'));
     $('mailbox-more-secondary').addEventListener('click', () => invoke(() => refreshMailbox(true), 'mail-state'));
     $('mailbox-recipient-secondary').addEventListener('change', () => {
-      state.mail.letters = []; state.mail.mailboxNextCursor = null; state.mail.mailboxLimited = false; state.mail.selectedLetter = null;
-      $('mailbox-list-secondary').replaceChildren(); $('letter-detail-secondary').hidden = true;
-      const empty = document.createElement('p'); empty.className = 'empty-row'; empty.textContent = 'Select a recipient and refresh.'; $('mailbox-list-secondary').append(empty);
+      clearMailboxView();
       renderMailAccess();
     });
     for (const id of ['letter-writer', 'letter-recipient', 'letter-signature']) $(id).addEventListener('change', markComposeChanged);
@@ -3088,12 +3232,12 @@
     $('letter-pending-refresh').addEventListener('click', () => invoke(refreshPendingLetters, 'letter-pending-status'));
     $('letter-pending-continue').addEventListener('click', () => invoke(continuePendingLetters, 'letter-pending-status'));
     $('letter-reconcile').addEventListener('click', () => invoke(reconcileLetter, 'letter-receipt'));
+    $('letter-receipt-check').addEventListener('click', () => invoke(checkLetterReceipt, 'letter-receipt'));
     $('letter-resume').addEventListener('click', () => invoke(resumeLetter, 'letter-receipt'));
     $('letter-operation').addEventListener('change', renderMailAccess);
     $('letter-new').addEventListener('click', startNewLetter);
   }
 
-  mountBrainwashEditor();
   wireEvents();
   renderBootstrap();
   startupWatchdog = window.setTimeout(() => {

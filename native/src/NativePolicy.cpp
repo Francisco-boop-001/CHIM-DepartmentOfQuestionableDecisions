@@ -358,6 +358,55 @@ namespace dql::policy
 		return true;
 	}
 
+	std::string_view SafeServerErrorCode(std::string_view value) noexcept
+	{
+		constexpr std::array codes{
+			std::string_view("none"), std::string_view("invalid_request"), std::string_view("unsupported_operation"),
+			std::string_view("unauthorized"), std::string_view("forbidden"), std::string_view("stale_context"),
+			std::string_view("stale_revision"), std::string_view("conflict"), std::string_view("not_found"),
+			std::string_view("unavailable"), std::string_view("unsupported_media_type"),
+			std::string_view("method_not_allowed"), std::string_view("payload_too_large"),
+			std::string_view("profile_too_large"), std::string_view("actor_unavailable"), std::string_view("busy"),
+			std::string_view("connection_secure_storage_failed"), std::string_view("connection_setup_required"),
+			std::string_view("invalid_response")
+		};
+		for (const auto code : codes) if (value == code) return code;
+		return "other";
+	}
+
+	std::string FormatHttpResultLogLine(std::string_view stage, std::string_view operation,
+		std::string_view requestId, std::string_view outcome, std::uint32_t httpStatus,
+		std::string_view transportError, std::string_view serverError)
+	{
+		constexpr std::array stages{ "bootstrap_http", "connection_http", "department_http" };
+		constexpr std::array operations{
+			"bootstrap", "pcv.roster.read", "pcv.status.read", "pcv.arm", "pcv.end", "pcv.companion.stage",
+			"pcv.companion.status", "pcv.companion.cancel", "mp.relationships.read", "sas.issues.read",
+			"correspondence.catalog.read", "correspondence.mailbox.read", "correspondence.detail.read",
+			"correspondence.compose", "correspondence.reconcile", "correspondence.pending.read", "correspondence.resume",
+			"correspondence.receipt.check", "brainwash.catalog.read", "brainwash.card.read", "brainwash.draft",
+			"brainwash.apply", "brainwash.undo", "connection.begin", "connection.status"
+		};
+		constexpr std::array outcomes{ "completed", "unknown", "rejected" };
+		constexpr std::array transportErrors{
+			"none", "invalid_request", "invalid_base_url", "invalid_bearer", "queue_full", "shutting_down",
+			"timeout", "cancelled", "request_too_large", "response_too_large", "transport_failure", "invalid"
+		};
+		const auto in = [](std::string_view value, const auto& values) {
+			return std::find(values.begin(), values.end(), value) != values.end();
+		};
+		const auto safeStage = in(stage, stages) ? stage : std::string_view("other");
+		const auto safeOperation = in(operation, operations) ? operation : std::string_view("other");
+		const auto safeRequestId = IsUuid(requestId) ? requestId : std::string_view("invalid");
+		const auto safeOutcome = in(outcome, outcomes) ? outcome : std::string_view("invalid");
+		const auto safeTransportError = in(transportError, transportErrors) ? transportError : std::string_view("other");
+		const auto safeServerError = SafeServerErrorCode(serverError);
+		return "stage=" + std::string(safeStage) + " operation=" + std::string(safeOperation) +
+			" request_id=" + std::string(safeRequestId) + " result=" + std::string(safeOutcome) +
+			" http=" + std::to_string(httpStatus) + " error=" + std::string(safeTransportError) +
+			" server_error=" + std::string(safeServerError);
+	}
+
 	bool CanUseBrainwash(const NativeAccessState& access, std::string_view requestServerContext) noexcept
 	{
 		return !access.serverContext.empty() && requestServerContext == access.serverContext &&

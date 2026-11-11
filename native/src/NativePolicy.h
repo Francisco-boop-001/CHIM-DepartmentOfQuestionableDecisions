@@ -139,6 +139,10 @@ namespace dql::policy
 	[[nodiscard]] bool IsUuid(std::string_view value) noexcept;
 	[[nodiscard]] bool IsGeneration(std::string_view value) noexcept;
 	[[nodiscard]] bool IsSafeHeaderValue(std::string_view value) noexcept;
+	[[nodiscard]] std::string_view SafeServerErrorCode(std::string_view value) noexcept;
+	[[nodiscard]] std::string FormatHttpResultLogLine(std::string_view stage, std::string_view operation,
+		std::string_view requestId, std::string_view outcome, std::uint32_t httpStatus,
+		std::string_view transportError, std::string_view serverError);
 	[[nodiscard]] std::optional<std::string> CanonicalBaseFormId(std::string_view pluginName, std::uint32_t localFormId, bool dynamicForm);
 	[[nodiscard]] InstanceMetadata ClassifyExtraData(std::span<const std::uint32_t> typeCodes) noexcept;
 	[[nodiscard]] bool IsTransferableStack(const InventoryTraits& traits) noexcept;

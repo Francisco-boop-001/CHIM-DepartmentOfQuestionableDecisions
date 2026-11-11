@@ -12,6 +12,9 @@ namespace dql::contract
 	using Json = nlohmann::json;
 
 	inline constexpr std::size_t kMaxEnvelopeBytes = 65'536;
+	inline constexpr std::size_t kMaxProfileEnvelopeBytes = 2'097'152;
+	inline constexpr std::size_t kMaxBrainwashFieldBytes = 65'536;
+	inline constexpr std::size_t kMaxBrainwashCardBytes = 131'072;
 	inline constexpr std::size_t kMaxDepth = 8;
 	inline constexpr std::size_t kMaxObjectProperties = 64;
 	inline constexpr std::size_t kMaxArrayItems = 128;
