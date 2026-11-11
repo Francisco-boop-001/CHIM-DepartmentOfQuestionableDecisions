@@ -1892,6 +1892,85 @@ async function main() {
       await page.close();
     });
 
+    await test('mailbox state regression: refresh clears detail, paging preserves it, and stale same-ID details stay closed', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-detail-refresh', 'H'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      let mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [{ letterId: 'same-mail', claimedSignature: 'Retired Envoy',
+        receivedAt: null, bodyPreview: 'Current page.', attachments: [], deliveryConfirmed: true }], limited: true, nextCursor: 'older-cursor' });
+      await page.locator('[data-letter-id="same-mail"]').click();
+      let detail = await latestRequest(page, 'correspondence.detail.read');
+      await respond(page, detail, { letterId: 'same-mail', claimedSignature: 'Retired Envoy', receivedAt: null,
+        body: 'CURRENT_DETAIL_SENTINEL', attachments: [], deliveryConfirmed: true });
+      await page.getByText('CURRENT_DETAIL_SENTINEL', { exact: true }).waitFor();
+
+      await page.getByRole('button', { name: 'Load older' }).click();
+      mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [{ letterId: 'older-mail', claimedSignature: 'Retired Envoy',
+        receivedAt: null, bodyPreview: 'Older page.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      assert.equal(await page.getByText('CURRENT_DETAIL_SENTINEL', { exact: true }).count(), 1, 'paging keeps the current detail visible');
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true, 'full refresh clears the open detail before its reply');
+      assert.equal(await page.locator('#detail-body-secondary').textContent(), '', 'full refresh removes the prior body');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [], limited: false, nextCursor: null });
+      assert.equal(await page.locator('.mail-item').count(), 0, 'full refresh replaces the old mailbox snapshot');
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true, 'empty refresh leaves detail closed');
+
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [{ letterId: 'same-mail', claimedSignature: 'Retired Envoy',
+        receivedAt: null, bodyPreview: 'Refreshed page.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      await page.locator('[data-letter-id="same-mail"]').click();
+      detail = await latestRequest(page, 'correspondence.detail.read');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [{ letterId: 'same-mail', claimedSignature: 'Retired Envoy',
+        receivedAt: null, bodyPreview: 'New snapshot.', attachments: [], deliveryConfirmed: true }], limited: false, nextCursor: null });
+      await respond(page, detail, { letterId: 'same-mail', claimedSignature: 'Retired Envoy', receivedAt: null,
+        body: 'STALE_DETAIL_SENTINEL', attachments: [], deliveryConfirmed: true });
+      assert.equal(await page.getByText('STALE_DETAIL_SENTINEL', { exact: true }).count(), 0, 'an old same-ID detail cannot reopen after full refresh');
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true, 'the refreshed row remains unselected');
+      await page.close();
+    });
+
+    await test('mailbox state regression: busy row clicks are ignored and failed B clears old detail', async () => {
+      const page = await authenticatedPage(browser, 'mailbox-detail-concurrent', 'I'.repeat(43), { access: { compose: false } });
+      const recipient = await prepareMailbox(page);
+      await recipient.selectOption('npc:104');
+      await page.getByRole('button', { name: 'Refresh mailbox' }).click();
+      const mailbox = await latestRequest(page, 'correspondence.mailbox.read');
+      await respond(page, mailbox, { recipientActorKey: 'npc:104', letters: [
+        { letterId: 'letter-a', claimedSignature: 'Retired Envoy', receivedAt: null, bodyPreview: 'A.', attachments: [], deliveryConfirmed: true },
+        { letterId: 'letter-b', claimedSignature: 'Second Envoy', receivedAt: null, bodyPreview: 'B.', attachments: [], deliveryConfirmed: true },
+      ], limited: false, nextCursor: null });
+
+      await page.locator('[data-letter-id="letter-a"]').click();
+      let detail = await latestRequest(page, 'correspondence.detail.read');
+      await page.locator('[data-letter-id="letter-b"]').evaluate((node) => node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })));
+      assert.equal(await page.locator('[data-letter-id="letter-a"]').getAttribute('aria-pressed'), 'true', 'busy detail keeps its selected row');
+      assert.equal(await page.locator('[data-letter-id="letter-b"]').isDisabled(), true, 'busy detail disables other row actions');
+      assert.equal(await page.locator('[data-letter-id="letter-b"]').getAttribute('aria-pressed'), 'false', 'a busy click does not change selection');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.detail.read').length), 1,
+        'busy row clicks do not dispatch another detail read');
+      await respond(page, detail, { letterId: 'letter-a', claimedSignature: 'Retired Envoy', receivedAt: null,
+        body: 'OPEN_DETAIL_SENTINEL', attachments: [], deliveryConfirmed: true });
+      await page.getByText('OPEN_DETAIL_SENTINEL', { exact: true }).waitFor();
+
+      await page.locator('[data-letter-id="letter-b"]').click();
+      detail = await latestRequest(page, 'correspondence.detail.read');
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true, 'starting B clears A before the read completes');
+      assert.equal(await page.locator('#detail-body-secondary').textContent(), '', 'starting B removes A body text');
+      await respond(page, detail, null, { ok: false, error: { code: 'unavailable', message: 'Synthetic detail failure.' } });
+      await page.waitForFunction(() => document.getElementById('mailbox-read-state-secondary')?.dataset.state === 'error', null, { timeout: 1000 });
+      assert.equal(await page.getByText('OPEN_DETAIL_SENTINEL', { exact: true }).count(), 0, 'failed B never leaves A content visible');
+      assert.equal(await page.locator('#letter-detail-secondary').isHidden(), true, 'failed B leaves the detail pane closed');
+      await page.close();
+    });
+
     await test('mailbox read status distinguishes empty, malformed, transport, and authorization results', async () => {
       const page = await authenticatedPage(browser, 'mailbox-read-status', 'D'.repeat(43), { access: { compose: false } });
       const recipient = await prepareMailbox(page);

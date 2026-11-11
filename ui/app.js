@@ -2070,12 +2070,15 @@
     empty.textContent = !authorized ? 'No authorized records are loaded.'
       : $('mailbox-recipient-secondary').value ? 'Refresh this recipient mailbox.' : 'Select a recipient and refresh.';
     $('mailbox-list-secondary').replaceChildren(empty);
+    clearLetterDetail();
+    setStatus('mailbox-read-state-secondary', '');
+    text('mailbox-limited-secondary', '');
+  }
+  function clearLetterDetail() {
     $('letter-detail-secondary').hidden = true;
     text('detail-heading-secondary', 'Letter detail'); text('detail-signature-secondary', ''); text('detail-author-secondary', ''); text('detail-body-secondary', '');
     $('detail-author-secondary').hidden = true;
     $('detail-attachments-secondary').replaceChildren();
-    setStatus('mailbox-read-state-secondary', '');
-    text('mailbox-limited-secondary', '');
   }
   function renderInventory() {
     const container = $('inventory-items');
@@ -2330,6 +2333,7 @@
     $('mailbox-recipient-secondary').disabled = !canInspect || state.mail.actors.length === 0;
     $('mailbox-refresh-secondary').disabled = !canInspect || !state.mail.actors.some((actor) => actor.actorKey === $('mailbox-recipient-secondary').value) || state.inFlight.has('correspondence.mailbox.read');
     $('mailbox-more-secondary').disabled = !canInspect || !state.mail.mailboxNextCursor || state.inFlight.has('correspondence.mailbox.read');
+    $('mailbox-list-secondary').querySelectorAll('.mail-item').forEach((item) => { item.disabled = state.inFlight.has('correspondence.detail.read'); });
     const composerReady = canCompose && state.mail.inventoryLoaded && state.mail.actors.some((actor) => actor.canWrite) && state.mail.actors.some((actor) => actor.canReceive) && !state.mail.composeLocked;
     $('letter-writer').disabled = !composerReady;
     $('letter-recipient').disabled = !composerReady;
@@ -2938,7 +2942,7 @@
       const action = document.createElement('small'); action.textContent = 'Open detail';
       const preview = document.createElement('span'); preview.className = 'body-preview'; preview.textContent = letter.bodyPreview;
       button.append(title, stage, preview, meta, action);
-      button.addEventListener('click', () => { state.mail.selectedLetter = letter.letterId; list.querySelectorAll('.mail-item').forEach((item) => item.setAttribute('aria-pressed', String(item === button))); readLetterDetail(letter); });
+      button.addEventListener('click', () => readLetterDetail(letter));
       list.append(button);
     }
     text('mailbox-limited-secondary', data.nextCursor
@@ -2947,6 +2951,7 @@
     $('mailbox-more-secondary').disabled = !state.authenticated || !state.access.inspector || !state.mail.mailboxNextCursor || state.inFlight.has('correspondence.mailbox.read');
   }
   async function refreshMailbox(loadOlder = false) {
+    if (state.inFlight.has('correspondence.mailbox.read')) return;
     const recipientActorKey = $('mailbox-recipient-secondary').value;
     if (!recipientActorKey) { setStatus('mailbox-read-state-secondary', 'Choose a recipient mailbox first.', 'error'); return; }
     const payload = { recipientActorKey, limit: 50 };
@@ -2955,9 +2960,7 @@
       if (!state.mail.mailboxNextCursor) return;
       payload.cursor = state.mail.mailboxNextCursor;
     } else {
-      state.mail.letters = [];
-      state.mail.mailboxNextCursor = null;
-      state.mail.mailboxLimited = false;
+      clearMailboxView();
     }
     const button = loadOlder ? $('mailbox-more-secondary') : $('mailbox-refresh-secondary');
     await runRead('correspondence.mailbox.read', payload, button, (data) => {
@@ -2988,10 +2991,15 @@
       recordedAuthor: state.access.authorDetail && boundedString(data.recordedAuthor, 256) ? data.recordedAuthor : '' };
   }
   async function readLetterDetail(letter) {
-    if (!letter || !state.mail.letters.some((row) => row.letterId === letter.letterId && row.deliveryConfirmed !== false)) return;
+    if (!letter || state.inFlight.has('correspondence.detail.read')
+      || !state.mail.letters.some((row) => row.letterId === letter.letterId && row.deliveryConfirmed !== false)) return;
     const context = makeContext();
     const recipientActorKey = $('mailbox-recipient-secondary').value;
     const letterId = letter.letterId;
+    state.mail.selectedLetter = letterId;
+    const list = $('mailbox-list-secondary');
+    list.querySelectorAll('.mail-item').forEach((item) => item.setAttribute('aria-pressed', String(item.dataset.letterId === letterId)));
+    clearLetterDetail();
     const isRelevant = () => $('mailbox-recipient-secondary').value === recipientActorKey
       && state.mail.selectedLetter === letterId
       && state.mail.letters.some((row) => row.letterId === letterId && row.deliveryConfirmed !== false);
