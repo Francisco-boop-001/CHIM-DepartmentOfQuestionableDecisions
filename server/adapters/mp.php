@@ -1,19 +1,29 @@
 <?php
 declare(strict_types=1);
 
-const QD_MP_EXPECTED_VERSION = '0.1.30';
 const QD_MP_LEDGER_MAX_BYTES = 65536;
 const QD_MP_RELATIONSHIP_MAX_BYTES = 16384;
 const QD_MP_IDENTITY_CATALOG_MAX = 65536;
 const QD_MP_EXPECTED_RELATIONSHIP_MANAGER_SHA256 = '4497443c9480c7d7ff5d5deabcec9ad5ab4cdec6f28f1fd044f89594d71e06ab';
 const QD_MP_EXPECTED_SOURCE_HASHES = [
-    'manifest.json' => 'd2ac602e075768399b1495795c7de9735615e82e2d5047da6b99e69aac6c50da',
-    'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
-    'store.php' => '3d91e0756559cb892d218cace864b93e57200f2a4e53bfbb7ff9504afd93ba78',
-    'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
-    'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
-    'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
-    'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    '0.1.30' => [
+        'manifest.json' => 'd2ac602e075768399b1495795c7de9735615e82e2d5047da6b99e69aac6c50da',
+        'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
+        'store.php' => '3d91e0756559cb892d218cace864b93e57200f2a4e53bfbb7ff9504afd93ba78',
+        'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
+        'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
+        'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
+        'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    ],
+    '0.1.31' => [
+        'manifest.json' => 'b5a21bab261bbccf6d2eac9b8e5ac86e95a9d83cfc353ac37ef523b214061bbd',
+        'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
+        'store.php' => '41437b987356f7be2c286f17fdd8c0aa528859c142d0058b1bfd6f322895f4d5',
+        'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
+        'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
+        'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
+        'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    ],
 ];
 
 function qd_mp_source_root(): string
@@ -45,7 +55,29 @@ function qd_mp_source_files(string $root): array
 function qd_mp_manifest_ready(string $root): bool
 {
     $files = qd_mp_source_files($root);
-    foreach (QD_MP_EXPECTED_SOURCE_HASHES as $file => $expectedHash) {
+    $manifestPath = $files['manifest.json'];
+    if (!is_file($manifestPath) || is_link($manifestPath)) {
+        return false;
+    }
+    $size = @filesize($manifestPath);
+    if (!is_int($size) || $size < 1 || $size > 8192) {
+        return false;
+    }
+    $manifestBytes = @file_get_contents($manifestPath, false, null, 0, $size + 1);
+    if (!is_string($manifestBytes) || strlen($manifestBytes) !== $size) {
+        return false;
+    }
+    $manifest = json_decode($manifestBytes, true, 8);
+    if (!is_array($manifest) || ($manifest['name'] ?? null) !== 'mind_poisoning'
+        || !is_string($manifest['version'] ?? null)) {
+        return false;
+    }
+    $expectedHashes = QD_MP_EXPECTED_SOURCE_HASHES[$manifest['version']] ?? null;
+    if (!is_array($expectedHashes) || !hash_equals($expectedHashes['manifest.json'], hash('sha256', $manifestBytes))) {
+        return false;
+    }
+    foreach ($expectedHashes as $file => $expectedHash) {
+        if ($file === 'manifest.json') continue;
         $path = $files[$file] ?? null;
         if (!is_string($path) || !is_file($path) || is_link($path)) {
             return false;
@@ -53,15 +85,7 @@ function qd_mp_manifest_ready(string $root): bool
         $actualHash = @hash_file('sha256', $path);
         if (!is_string($actualHash) || !hash_equals($expectedHash, $actualHash)) return false;
     }
-    $manifestPath = $root . DIRECTORY_SEPARATOR . 'manifest.json';
-    $size = @filesize($manifestPath);
-    if (!is_int($size) || $size < 1 || $size > 8192) {
-        return false;
-    }
-    $manifest = json_decode((string)@file_get_contents($manifestPath), true, 8);
-    return is_array($manifest)
-        && ($manifest['name'] ?? null) === 'mind_poisoning'
-        && ($manifest['version'] ?? null) === QD_MP_EXPECTED_VERSION;
+    return true;
 }
 
 function qd_mp_load_relationship_manager(): void

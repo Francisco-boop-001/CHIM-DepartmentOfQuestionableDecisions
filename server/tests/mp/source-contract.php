@@ -34,17 +34,27 @@ function mpSourceCleanup(string $path): void
 if ($ownerRoot === '' || extension_loaded('pgsql') || function_exists('pg_query')) {
     fwrite(STDERR, "Run with php -n and an exact owner source root.\n"); exit(2);
 }
-$expectedVersion = '0.1.30';
-$expectedPins = [
-    'manifest.json' => 'd2ac602e075768399b1495795c7de9735615e82e2d5047da6b99e69aac6c50da',
-    'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
-    'store.php' => '3d91e0756559cb892d218cace864b93e57200f2a4e53bfbb7ff9504afd93ba78',
-    'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
-    'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
-    'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
-    'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+$expectedPinsByVersion = [
+    '0.1.30' => [
+        'manifest.json' => 'd2ac602e075768399b1495795c7de9735615e82e2d5047da6b99e69aac6c50da',
+        'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
+        'store.php' => '3d91e0756559cb892d218cace864b93e57200f2a4e53bfbb7ff9504afd93ba78',
+        'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
+        'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
+        'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
+        'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    ],
+    '0.1.31' => [
+        'manifest.json' => 'b5a21bab261bbccf6d2eac9b8e5ac86e95a9d83cfc353ac37ef523b214061bbd',
+        'dashboard_data.php' => 'e693cd74200783792c385b5288253631f168a59f759e28fd2a600227a2a747e9',
+        'store.php' => '41437b987356f7be2c286f17fdd8c0aa528859c142d0058b1bfd6f322895f4d5',
+        'influence.php' => 'ff13458c3051b3654558466c0e63954679836cbd824f239cdb28893c352bf741',
+        'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
+        'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
+        'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    ],
 ];
-$checks = ['exactSourceReady' => false, 'storeReadAccepted' => false, 'unprofiledScopeRead' => false, 'oldVersionRefused' => false, 'unsupportedVersionRefused' => false, 'everyPinDriftRefused' => false];
+$checks = ['exactSourceReady' => false, 'storeReadAccepted' => false, 'unprofiledScopeRead' => false, 'oldVersionRefused' => false, 'futureVersionRefused' => false, 'everyPinDriftRefused' => false];
 $ownerPureReadersLoaded = false;
 $ownerVersion = null;
 $pins = [];
@@ -60,15 +70,18 @@ try {
     require_once $adapterReal;
     $manifest = json_decode((string)file_get_contents($ownerReal . DIRECTORY_SEPARATOR . 'manifest.json'), true, 8, JSON_THROW_ON_ERROR);
     $ownerVersion = is_array($manifest) ? ($manifest['version'] ?? null) : null;
-    foreach ($expectedPins as $file => $expectedHash) {
-        $actualHash = mpSourceHash($ownerReal . DIRECTORY_SEPARATOR . $file);
-        $pins[] = ['file' => $file, 'expectedSha256' => $expectedHash, 'actualSha256' => $actualHash, 'matches' => $actualHash === $expectedHash];
+    $expectedPins = is_string($ownerVersion) ? ($expectedPinsByVersion[$ownerVersion] ?? null) : null;
+    if (is_array($expectedPins)) {
+        foreach ($expectedPins as $file => $expectedHash) {
+            $actualHash = mpSourceHash($ownerReal . DIRECTORY_SEPARATOR . $file);
+            $pins[] = ['file' => $file, 'expectedSha256' => $expectedHash, 'actualSha256' => $actualHash, 'matches' => $actualHash === $expectedHash];
+        }
     }
-    $checks['exactSourceReady'] = $ownerVersion === $expectedVersion
+    $checks['exactSourceReady'] = is_array($expectedPins)
         && ($manifest['name'] ?? null) === 'mind_poisoning'
-        && QD_MP_EXPECTED_VERSION === $expectedVersion
-        && QD_MP_EXPECTED_SOURCE_HASHES === $expectedPins
+        && QD_MP_EXPECTED_SOURCE_HASHES[$ownerVersion] === $expectedPins
         && !in_array(false, array_column($pins, 'matches'), true)
+        && count($pins) === 7
         && qd_mp_manifest_ready($ownerReal);
     if ($checks['exactSourceReady']) {
         putenv('QD_MP_ROOT=' . $ownerReal);
@@ -107,17 +120,17 @@ try {
         );
         $checks['unprofiledScopeRead'] = ($normalArrangement['values']['player'] ?? null) === 'none'
             && ($normalArrangement['limited'] ?? null) === false;
-        $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-mp-0130-' . bin2hex(random_bytes(8));
+        $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-mp-source-contract-' . bin2hex(random_bytes(8));
         if (!mkdir($tempRoot, 0700)) throw new RuntimeException('Could not create private source fixtures.');
         $tempOwned = true;
-        foreach ([['old', '0.1.29'], ['unsupported', '0.1.31']] as [$name, $version]) {
+        foreach ([['old', '0.1.29'], ['future', '0.1.32']] as [$name, $version]) {
             $fixture = $tempRoot . DIRECTORY_SEPARATOR . $name;
             mpSourceFixture($fixture, $ownerReal, $expectedPins);
             $path = $fixture . DIRECTORY_SEPARATOR . 'manifest.json';
             $copyManifest = json_decode((string)file_get_contents($path), true, 8, JSON_THROW_ON_ERROR);
             $copyManifest['version'] = $version;
             if (file_put_contents($path, json_encode($copyManifest, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES), LOCK_EX) === false) throw new RuntimeException('Could not write a version fixture.');
-            $key = $name === 'old' ? 'oldVersionRefused' : 'unsupportedVersionRefused';
+            $key = $name === 'old' ? 'oldVersionRefused' : 'futureVersionRefused';
             $checks[$key] = !qd_mp_manifest_ready($fixture);
         }
         $driftRoot = $tempRoot . DIRECTORY_SEPARATOR . 'drift';
