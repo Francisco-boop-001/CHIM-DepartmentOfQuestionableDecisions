@@ -4,6 +4,14 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Alpha.1
+
+This is a public alpha. Sealed Fates support is still being tested.
+
+[Download the full Department MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-alpha.1/WorldOfDramaLlama-0.1.0-alpha.1.zip).
+
+Install the full mod through MO2. For updates, use this ZIP through MO2 as the single recommended route. CHIM's stock Update button updates only the server component, so using it alongside the MO2 ZIP can leave the game and server versions mismatched.
+
 ## Prealpha.40: Mind Poisoning 0.1.32 compatibility
 
 Department supports the exact Mind Poisoning 0.1.30, 0.1.31, and 0.1.32 releases. [Download the Department MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.40/WorldOfDramaLlama-0.1.0-prealpha.40.zip).

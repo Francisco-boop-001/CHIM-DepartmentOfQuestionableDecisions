@@ -1,9 +1,11 @@
 {
   "name": "questionable_decisions",
-  "version": "0.1.0-prealpha.40",
+  "version": "0.1.0-alpha.1",
   "schema_version": 2,
-  "description": "A small Skyrim-side Department for the affairs CHIM plugins leave behind.",
+  "git_repo": "Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions",
+  "description": "ALPHA: Department server component. Sealed Fates is still being tested.",
   "status": "development_candidate",
   "config_url": "../ext/questionable_decisions/index.php",
+  "mod_download_url": "https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-alpha.1/WorldOfDramaLlama-0.1.0-alpha.1.zip",
   "server_compatibility_reference": "0ec590b42c8087860138bb4e9aab470049ff9a2b"
 }

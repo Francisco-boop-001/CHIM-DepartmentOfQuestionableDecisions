@@ -1,0 +1,25 @@
+{
+  "name": "questionable_decisions",
+  "version": "0.1.0-alpha.1",
+  "schema_version": 2,
+  "git_repo": "Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions",
+  "description": "ALPHA: Skyrim PRISMA UI companion. Sealed Fates is still being tested.",
+  "status": "development_candidate",
+  "config_url": "../ext/questionable_decisions/index.php",
+  "mod_download_url": "https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-alpha.1/WorldOfDramaLlama-0.1.0-alpha.1.zip",
+  "default_channel": "alpha",
+  "channels": {
+    "alpha": {
+      "label": "Alpha",
+      "branch": "main",
+      "manifest_url": "https://raw.githubusercontent.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/v0.1.0-alpha.1/manifest.json",
+      "package_source": "release",
+      "package_urls": [
+        "https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-alpha.1/questionable_decisions-0.1.0-alpha.1.tar.gz"
+      ],
+      "archive_strip_components": 1,
+      "allow_force": false
+    }
+  },
+  "server_compatibility_reference": "0ec590b42c8087860138bb4e9aab470049ff9a2b"
+}
