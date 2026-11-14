@@ -43,7 +43,7 @@ receiptCheckExpect(qd_correspondence_version_supports_receipt_check('0.1.0-dev.3
     && qd_correspondence_version_supports_receipt_check('0.1.0-dev.32')
     && qd_correspondence_version_supports_receipt_check('0.1.0-dev.31')
     && !qd_correspondence_version_supports_receipt_check('0.1.0-dev.30')
-    && !qd_correspondence_version_supports_receipt_check('0.1.0-dev.34'), 'receipt check supports the exact reviewed dev31, dev32, and dev33 source closures');
+    && !qd_correspondence_version_supports_receipt_check('0.1.0-dev.35'), 'receipt check supports the exact reviewed dev31, dev32, dev33, and dev34 source closures');
 
 $request = receiptCheckRequest('correspondence.receipt.check', $payload);
 receiptCheckExpect(qd_operation_id($request) === $attemptId, 'receipt check journal identity uses attemptId');

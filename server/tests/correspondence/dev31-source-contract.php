@@ -102,7 +102,7 @@ dev31Expect(qd_correspondence_version_supports_pending_resume('0.1.0-dev.30')
     && qd_correspondence_version_supports_pending_resume($version)
     && !qd_correspondence_version_supports_pending_resume('0.1.0-dev.29'),
     'Pending discovery and resume must remain limited to the exact versions introduced for pending resume.');
-foreach (['0.1.0-dev.19', '0.1.0-dev.34'] as $unsupported) {
+foreach (['0.1.0-dev.19', '0.1.0-dev.35'] as $unsupported) {
     dev31Expect(!isset(QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION[$unsupported])
         && !qd_correspondence_version_uses_restore_fence($unsupported)
         && !qd_correspondence_version_supports_signed_unknown($unsupported)
@@ -117,7 +117,7 @@ $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-correspondence-dev31-
 if (!is_string($tempBase) || !@mkdir($tempRoot, 0700)) throw new RuntimeException('Could not create the unknown-version fixture.');
 try {
     $unknownManifest = $tempRoot . DIRECTORY_SEPARATOR . 'manifest.json';
-    $unknownBytes = '{"name":"correspondence","version":"0.1.0-dev.34"}';
+    $unknownBytes = '{"name":"correspondence","version":"0.1.0-dev.35"}';
     dev31Expect(@file_put_contents($unknownManifest, $unknownBytes, LOCK_EX) === strlen($unknownBytes),
         'Could not write the unknown-version fixture.');
     dev31Expect(qd_correspondence_source_files($tempRoot) === [] && !qd_correspondence_manifest_ready($tempRoot),

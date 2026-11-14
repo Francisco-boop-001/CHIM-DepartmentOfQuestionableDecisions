@@ -4,6 +4,10 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Prealpha.38: Recipient search and Sealed Fates dev.34
+
+[Download the Department MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.38/WorldOfDramaLlama-0.1.0-prealpha.38.zip). Search for recipients in Compose and Mailboxes, and filter attachment items by name. The Department reads confirmed ordinary and gift letters from Sealed Fates dev.34 and still supports dev.33. Declare gifts in the Sealed Fates web composer.
+
 ## Prealpha.36: Sealed Fates dev.33 and mailbox recovery
 
 [Download the Department MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-prealpha.36/WorldOfDramaLlama-0.1.0-prealpha.36.zip). Sealed Fates still uses its [own installable ZIP](https://github.com/Francisco-boop-001/CHIM-SealedFates/releases). Exit Skyrim, replace the old enabled copies in MO2, and let CHIM synchronize the server packages. You can stay on Sealed Fates dev.32 or update to dev.33.

@@ -193,7 +193,7 @@ foreach (['0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32'] as $resumeVersion) {
     resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, $document, 'queued', true, false, false, false, true), 'orphan dispatch anchors must refuse resume');
     resumeContractExpect(!qd_correspondence_resume_eligible($resumeVersion, ['operation_id' => null, 'payer' => ['kind' => 'npc']], 'queued', true, false, false, false), 'non-player-paid letters must refuse resume');
 }
-foreach (['0.1.0-dev.29', '0.1.0-dev.34'] as $unsupportedVersion) {
+foreach (['0.1.0-dev.29', '0.1.0-dev.35'] as $unsupportedVersion) {
     resumeContractExpect(!qd_correspondence_resume_eligible($unsupportedVersion, $document, 'queued', true, false, false, false), 'resume must refuse unsupported owner version: ' . $unsupportedVersion);
 }
 resumeContractExpect(qd_correspondence_safe_queue_reason(new DomainException('renderer_content_overflow')) === 'renderer_unavailable', 'known renderer failures must map to a fixed renderer code');
@@ -289,7 +289,9 @@ $maxCountPendingCursor = qd_correspondence_pending_cursor_create($pendingBinding
 resumeContractExpect(strlen($maxCountPendingCursor) <= 512
     && (qd_correspondence_pending_cursor_parse($maxCountPendingCursor, $pendingBinding, $pendingKey)['count'] ?? null) === $maxDatabaseCount,
     'signed pending cursor must fit the opaque 512-byte wire limit with a maximum database row count');
-$tamperedPendingCursor = substr($pendingCursor, 0, -1) . (str_ends_with($pendingCursor, 'A') ? 'B' : 'A');
+$tamperedPendingParts = explode('.', $pendingCursor);
+$tamperedPendingParts[1] = (str_starts_with($tamperedPendingParts[1], 'A') ? 'B' : 'A') . substr($tamperedPendingParts[1], 1);
+$tamperedPendingCursor = implode('.', $tamperedPendingParts);
 try {
     qd_correspondence_pending_cursor_parse($tamperedPendingCursor, $pendingBinding, $pendingKey);
     throw new RuntimeException('tampered pending cursor unexpectedly accepted');

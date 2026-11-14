@@ -1155,6 +1155,147 @@ async function main() {
       await page.close();
     });
 
+    await test('recipient search filters Compose names across pages and retains the selected actor', async () => {
+      const page = await authenticatedPage(browser, 'scope-compose-recipient-search');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      const catalog = await latestRequest(page, 'correspondence.catalog.read');
+      const inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage([
+        { actorKey: 'npc:1', label: 'Writer', canWrite: true, canReceive: false, canSignAs: false },
+        { actorKey: 'npc:2', label: 'Old Friend', canWrite: false, canReceive: true, canSignAs: false },
+        { actorKey: 'npc:3', label: 'Jarl Guard', canWrite: false, canReceive: false, canSignAs: false },
+      ], { nextCursor: 'search-cursor-1' }));
+      await respond(page, inventory, { inventoryRevision: 'search-items-1', items: [{ itemKey: 'fixture:ruby', label: 'Ruby', availableQuantity: 5 }], gold: { available: 10 } });
+      await page.locator('#letter-writer').selectOption('npc:1');
+      await page.locator('#letter-recipient').selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('Reviewed body remains available.');
+      await page.getByLabel('Attach Ruby').check();
+      await page.locator('#inventory-items .inventory-quantity').fill('2');
+      await page.locator('#gold-amount').fill('3');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.locator('#compose-recipient-search').fill('Jarl');
+      assert.equal(await page.locator('#compose-recipient-search-button').count(), 1, 'Compose exposes an explicit name-search action');
+      await page.locator('#compose-recipient-search-button').click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.catalog.read').length === 2);
+      const secondPage = await latestRequest(page, 'correspondence.catalog.read');
+      assert.deepEqual(secondPage.payload, { limit: 100, cursor: 'search-cursor-1' }, 'search continues from the loaded validated page');
+      await respond(page, secondPage, catalogPage([
+        { actorKey: 'npc:4', label: 'Jarl Balgruuf', canWrite: false, canReceive: true, canSignAs: false },
+      ], { nextCursor: 'search-cursor-2' }));
+      assert.deepEqual(await page.locator('#letter-recipient option').evaluateAll((options) => options.map((option) => option.value)), ['', 'npc:4', 'npc:2']);
+      assert.equal(await page.locator('#letter-recipient').inputValue(), 'npc:2', 'selection is retained by actor key outside the query');
+      assert.match(await page.locator('#letter-recipient option[value="npc:2"]').innerText(), /outside search/i, 'retained selection is marked and is not counted as a name match');
+      assert.match(await page.locator('#compose-recipient-search-status').innerText(), /1.*match/i);
+      assert.match(await page.locator('#compose-recipient-search-status').innerText(), /role/i, 'matching actors without canReceive are explained');
+      assert.equal(await page.locator('#compose-recipient-search-button').innerText(), 'Continue');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), false, 'same-revision paging does not invalidate an unchanged reviewed actor');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length), 1,
+        'searching names does not refresh inventory');
+
+      await page.getByRole('button', { name: 'Mailboxes' }).click();
+      await page.locator('#mailbox-recipient-search').fill('Jarl');
+      await page.locator('#mailbox-recipient-search-button').click();
+      assert.deepEqual(await page.locator('#mailbox-recipient-secondary option').evaluateAll((options) => options.map((option) => option.value)), ['', 'npc:3', 'npc:4'],
+        'Inspector search includes all authorized rows, including actors that cannot receive Compose letters');
+      assert.match(await page.locator('#mailbox-recipient-search-status').innerText(), /2 matching authorized mailbox choices/i);
+      await page.getByRole('button', { name: /refresh recipients/i }).click();
+      const refreshedCatalog = await latestRequest(page, 'correspondence.catalog.read');
+      await respond(page, refreshedCatalog, catalogPage([
+        { actorKey: 'npc:1', label: 'Writer', canWrite: true, canReceive: false, canSignAs: false },
+        { actorKey: 'npc:2', label: 'Old Friend Renamed', canWrite: false, canReceive: true, canSignAs: false },
+        { actorKey: 'npc:3', label: 'Jarl Guard', canWrite: false, canReceive: false, canSignAs: false },
+      ], { revision: 'b'.repeat(64) }));
+      await page.getByRole('button', { name: 'Compose' }).click();
+      assert.equal(await page.locator('#letter-recipient').inputValue(), 'npc:2', 'a refreshed eligible selection remains bound to its actor key');
+      assert.match(await page.locator('#letter-recipient option[value="npc:2"]').innerText(), /Renamed.*outside search/i);
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), true, 'a changed catalog revision requires fresh review');
+      assert.equal(await page.locator('#letter-send').isDisabled(), true);
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Reviewed body remains available.');
+      assert.equal(await page.getByLabel('Attach Ruby').isChecked(), true);
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2');
+      assert.equal(await page.locator('#gold-amount').inputValue(), '3');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length), 1);
+      await page.close();
+    });
+
+    await test('recipient search caps each explicit batch at three pages and triggers with Enter', async () => {
+      const page = await authenticatedPage(browser, 'scope-recipient-search-page-cap');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.locator('#compose-recipient-search').fill('Mira');
+      await page.locator('#compose-recipient-search').press('Enter');
+      let request = null;
+      for (let index = 0; index < 3; index += 1) {
+        await page.waitForFunction((count) => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.catalog.read').length === count + 1, index);
+        request = await latestRequest(page, 'correspondence.catalog.read');
+        assert.equal(request.payload.cursor, index === 0 ? undefined : `cap-cursor-${index}`);
+        await respond(page, request, catalogPage([
+          { actorKey: `npc:${501 + index}`, label: `Name ${index}`, canWrite: false, canReceive: true, canSignAs: false },
+        ], { nextCursor: `cap-cursor-${index + 1}` }));
+      }
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.catalog.read').length), 3,
+        'one Enter press reads no more than three sequential catalog pages');
+      assert.equal(await page.locator('#compose-recipient-search-button').innerText(), 'Continue');
+      assert.match(await page.locator('#compose-recipient-search-status').innerText(), /partial/i);
+      await page.locator('#compose-recipient-search-button').click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.catalog.read').length === 4);
+      request = await latestRequest(page, 'correspondence.catalog.read');
+      assert.equal(request.payload.cursor, 'cap-cursor-3', 'Continue starts at the first unchecked cursor');
+      await respond(page, request, catalogPage([
+        { actorKey: 'npc:504', label: 'Mira Guard', canWrite: false, canReceive: false, canSignAs: false },
+      ], { nextCursor: 'cap-cursor-4' }));
+      await page.waitForFunction(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.catalog.read').length === 5);
+      request = await latestRequest(page, 'correspondence.catalog.read');
+      assert.equal(request.payload.cursor, 'cap-cursor-4');
+      await respond(page, request, catalogPage([
+        { actorKey: 'npc:505', label: 'Mira Recipient', canWrite: false, canReceive: true, canSignAs: false },
+      ], { nextCursor: 'cap-cursor-5' }));
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.catalog.read').length), 5,
+        'Compose continues past a name match excluded by canReceive and stops at the first eligible match');
+      await page.close();
+    });
+
+    await test('recipient search clears stale choices after query and view changes while preserving inventory controls', async () => {
+      const page = await authenticatedPage(browser, 'scope-recipient-search-stale');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      const catalog = await latestRequest(page, 'correspondence.catalog.read');
+      const inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage([
+        { actorKey: 'npc:1', label: 'Writer', canWrite: true, canReceive: false, canSignAs: false },
+        { actorKey: 'npc:2', label: 'Recipient', canWrite: false, canReceive: true, canSignAs: false },
+      ], { nextCursor: 'stale-search-cursor' }));
+      await respond(page, inventory, { inventoryRevision: 'stale-search-items', items: [{ itemKey: 'fixture:ruby', label: 'Ruby', availableQuantity: 5 }], gold: { available: 10 } });
+      await page.locator('#letter-writer').selectOption('npc:1');
+      await page.locator('#letter-recipient').selectOption('npc:2');
+      await page.getByLabel('Letter body').fill('Keep this body.');
+      await page.getByLabel('Attach Ruby').check();
+      await page.locator('#inventory-items .inventory-quantity').fill('2');
+      await page.locator('#gold-amount').fill('3');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      await page.locator('#compose-recipient-search').fill('Missing');
+      await page.locator('#compose-recipient-search-button').click();
+      await page.waitForFunction(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.catalog.read').length === 2);
+      const continuation = await latestRequest(page, 'correspondence.catalog.read');
+      assert.equal(continuation.payload.cursor, 'stale-search-cursor');
+      await page.locator('#compose-recipient-search').fill('Changed query');
+      await page.getByRole('button', { name: 'Mailboxes' }).click();
+      assert.equal(await page.locator('#mailbox-catalog-refresh').isDisabled(), true, 'the in-flight catalog guard remains until the read settles');
+      await respond(page, continuation, catalogPage([
+        { actorKey: 'npc:3', label: 'New actor', canWrite: false, canReceive: true, canSignAs: false },
+      ], { revision: 'c'.repeat(64), nextCursor: 'stale-search-next' }));
+      assert.equal(await page.locator('#mailbox-recipient-secondary option').count(), 1, 'the old shared catalog is cleared despite the changed search view');
+      assert.match(await page.locator('#mail-state').innerText(), /actor list changed/i);
+      assert.equal(await page.locator('#mailbox-catalog-more').isDisabled(), true, 'the stale cursor is discarded');
+      assert.equal(await page.getByLabel('Letter body').inputValue(), 'Keep this body.');
+      assert.equal(await page.getByLabel('Attach Ruby').isChecked(), true);
+      assert.equal(await page.locator('#inventory-items .inventory-quantity').inputValue(), '2');
+      assert.equal(await page.locator('#gold-amount').inputValue(), '3');
+      assert.equal(await page.locator('#letter-review-summary').isHidden(), true);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((item) => item.operation === 'correspondence.inventory.read').length), 1);
+      await page.close();
+    });
+
     await test('actor selectors show neutral prompts only when eligible choices exist', async () => {
       const actors = [
         { actorKey: 'npc:401', label: 'Writer One', canWrite: true, canReceive: false, canSignAs: false },
@@ -3227,6 +3368,97 @@ async function main() {
       await page.close();
     });
 
+    await test('local inventory name filter preserves selected rows and outgoing attachments', async () => {
+      const page = await authenticatedPage(browser, 'scope-inventory-name-filter');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      const catalog = await latestRequest(page, 'correspondence.catalog.read');
+      const inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage([
+        { actorKey: 'npc:401', label: 'Writer', canWrite: true, canReceive: false, canSignAs: false },
+        { actorKey: 'npc:402', label: 'Recipient', canWrite: false, canReceive: true, canSignAs: false },
+      ]));
+      await respond(page, inventory, { inventoryRevision: 'inventory-name-filter', items: [
+        { itemKey: 'fixture:iron-ore', label: 'Iron Ore', availableQuantity: 5 },
+        { itemKey: 'fixture:iron-sword', label: 'Iron Sword', availableQuantity: 4 },
+        { itemKey: 'fixture:salmon', label: 'Salmon', availableQuantity: 3 },
+      ], gold: { available: 15 } });
+      await page.getByLabel('Writer').selectOption('npc:401');
+      await page.getByLabel('Recipient', { exact: true }).selectOption('npc:402');
+      await page.getByLabel('Letter body').fill('A filtered attachment fixture.');
+      await page.getByLabel('Attach Iron Ore').check();
+      await page.getByLabel('Iron Ore quantity').fill('2');
+      await page.getByLabel('Gold').fill('7');
+      await page.getByRole('button', { name: /review letter/i }).click();
+      const attachmentCountBeforeFilter = await page.locator('#attachment-count').innerText();
+      assert.equal(await page.locator('#letter-review-summary').isVisible(), true, 'the draft has a review before filtering');
+      await page.evaluate(() => { window.__inventoryRowsBeforeFilter = [...document.querySelectorAll('#inventory-items .inventory-row')]; });
+      const readsBeforeFilter = await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length);
+      const filter = page.getByLabel('Filter items by name');
+      assert.equal(await filter.count(), 1, 'the inventory name filter is available');
+      await filter.fill('sALmOn');
+      const filtered = await page.evaluate(() => {
+        const rows = [...document.querySelectorAll('#inventory-items .inventory-row')];
+        return {
+          inventoryReads: window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length,
+          sameRows: rows.length === 3 && rows.every((row, index) => row === window.__inventoryRowsBeforeFilter[index]),
+          rows: rows.map((row) => ({
+            itemKey: ['fixture:iron-ore', 'fixture:iron-sword', 'fixture:salmon'][Number(row.dataset.inventoryIndex)],
+            hidden: row.hidden,
+            checked: row.querySelector('.inventory-check').checked,
+            quantity: row.querySelector('.inventory-quantity').value,
+          })),
+        };
+      });
+      assert.equal(filtered.inventoryReads, readsBeforeFilter, 'filtering does not request another inventory snapshot');
+      assert.equal(filtered.sameRows, true, 'filtering keeps the existing inventory rows');
+      assert.deepEqual(filtered.rows, [
+        { itemKey: 'fixture:iron-ore', hidden: false, checked: true, quantity: '2' },
+        { itemKey: 'fixture:iron-sword', hidden: true, checked: false, quantity: '1' },
+        { itemKey: 'fixture:salmon', hidden: false, checked: false, quantity: '1' },
+      ], 'search is case-insensitive, hides unmatched unchecked items, and keeps the selected item editable');
+      assert.equal(await page.getByLabel('Gold').inputValue(), '7', 'gold remains separate from item-name filtering');
+      assert.equal(await page.locator('#attachment-count').innerText(), attachmentCountBeforeFilter, 'filtering preserves the selected attachment count');
+      assert.equal(await page.locator('#letter-review-summary').isVisible(), true, 'filtering keeps the existing review');
+      assert.equal(await page.locator('#letter-send').isDisabled(), false, 'filtering does not invalidate the reviewed draft');
+      await page.getByRole('button', { name: /send sealed letter/i }).click();
+      const compose = await latestRequest(page, 'correspondence.compose');
+      assert.deepEqual(compose.payload.attachments, [{ itemKey: 'fixture:iron-ore', quantity: 2 }]);
+      assert.equal(compose.payload.goldAmount, 7);
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'correspondence.inventory.read').length), readsBeforeFilter,
+        'review and send use the same checked snapshot');
+      await respond(page, compose, { operationId: compose.payload.operationId, state: 'dispatched' });
+      await page.locator('#close-view').click();
+      assert.equal(await filter.inputValue(), '', 'view clear resets the local name query');
+      await page.close();
+    });
+    await test('inventory name filter moves focus before hiding an unchecked selected row', async () => {
+      const page = await authenticatedPage(browser, 'scope-inventory-filter-focus');
+      await page.getByRole('tab', { name: 'Sealed Fates' }).click();
+      await page.getByRole('button', { name: /refresh catalog and inventory/i }).click();
+      const catalog = await latestRequest(page, 'correspondence.catalog.read');
+      const inventory = await latestRequest(page, 'correspondence.inventory.read');
+      await respond(page, catalog, catalogPage([
+        { actorKey: 'npc:401', label: 'Writer', canWrite: true, canReceive: false, canSignAs: false },
+        { actorKey: 'npc:402', label: 'Recipient', canWrite: false, canReceive: true, canSignAs: false },
+      ]));
+      await respond(page, inventory, { inventoryRevision: 'inventory-filter-focus', items: [
+        { itemKey: 'fixture:iron-ore', label: 'Iron Ore', availableQuantity: 5 },
+        { itemKey: 'fixture:salmon', label: 'Salmon', availableQuantity: 3 },
+      ], gold: { available: 0 } });
+      const selected = page.getByLabel('Attach Iron Ore');
+      await selected.check();
+      const filter = page.getByLabel('Filter items by name');
+      assert.equal(await filter.count(), 1, 'the inventory name filter is available');
+      await filter.fill('salmon');
+      await selected.focus();
+      await selected.uncheck();
+      assert.equal(await page.locator('#inventory-items .inventory-row').first().isVisible(), false,
+        'the now-unchecked nonmatching row is hidden');
+      assert.equal(await page.evaluate(() => document.activeElement.id), 'inventory-filter',
+        'focus moves to the filter before its row is hidden');
+      await page.close();
+    });
     await test('full 128-item inventory scrolls independently, controller reveals focus, and review remains reachable', async () => {
       const page = await openPage(browser);
       const bootstrap = await initialize(page);

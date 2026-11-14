@@ -130,7 +130,9 @@
     mp: { records: [], nextCursor: null, limited: false }, sas: { issues: [], nextCursor: null, limited: false },
     pending: new Map(), inFlight: new Set(),
     pcv: { roster: null, status: null, mutationPending: false, mutationUnknown: false, mutationOperationId: null, sendPending: false, sendStatusPending: false, sendOperationId: null, sendUnknownId: null, sendSubmitted: null, sendDraftDiscardedId: null, sendStatusPoll: null, sendStatusRefreshAfterRead: null, draftText: '', lastFocusedControl: null },
-    mail: { actors: [], catalogLimited: false, catalogRevision: null, catalogNextCursor: null, catalogError: null, inventory: null, inventoryLoaded: false, items: [], letters: [], selectedLetter: null, mailboxNextCursor: null,
+    mail: { actors: [], catalogLimited: false, catalogRevision: null, catalogNextCursor: null, catalogError: null, catalogStopReason: null, catalogSeenCursors: new Set(), searchViewVersion: 0,
+      recipientSearch: { compose: { version: 0, lastTerm: null }, mailbox: { version: 0, lastTerm: null } },
+      inventory: null, inventoryLoaded: false, items: [], letters: [], selectedLetter: null, mailboxNextCursor: null,
       operations: [], currentOperationId: null, operationDraft: null, recoveryNotice: '', composeLocked: false, composePending: false,
       pendingReadStatus: 'required', pendingReadLimited: false, pendingReadCursor: null, pendingReadScanId: 0,
       pendingReadMutationVersion: 0, pendingReadUsedCursors: new Set(), pendingReadDiscoveredIds: new Set(), pendingReadFailure: '',
@@ -780,7 +782,8 @@
     state.pcv.roster = null; state.pcv.status = null;
     setStatus('pcv-action-feedback', '');
     state.mp = { records: [], nextCursor: null, limited: false }; state.sas = { issues: [], nextCursor: null, limited: false };
-    state.mail.actors = []; state.mail.catalogLimited = false; state.mail.catalogRevision = null; state.mail.catalogNextCursor = null; state.mail.catalogError = null; state.mail.inventory = null; state.mail.inventoryLoaded = false; state.mail.items = [];
+    state.mail.actors = []; state.mail.catalogLimited = false; state.mail.catalogRevision = null; state.mail.catalogNextCursor = null; state.mail.catalogError = null;
+    state.mail.catalogStopReason = null; state.mail.catalogSeenCursors = new Set(); resetRecipientSearch(); state.mail.inventory = null; state.mail.inventoryLoaded = false; state.mail.items = [];
     state.mail.letters = []; state.mail.selectedLetter = null; state.mail.mailboxNextCursor = null; state.mail.mailboxLimited = false; state.mail.reviewed = false;
     $('mp-rows').replaceChildren();
     const mpEmpty = document.createElement('tr'); const mpCell = document.createElement('td'); mpCell.colSpan = 5; mpCell.className = 'empty-row'; mpCell.textContent = 'No authorized history is loaded.'; mpEmpty.append(mpCell); $('mp-rows').append(mpEmpty);
@@ -791,6 +794,7 @@
     text('detail-signature-secondary', ''); text('detail-author-secondary', ''); text('detail-body-secondary', ''); $('detail-attachments-secondary').replaceChildren();
     text('mp-limited', ''); text('sas-limited', ''); text('mail-limited', '');
     text('mailbox-read-state-secondary', ''); text('mailbox-limited-secondary', '');
+    $('inventory-filter').value = '';
     renderPcvStatus(); renderRoster(); renderInventory(); clearSelectsForMail();
   }
   function resetTransientControls() {
@@ -2057,10 +2061,73 @@
     for (const actor of eligible) appendOption(select, actor.actorKey, actor.label);
     select.value = eligible.some((actor) => actor.actorKey === old) ? old : '';
   }
+  function recipientSearchQuery(surface) { return $(surface === 'compose' ? 'compose-recipient-search' : 'mailbox-recipient-search').value.trim(); }
+  function recipientActorMatches(actor, term) { return actor.label.toLowerCase().includes(term.toLowerCase()); }
+  function matchingRecipients(surface) {
+    const term = recipientSearchQuery(surface);
+    const eligible = state.mail.actors.filter((actor) => surface === 'compose' ? actor.canReceive : true);
+    return { term, eligible, matches: term ? eligible.filter((actor) => recipientActorMatches(actor, term)) : eligible,
+      roleExcluded: surface === 'compose' && term ? state.mail.actors.filter((actor) => !actor.canReceive && recipientActorMatches(actor, term)).length : 0 };
+  }
+  function renderRecipientSelect(surface) {
+    const compose = surface === 'compose';
+    const select = $(compose ? 'letter-recipient' : 'mailbox-recipient-secondary');
+    const { term, eligible, matches } = matchingRecipients(surface);
+    const old = select.value;
+    const retained = term ? eligible.find((actor) => actor.actorKey === old && !matches.some((match) => match.actorKey === old)) : null;
+    select.replaceChildren();
+    appendOption(select, '', matches.length ? (compose ? 'Choose a recipient' : 'Choose a recipient mailbox')
+      : (term ? 'No matching authorized recipients' : compose ? 'No authorized recipients' : 'No authorized recipients'));
+    for (const actor of matches) appendOption(select, actor.actorKey, actor.label);
+    if (retained) appendOption(select, retained.actorKey, `${retained.label} — selected (outside search)`);
+    select.value = matches.some((actor) => actor.actorKey === old) || retained ? old : '';
+  }
+  function renderRecipientSearchControls() {
+    const canCompose = state.authenticated && !state.closed && state.capabilities.correspondence && state.access.compose;
+    const canInspect = state.authenticated && !state.closed && state.capabilities.correspondence && state.access.inspector;
+    const coverage = [
+      state.mail.catalogStopReason === 'bound' ? `The ${MAX_CATALOG_ACTORS.toLocaleString()}-actor display bound was reached; coverage is incomplete.` : '',
+      state.mail.catalogStopReason && state.mail.catalogStopReason !== 'bound' ? 'Paging stopped after an invalid catalog continuation; coverage is incomplete.' : '',
+      state.mail.catalogNextCursor ? 'Coverage is partial; more authorized pages are available.' : '',
+      state.mail.catalogLimited ? 'The source reports a limit; some authorized entries may be unavailable.' : '',
+      state.mail.catalogRevision && !state.mail.catalogNextCursor && !state.mail.catalogLimited && !state.mail.catalogStopReason ? 'Available catalog pages are complete.' : '',
+      !state.mail.catalogRevision && !state.mail.catalogError ? 'The authorized catalog has not been read.' : '',
+    ].filter(Boolean).join(' ');
+    for (const surface of ['compose', 'mailbox']) {
+      const compose = surface === 'compose';
+      const input = $(compose ? 'compose-recipient-search' : 'mailbox-recipient-search');
+      const button = $(compose ? 'compose-recipient-search-button' : 'mailbox-recipient-search-button');
+      const status = $(compose ? 'compose-recipient-search-status' : 'mailbox-recipient-search-status');
+      const search = state.mail.recipientSearch[surface];
+      const { term, matches, roleExcluded } = matchingRecipients(surface);
+      const canSearch = compose ? canCompose : canInspect;
+      const canContinue = Boolean(state.mail.catalogNextCursor && !state.mail.catalogStopReason);
+      const continuation = Boolean(term && search.lastTerm === term && canContinue);
+      input.disabled = !canSearch;
+      button.textContent = continuation ? 'Continue' : 'Search';
+      button.disabled = !canSearch || !term || state.inFlight.has('correspondence.catalog.read')
+        || (!canContinue && state.mail.catalogRevision && search.lastTerm === term);
+      const selectedKey = $(compose ? 'letter-recipient' : 'mailbox-recipient-secondary').value;
+      const retained = Boolean(term && selectedKey && !matches.some((actor) => actor.actorKey === selectedKey));
+      const audience = compose ? 'recipient' : 'mailbox';
+      let message = !term ? `${state.mail.actors.length.toLocaleString()} authorized choices loaded. Enter a name to search.`
+        : matches.length ? `${matches.length.toLocaleString()} matching authorized ${audience} choice${matches.length === 1 ? '' : 's'}.`
+          : roleExcluded ? `No eligible Compose recipient matches; ${roleExcluded} name match${roleExcluded === 1 ? '' : 'es'} are excluded by recipient-role permissions.`
+            : state.mail.catalogLimited ? `No matching authorized ${audience} was found in this source-limited catalog.`
+              : state.mail.catalogRevision && !state.mail.catalogNextCursor && !state.mail.catalogStopReason
+                ? `No matching authorized ${audience} choices in the complete catalog.`
+                : state.mail.catalogStopReason || state.mail.catalogError ? 'No match is confirmed because catalog coverage is incomplete.'
+                  : 'No match in the loaded catalog pages.';
+      if (roleExcluded && matches.length) message += ` ${roleExcluded} matching actor${roleExcluded === 1 ? '' : 's'} are excluded by recipient-role permissions.`;
+      if (matches.length) message += ' Matches are authorized choices; CHIM may still refuse physical delivery if it cannot resolve an actor form.';
+      if (retained) message += ' The selected recipient is retained outside the search results.';
+      status.textContent = `${message} ${coverage}`.trim();
+    }
+  }
   function syncMailboxRecipients() {
     // The authorized catalog bounds mailbox choices; compose eligibility is unrelated to archive access.
     const previous = $('mailbox-recipient-secondary').value;
-    renderCatalogSelect('mailbox-recipient-secondary', 'Choose a recipient mailbox', state.mail.actors, () => true);
+    renderRecipientSelect('mailbox');
     if (previous !== $('mailbox-recipient-secondary').value) clearMailboxView();
   }
   function clearMailboxView() {
@@ -2084,7 +2151,7 @@
     const container = $('inventory-items');
     container.replaceChildren();
     if (!state.mail.inventoryLoaded || !state.mail.inventory) {
-      const empty = document.createElement('p'); empty.className = 'empty-row'; empty.textContent = 'Refresh inventory to see supported items.'; container.append(empty);
+      const empty = document.createElement('p'); empty.className = 'empty-row'; empty.textContent = 'Refresh inventory to list eligible attachment items.'; container.append(empty);
       $('gold-amount').value = '0';
       text('inventory-status', 'Inventory has not been read.');
       text('attachment-count', '0 / 8 unique attachment types · Gold counts as one.');
@@ -2093,10 +2160,10 @@
     for (const [index, item] of state.mail.inventory.items.entries()) {
       const row = document.createElement('label'); row.className = 'inventory-row';
       const check = document.createElement('input'); check.type = 'checkbox'; check.className = 'inventory-check'; check.setAttribute('aria-label', `Attach ${item.label}`); check.addEventListener('change', () => { state.mail.reviewed = false; updateAttachmentCount(); renderMailAccess(); });
-      const name = document.createElement('span'); name.textContent = item.label;
+      const name = document.createElement('span'); name.className = 'inventory-name'; name.textContent = item.label;
       const available = document.createElement('small'); available.textContent = `Available ${item.availableQuantity}`;
       const quantity = document.createElement('input'); quantity.type = 'number'; quantity.className = 'inventory-quantity'; quantity.min = '1'; quantity.max = String(item.availableQuantity); quantity.step = '1'; quantity.value = '1'; quantity.disabled = true; quantity.setAttribute('aria-label', `${item.label} quantity`);
-      check.addEventListener('change', () => { quantity.disabled = !check.checked; if (check.checked) quantity.value = '1'; state.mail.reviewed = false; updateAttachmentCount(); renderMailAccess(); });
+      check.addEventListener('change', () => { quantity.disabled = !check.checked; if (check.checked) quantity.value = '1'; state.mail.reviewed = false; updateAttachmentCount(); renderMailAccess(); applyInventoryFilter(); });
       quantity.addEventListener('input', () => { state.mail.reviewed = false; updateAttachmentCount(); renderMailAccess(); });
       row.append(check, name, available, quantity);
       row.dataset.inventoryIndex = String(index);
@@ -2104,7 +2171,25 @@
     }
     $('gold-amount').max = String(state.mail.inventory.goldAvailable);
     text('inventory-status', 'Inventory refreshed.');
+    applyInventoryFilter();
     updateAttachmentCount();
+  }
+  function applyInventoryFilter() {
+    const container = $('inventory-items');
+    const query = $('inventory-filter').value.trim().toLowerCase();
+    let visible = 0;
+    for (const row of container.querySelectorAll('.inventory-row')) {
+      const matches = row.querySelector('.inventory-name').textContent.toLowerCase().includes(query);
+      const checkbox = row.querySelector('.inventory-check');
+      const hidden = !matches && !checkbox.checked;
+      if (hidden && row.contains(document.activeElement)) $('inventory-filter').focus();
+      row.hidden = hidden;
+      if (!hidden) visible += 1;
+    }
+    let empty = container.querySelector('.inventory-filter-empty');
+    if (visible) { if (empty) empty.remove(); return; }
+    if (!empty) { empty = document.createElement('p'); empty.className = 'empty-row inventory-filter-empty'; container.append(empty); }
+    empty.textContent = query ? 'No listed eligible items match this search.' : 'No eligible items are listed in this snapshot.';
   }
   function selectedAttachments() {
     const attachments = [];
@@ -2335,6 +2420,7 @@
     $('mailbox-more-secondary').disabled = !canInspect || !state.mail.mailboxNextCursor || state.inFlight.has('correspondence.mailbox.read');
     $('mailbox-list-secondary').querySelectorAll('.mail-item').forEach((item) => { item.disabled = state.inFlight.has('correspondence.detail.read'); });
     const composerReady = canCompose && state.mail.inventoryLoaded && state.mail.actors.some((actor) => actor.canWrite) && state.mail.actors.some((actor) => actor.canReceive) && !state.mail.composeLocked;
+    $('inventory-filter').disabled = !canCompose || !state.mail.inventoryLoaded;
     $('letter-writer').disabled = !composerReady;
     $('letter-recipient').disabled = !composerReady;
     $('sign-as-other').disabled = !composerReady;
@@ -2365,10 +2451,11 @@
     } else {
       setStatus('mail-state', 'Out-of-character access is authorized. Composition and receipt stages remain separate from NPC knowledge.', 'success');
     }
+    renderRecipientSearchControls();
   }
   function clearSelectsForMail() {
     renderCatalogSelect('letter-writer', 'No authorized writers', state.mail.actors, (actor) => actor.canWrite, '', 'Choose a writer');
-    renderCatalogSelect('letter-recipient', 'No authorized recipients', state.mail.actors, (actor) => actor.canReceive, '', 'Choose a recipient');
+    renderRecipientSelect('compose');
     renderCatalogSelect('letter-signature', 'Choose an authorized signature', state.mail.actors, (actor) => actor.canSignAs);
     syncMailboxRecipients();
   }
@@ -2378,50 +2465,108 @@
     state.mail.catalogRevision = null;
     state.mail.catalogNextCursor = null;
     state.mail.catalogError = null;
+    state.mail.catalogStopReason = null;
+    state.mail.catalogSeenCursors = new Set();
+    for (const search of Object.values(state.mail.recipientSearch)) {
+      search.version += 1;
+      search.lastTerm = null;
+    }
     clearSelectsForMail();
     renderMailAccess();
   }
-  async function refreshCatalog(loadMore = false) {
+  async function refreshCatalog(loadMore = false, isRelevant = () => true) {
     const context = makeContext();
     const requestedCursor = loadMore ? state.mail.catalogNextCursor : null;
     const requestedRevision = loadMore ? state.mail.catalogRevision : null;
     try {
       requireCapability('correspondence.catalog.read');
-      if (loadMore && (!requestedCursor || !requestedRevision)) return;
+      if (loadMore && (!requestedCursor || !requestedRevision)) return { status: 'stopped', reason: 'no_cursor' };
       const payload = { limit: 100 };
       if (loadMore) payload.cursor = requestedCursor;
       const data = await request('correspondence.catalog.read', payload);
-      if (!isCurrentContext(context)) return;
+      if (!isCurrentContext(context)) return { status: 'ignored' };
       const catalog = validCatalog(data);
-      if (!catalog) throw failLocal('UNAVAILABLE');
-      if (loadMore && catalog.revision !== requestedRevision) throw failLocal('STALE_REVISION');
+      if (loadMore && catalog && catalog.revision !== requestedRevision) throw failLocal('STALE_REVISION');
+      if (!isRelevant()) return { status: 'ignored' };
+      if (!catalog) { stopCatalog('invalid'); return { status: 'invalid', reason: 'invalid' }; }
       const existing = loadMore ? state.mail.actors : [];
       const existingKeys = new Set(existing.map((actor) => actor.actorKey));
-      if (catalog.actors.some((actor) => existingKeys.has(actor.actorKey)) || existing.length + catalog.actors.length > MAX_CATALOG_ACTORS) {
-        throw failLocal('UNAVAILABLE');
-      }
+      const invalidReason = catalog.actors.some((actor) => existingKeys.has(actor.actorKey)) ? 'duplicate'
+        : existing.length + catalog.actors.length > MAX_CATALOG_ACTORS ? 'bound'
+          : loadMore && catalog.nextCursor !== null && (catalog.nextCursor === requestedCursor || state.mail.catalogSeenCursors.has(catalog.nextCursor)) ? 'cursor'
+            : catalog.actors.length === 0 && catalog.nextCursor !== null ? 'empty' : '';
+      if (invalidReason) { stopCatalog(invalidReason); return { status: 'invalid', reason: invalidReason }; }
+      const previousActors = state.mail.actors;
+      const reviewedKeys = state.mail.reviewed ? reviewedActorKeys() : [];
+      const priorReviewedActors = reviewedKeys.map((key) => previousActors.find((actor) => actor.actorKey === key) || null);
+      const reviewedSnapshotChanged = state.mail.reviewed && state.mail.catalogRevision !== null && state.mail.catalogRevision !== catalog.revision;
       state.mail.actors = [...existing, ...catalog.actors];
-      state.mail.catalogLimited = catalog.limited;
+      state.mail.catalogLimited = (loadMore && state.mail.catalogLimited) || catalog.limited;
       state.mail.catalogRevision = catalog.revision;
       state.mail.catalogNextCursor = catalog.nextCursor;
       state.mail.catalogError = null;
+      state.mail.catalogStopReason = null;
+      if (!loadMore) {
+        state.mail.catalogSeenCursors = new Set();
+        for (const search of Object.values(state.mail.recipientSearch)) search.lastTerm = null;
+      } else state.mail.catalogSeenCursors.add(requestedCursor);
+      if (state.mail.actors.length >= MAX_CATALOG_ACTORS && state.mail.catalogNextCursor) {
+        state.mail.catalogNextCursor = null;
+        state.mail.catalogStopReason = 'bound';
+      }
+      if (state.mail.reviewed && (reviewedSnapshotChanged || priorReviewedActors.some((actor, index) => {
+        const current = state.mail.actors.find((candidate) => candidate.actorKey === reviewedKeys[index]);
+        return !actor || !current || actor.label !== current.label || actor.canWrite !== current.canWrite
+          || actor.canReceive !== current.canReceive || actor.canSignAs !== current.canSignAs;
+      }))) {
+        state.mail.reviewed = false;
+        $('letter-review-summary').hidden = true;
+      }
       clearSelectsForMail();
       renderMailAccess();
       const notices = [];
-      if (catalog.nextCursor) notices.push('More authorized actors are available; use Load more actors to continue.');
-      if (catalog.limited) notices.push('The source catalog is capped; some source entries may be unavailable.');
+      if (state.mail.catalogNextCursor) notices.push('More authorized actors are available; search or load more to continue.');
+      if (state.mail.catalogLimited) notices.push('The source catalog is capped; some source entries may be unavailable.');
+      if (state.mail.catalogStopReason === 'bound') notices.push(`The ${MAX_CATALOG_ACTORS.toLocaleString()}-actor display bound was reached; remaining coverage is incomplete.`);
       text('mail-limited', notices.join(' '));
+      return { status: 'applied', actors: catalog.actors };
     } catch (error) {
-      if (!isCurrentContext(context)) return;
-      if (loadMore && error && error.code === 'STALE_REVISION') {
+      if (!isCurrentContext(context)) return { status: 'ignored' };
+      if (error && error.code === 'STALE_REVISION') {
         clearCatalogPage();
+        state.mail.reviewed = false;
+        $('letter-review-summary').hidden = true;
         state.mail.catalogError = 'The authorized actor list changed. Refresh the catalog before continuing.';
         text('mail-limited', 'The catalog changed while paging; its old choices and cursor were cleared.');
-        return;
+        setStatus('mail-state', state.mail.catalogError, 'error');
+        renderMailAccess();
+        return { status: 'stale' };
       }
+      if (!isRelevant()) return { status: 'ignored' };
       state.mail.catalogError = localError(error);
       setStatus('mail-state', state.mail.catalogError, 'error');
+      return { status: 'error', error };
     }
+  }
+  function stopCatalog(reason) {
+    state.mail.catalogNextCursor = null;
+    state.mail.catalogStopReason = reason;
+    const copy = reason === 'bound'
+      ? `The catalog reached the ${MAX_CATALOG_ACTORS.toLocaleString()}-actor display bound; remaining coverage is incomplete.`
+      : reason === 'empty'
+        ? 'The catalog returned an empty page with another cursor; paging stopped with incomplete coverage.'
+        : reason === 'cursor'
+          ? 'The catalog repeated a page cursor; paging stopped with incomplete coverage.'
+          : reason === 'duplicate'
+            ? 'The catalog repeated an actor key; paging stopped with incomplete coverage.'
+            : 'The catalog page was invalid; paging stopped with incomplete coverage.';
+    state.mail.catalogError = copy;
+    text('mail-limited', copy);
+    setStatus('mail-state', copy, 'error');
+    renderMailAccess();
+  }
+  function reviewedActorKeys() {
+    return [$('letter-writer').value, $('letter-recipient').value, $('sign-as-other').checked ? $('letter-signature').value : ''].filter(Boolean);
   }
   async function refreshInventory() {
     if (!state.access.compose) return;
@@ -2546,6 +2691,72 @@
       }
     }
   }
+  function isRecipientSearchActive(surface, term, version, viewVersion, context) {
+    const search = state.mail.recipientSearch[surface];
+    return isCurrentContext(context) && search.version === version
+      && recipientSearchQuery(surface) === term && state.mail.searchViewVersion === viewVersion
+      && !$('panel-mail').hidden && !(surface === 'compose' ? $('mail-compose-view').hidden : $('mailbox-view').hidden);
+  }
+  function updateRecipientSearch(surface) {
+    const search = state.mail.recipientSearch[surface];
+    search.version += 1;
+    search.lastTerm = null;
+    renderRecipientSelect(surface);
+    renderMailAccess();
+  }
+  function resetRecipientSearch() {
+    state.mail.searchViewVersion += 1;
+    for (const surface of ['compose', 'mailbox']) {
+      const search = state.mail.recipientSearch[surface];
+      search.version += 1;
+      search.lastTerm = null;
+      const input = $(surface === 'compose' ? 'compose-recipient-search' : 'mailbox-recipient-search');
+      if (input) input.value = '';
+    }
+  }
+  async function searchRecipients(surface) {
+    const query = recipientSearchQuery(surface);
+    const search = state.mail.recipientSearch[surface];
+    if (!query || (surface === 'compose' ? !roleAllows('correspondence.compose') : !roleAllows('correspondence.mailbox.read'))
+      || state.inFlight.has('correspondence.catalog.read')) return;
+    const context = makeContext();
+    const version = search.version;
+    const viewVersion = state.mail.searchViewVersion;
+    const isRelevant = () => isRecipientSearchActive(surface, query, version, viewVersion, context);
+    if (!isRelevant()) return;
+    const canContinue = Boolean(state.mail.catalogNextCursor && !state.mail.catalogStopReason);
+    if (search.lastTerm !== query && state.mail.catalogRevision) {
+      const localMatch = matchingRecipients(surface).matches.length > 0;
+      if (localMatch || !canContinue) {
+        search.lastTerm = query;
+        renderMailAccess();
+        return;
+      }
+    }
+    state.inFlight.add('correspondence.catalog.read');
+    renderMailAccess();
+    try {
+      let loadMore = Boolean(state.mail.catalogRevision && state.mail.catalogNextCursor);
+      for (let page = 0; page < 3; page += 1) {
+        if (!isRelevant() || state.mail.catalogStopReason || (loadMore && !state.mail.catalogNextCursor)) return;
+        const outcome = await refreshCatalog(loadMore, isRelevant);
+        if (!isRelevant() || outcome.status === 'ignored' || outcome.status === 'stale') return;
+        if (outcome.status !== 'applied') {
+          search.lastTerm = query;
+          break;
+        }
+        search.lastTerm = query;
+        const addedMatch = outcome.actors.some((actor) => (surface !== 'compose' || actor.canReceive) && recipientActorMatches(actor, query));
+        if (addedMatch || !state.mail.catalogNextCursor || state.mail.catalogStopReason) break;
+        loadMore = true;
+      }
+    } finally {
+      if (isCurrentContext(context)) {
+        state.inFlight.delete('correspondence.catalog.read');
+        renderMailAccess();
+      }
+    }
+  }
   function composePayload() {
     if (!state.mail.inventory || !state.mail.inventoryLoaded || !state.access.compose) return null;
     const writerActorKey = $('letter-writer').value;
@@ -2584,6 +2795,7 @@
       row.querySelector('.inventory-check').checked = false;
       row.querySelector('.inventory-quantity').value = '1';
     });
+    applyInventoryFilter();
     $('letter-review-summary').replaceChildren();
     $('letter-review-summary').hidden = true;
     updateLetterCount();
@@ -3031,6 +3243,7 @@
   }
   function setMailView(view, focus = false) {
     const mailbox = view === 'mailbox';
+    if ($('mailbox-view').hidden === mailbox) state.mail.searchViewVersion += 1;
     $('mail-compose-tab').setAttribute('aria-selected', String(!mailbox));
     $('mailbox-tab').setAttribute('aria-selected', String(mailbox));
     $('mail-compose-view').hidden = mailbox;
@@ -3045,6 +3258,8 @@
     const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
     const index = typeof tab === 'number' ? tab : tabs.indexOf(tab);
     if (index < 0 || index >= tabs.length) return;
+    const current = tabs.findIndex((item) => item.getAttribute('aria-selected') === 'true');
+    if (current !== index && (tabs[current]?.getAttribute('aria-controls') === 'panel-mail' || tabs[index]?.getAttribute('aria-controls') === 'panel-mail')) state.mail.searchViewVersion += 1;
     tabs.forEach((item, position) => {
       const selected = position === index;
       item.setAttribute('aria-selected', String(selected));
@@ -3221,10 +3436,22 @@
     $('sas-refresh').addEventListener('click', () => invoke(() => refreshSas(false), 'sas-state'));
     $('sas-more').addEventListener('click', () => invoke(() => refreshSas(true), 'sas-state'));
     $('sas-perspective').addEventListener('change', () => { state.sas = { issues: [], nextCursor: null, limited: false }; renderIssueList($('sas-grievances'), [], 'No retained grievances for this perspective.'); renderIssueList($('sas-promises'), [], 'No retained promises for this perspective.'); renderSasChoices(); });
+    $('inventory-filter').addEventListener('input', applyInventoryFilter);
     $('mail-refresh').addEventListener('click', () => invoke(refreshCatalogAndInventory, 'mail-state'));
     $('mail-catalog-more').addEventListener('click', () => invoke(loadMoreCatalog, 'mail-state'));
     $('mailbox-catalog-refresh').addEventListener('click', () => invoke(refreshMailboxCatalog, 'mail-state'));
     $('mailbox-catalog-more').addEventListener('click', () => invoke(loadMoreCatalog, 'mail-state'));
+    for (const surface of ['compose', 'mailbox']) {
+      const input = $(surface === 'compose' ? 'compose-recipient-search' : 'mailbox-recipient-search');
+      const button = $(surface === 'compose' ? 'compose-recipient-search-button' : 'mailbox-recipient-search-button');
+      input.addEventListener('input', () => updateRecipientSearch(surface));
+      input.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter') return;
+        event.preventDefault();
+        if (!button.disabled) button.click();
+      });
+      button.addEventListener('click', () => invoke(() => searchRecipients(surface), 'mail-state'));
+    }
     $('mailbox-refresh-secondary').addEventListener('click', () => invoke(() => refreshMailbox(false), 'mail-state'));
     $('mailbox-more-secondary').addEventListener('click', () => invoke(() => refreshMailbox(true), 'mail-state'));
     $('mailbox-recipient-secondary').addEventListener('change', () => {

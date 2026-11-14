@@ -340,6 +340,30 @@ const QD_CORRESPONDENCE_SOURCE_HASHES_BY_VERSION = [
         'preprocessing.php' => '31fc70b865da5f5db27c5f8187c3b614df4de6b3b1a9ac04578470dfe7ddea1e',
         'index.php' => 'df0ab446b5508e2626dc367dcd8c933a054679cdf9575ed630dcbaf500e76f6f',
     ],
+    '0.1.0-dev.34' => [
+        'manifest.json' => '6c34f8e2afce937e7f92260c932127eb02d7b331d3262c96a90f4cf171fba9fb',
+        'lib/runtime.php' => '9eaa59fc3c4c63541cc1220ef13f5b71329407217d5bd218aba35eaf7287746a',
+        'lib/store.php' => '5c4efa439d4192ce121f257b51a86da99390ead5f21c90eb0e87d67ac6b1c454',
+        'lib/boundaries.php' => '21034b79e36d208b30ed0ea5aa6892581ae6749c5a9190a3b4a422f4f74b7d0f',
+        'lib/bootstrap.php' => '80bab9ac516c9aafc9492f32865fc05ebd0abb618ecbd9898eb9a790312daa4e',
+        'lib/autonomy_policy.php' => 'db83aa3f1bc85c80c12c57294262ee7d4c93dc4bfcbd9eef4de8ced31b6fba18',
+        'lib/autonomy_store.php' => 'c163243334c8a558c800fd946d27564acf2f49d8df51ddf914899d784809a795',
+        'lib/autonomy_host.php' => 'b0ce613ebc7d02d6b3dc539b003022981a07e808208070554a68a105f42fcf12',
+        'lib/offscreen_policy.php' => '23639437e41eafaebd98ec85ce81cf3815ac51365f036c9e33b373fc17504058',
+        'lib/offscreen.php' => '26f9f9a31844bfb433d7d6bf2c996e8ad6e0c9f6c15c5a054d96cb3630e0f439',
+        'lib/offscreen_host.php' => '7ae21d2db282d9de0f1d37ca27a43624343fefd5e371b671a5f543177e1a2155',
+        'lib/companion.php' => 'ce3c2c0c40c10f23d60e1604dafc38901832be8ef528b53b515269d42ce82e32',
+        'lib/companion_policy.php' => 'b245767ef4764e82e4fd945f0ab0508993b4095b3bba6012ebeb3a1f09754be5',
+        'lib/companion_host.php' => 'eb94e158b0c0e3bb1497d2efc68c483a01ffd371d1534187e0b054c102561403',
+        'migrations/001_initial.sql' => 'b2052570036697147dacb5d041c0a692294af78a83f946e7819d83235e16dc99',
+        'migrations/002_autonomy.sql' => '20e0ba2901f9ff352311e00a706c976c793e1e1185c224afcb599f426acb63d3',
+        'migrations/003_offscreen.sql' => '245ae41800da5d9d291cf25df9e4766059677710241a086c15ca6999d7500855',
+        'migrations/004_restore_state.sql' => 'd6a13622ece3af538996558d892852c5126581d99b4964eec0203a5b5b1a559e',
+        'migrations/005_companion.sql' => 'b5b65588aea68eacd97907b1c548ba0c8d2c00b064b8d2c405a5aba5239a9cee',
+        'migrations/006_history_indexes.sql' => '9691b8ae97f60981e4baca883aecd8d2d615ddbb77c0b90ea1f6efd6c1f58a66',
+        'preprocessing.php' => '31fc70b865da5f5db27c5f8187c3b614df4de6b3b1a9ac04578470dfe7ddea1e',
+        'index.php' => '80f652abd4bb02771bb2d4e2e7941ce74215c6d080d44d5e7317036a9e82ab0f',
+    ],
 ];
 
 function qd_correspondence_source_root(): string
@@ -444,7 +468,7 @@ function qd_correspondence_loaded_source_version(): string
 
 function qd_correspondence_version_uses_restore_fence(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33'], true);
+    return in_array($version, ['0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33', '0.1.0-dev.34'], true);
 }
 
 function qd_correspondence_uses_restore_fence(): bool
@@ -454,27 +478,27 @@ function qd_correspondence_uses_restore_fence(): bool
 
 function qd_correspondence_version_supports_signed_unknown(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33'], true);
+    return in_array($version, ['0.1.0-dev.17', '0.1.0-dev.18', '0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33', '0.1.0-dev.34'], true);
 }
 
 function qd_correspondence_version_supports_operator_close(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33'], true);
+    return in_array($version, ['0.1.0-dev.20', '0.1.0-dev.21', '0.1.0-dev.22', '0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33', '0.1.0-dev.34'], true);
 }
 
 function qd_correspondence_version_supports_companion_scheduler(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33'], true);
+    return in_array($version, ['0.1.0-dev.23', '0.1.0-dev.24', '0.1.0-dev.25', '0.1.0-dev.26', '0.1.0-dev.27', '0.1.0-dev.28', '0.1.0-dev.29', '0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33', '0.1.0-dev.34'], true);
 }
 
 function qd_correspondence_version_supports_pending_resume(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33'], true);
+    return in_array($version, ['0.1.0-dev.30', '0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33', '0.1.0-dev.34'], true);
 }
 
 function qd_correspondence_version_supports_receipt_check(string $version): bool
 {
-    return in_array($version, ['0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33'], true);
+    return in_array($version, ['0.1.0-dev.31', '0.1.0-dev.32', '0.1.0-dev.33', '0.1.0-dev.34'], true);
 }
 
 function qd_correspondence_runtime_ready(): bool
@@ -1897,8 +1921,11 @@ function qd_correspondence_document_integrity(object $store, array $doc, ?array 
 {
     try {
         $version = qd_correspondence_loaded_source_version();
+        $hasGift = array_key_exists('gift', $doc);
         $hasOperatorClose = array_key_exists('operator_close', $doc);
         $documentKeys = ['document_id', 'playthrough_id', 'request_id', 'request_hash', 'body', 'attachments', 'operation_id', 'author', 'payer', 'recipient', 'claimed_sender', 'title', 'anchor'];
+        if ($hasGift && $version !== '0.1.0-dev.34') return false;
+        if ($hasGift) $documentKeys[] = 'gift';
         if ($hasOperatorClose && qd_correspondence_version_supports_operator_close($version)) $documentKeys[] = 'operator_close';
         correspondenceKeys($doc, $documentKeys);
         correspondenceUuidCheck($doc['document_id'] ?? null);
@@ -1916,6 +1943,9 @@ function qd_correspondence_document_integrity(object $store, array $doc, ?array 
         if ($authorKey === null || $payerKey === null || $recipientKey === null || $signatureKey === null
             || $doc['title'] !== 'letter ' . $doc['document_id']
             || (!is_string($doc['operation_id']) && $doc['operation_id'] !== null)) return false;
+        if ($hasGift && ($doc['gift'] !== true || $authorKey !== 'player'
+            || $doc['author'] != $doc['payer'] || $doc['author'] != $doc['claimed_sender']
+            || !str_starts_with($recipientKey, 'npc:') || $ownerAttachments === [])) return false;
         $companionRows ??= qd_correspondence_companion_decision_rows($store, $doc);
         if ($companionRows !== []) {
             if (!qd_correspondence_version_supports_companion_scheduler($version)
@@ -1928,6 +1958,7 @@ function qd_correspondence_document_integrity(object $store, array $doc, ?array 
             'recipient' => $recipientKey, 'claimed_sender' => $signatureKey,
             'body' => $doc['body'], 'attachments' => $ownerAttachments,
         ];
+        if ($hasGift) $requestInput['gift'] = true;
         if (!hash_equals($doc['request_hash'], hash('sha256', correspondenceCanonicalJson($requestInput)))) return false;
         $documentAnchor = qd_correspondence_fetch_event($store, $doc['anchor']);
         if ($documentAnchor === null || ($documentAnchor['type'] ?? null) !== 'info'
@@ -1995,7 +2026,18 @@ function qd_correspondence_validate_receipt(object $store, mixed $connection, ar
     $receipt = $operation['receipt'];
     try {
         $ownerAttachments = correspondenceAttachments($doc['attachments']);
-        correspondenceKeys($operation, ['protocol_version', 'document_id', 'operation_id', 'receipt_id', 'playthrough_id', 'scope_token', 'nonce', 'recipient', 'payer', 'title', 'renderer_key', 'attachments', 'receipt', 'receipt_anchor', 'source', 'dispatch_anchor']);
+        $hasGiftProof = array_key_exists('gift_proof', $operation);
+        if ($hasGiftProof) {
+            if (qd_correspondence_loaded_source_version() !== '0.1.0-dev.34' || ($doc['gift'] ?? null) !== true
+                || ($operation['gift_proof'] !== null && (!is_string($operation['gift_proof'])
+                    || preg_match('/\A[a-f0-9]{64}\z/D', $operation['gift_proof']) !== 1))) {
+                return ['confirmed' => false, 'failed' => false, 'partial' => false, 'attachments' => []];
+            }
+            // This private owner marker can survive receipt repair; it never grants social credit or confirms delivery.
+        }
+        $operationKeys = ['protocol_version', 'document_id', 'operation_id', 'receipt_id', 'playthrough_id', 'scope_token', 'nonce', 'recipient', 'payer', 'title', 'renderer_key', 'attachments', 'receipt', 'receipt_anchor', 'source', 'dispatch_anchor'];
+        if ($hasGiftProof) $operationKeys[] = 'gift_proof';
+        correspondenceKeys($operation, $operationKeys);
         foreach (['document_id', 'operation_id', 'receipt_id', 'scope_token'] as $key) correspondenceUuidCheck($operation[$key] ?? null);
         if (($operation['protocol_version'] ?? null) !== 1 || ($operation['playthrough_id'] ?? null) !== $doc['playthrough_id']
             || ($operation['title'] ?? null) !== $doc['title'] || !is_string($operation['nonce'] ?? null)

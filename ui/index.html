@@ -122,13 +122,15 @@
           <section class="compose-panel" aria-labelledby="compose-heading"><h3 id="compose-heading">Compose a letter</h3>
             <div class="field-grid">
               <div class="field"><label for="letter-writer">Writer</label><select id="letter-writer" disabled><option value="">No authorized writers</option></select></div>
+              <div class="field"><label for="compose-recipient-search">Find recipient by name</label><div class="button-row compact-row"><input id="compose-recipient-search" type="search" autocomplete="off" placeholder="Search authorized recipients" aria-describedby="compose-recipient-search-status" disabled><button id="compose-recipient-search-button" class="button secondary" type="button" disabled>Search</button></div><small id="compose-recipient-search-status" role="status" aria-live="polite"></small></div>
               <div class="field"><label for="letter-recipient">Recipient</label><select id="letter-recipient" disabled><option value="">No authorized recipients</option></select></div>
               <label class="check-label span-two"><input id="sign-as-other" type="checkbox" disabled><span>Sign as someone else</span></label>
               <div id="signature-wrap" class="field span-two" hidden><label for="letter-signature">Signature shown on the letter</label><select id="letter-signature" disabled><option value="">Choose an authorized signature</option></select><small>A signature is a claim. It does not change the selected writer.</small></div>
               <div class="field span-two"><label for="letter-body">Letter body</label><textarea id="letter-body" rows="6" disabled></textarea><span class="count-line"><span id="letter-count">0 / 2,000</span><span>Written by the selected OOC writer · 2,000 characters max</span></span></div>
             </div>
-            <div class="inventory-block"><div class="section-heading"><div><h4>Your inventory</h4><p class="subtle">Payer is fixed to the player. Only supported current holdings appear here.</p></div><div class="gold-control"><label for="gold-amount">Gold</label><input id="gold-amount" type="number" min="0" step="1" value="0" disabled></div></div>
-              <div id="inventory-items" class="inventory-items"><p class="empty-row">Refresh inventory to see supported items.</p></div>
+            <div class="inventory-block"><div class="section-heading"><div><h4>Eligible items</h4><p class="subtle">Payer is fixed to the player. Search the items available for attachment. Selected items stay visible.</p></div><div class="gold-control"><label for="gold-amount">Gold</label><input id="gold-amount" type="number" min="0" step="1" value="0" disabled></div></div>
+              <div class="field inventory-filter"><label for="inventory-filter">Filter items by name</label><input id="inventory-filter" type="search" placeholder="Search item names" disabled><small>This snapshot may omit other game items; omitted items are not identified.</small></div>
+              <div id="inventory-items" class="inventory-items"><p class="empty-row">Refresh inventory to list eligible attachment items.</p></div>
               <p id="attachment-count" class="notice">0 / 8 unique attachment types · Gold counts as one.</p>
             </div>
             <div id="letter-recovery" class="field-grid" aria-label="Unresolved letter operations">
@@ -144,6 +146,7 @@
         <div class="mail-grid mailbox-only"><section class="mailbox-panel wide-mailbox">
           <h3>Received letters</h3>
           <div class="button-row compact-row"><button id="mailbox-catalog-refresh" class="button secondary" type="button">Refresh recipients</button><button id="mailbox-catalog-more" class="button quiet" type="button" disabled>Load more recipients</button></div>
+          <div class="field"><label for="mailbox-recipient-search">Find mailbox by recipient name</label><div class="button-row compact-row"><input id="mailbox-recipient-search" type="search" autocomplete="off" placeholder="Search authorized mailboxes" aria-describedby="mailbox-recipient-search-status" disabled><button id="mailbox-recipient-search-button" class="button secondary" type="button" disabled>Search</button></div><small id="mailbox-recipient-search-status" role="status" aria-live="polite"></small></div>
           <div class="field"><label for="mailbox-recipient-secondary">Recipient mailbox</label><select id="mailbox-recipient-secondary" disabled><option value="">No authorized recipients</option></select></div>
           <div class="button-row"><button id="mailbox-refresh-secondary" class="button secondary" type="button" disabled>Refresh mailbox</button><button id="mailbox-more-secondary" class="button quiet" type="button" disabled>Load older</button></div>
           <p id="mailbox-read-state-secondary" class="state-line" role="status" aria-live="polite"></p>
