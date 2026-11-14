@@ -24,6 +24,15 @@ const QD_MP_EXPECTED_SOURCE_HASHES = [
         'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
         'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
     ],
+    '0.1.32' => [
+        'manifest.json' => '2b4fddd7b7b23dee61add1f465fcbac09c4a0acfbc1714f59da5c3ae734db906',
+        'dashboard_data.php' => 'd6ff6d2c7f59c91673dbede1843cd3b74cbd75fc1873f1d14265b71096a6795d',
+        'store.php' => '94dec0a3ecf674d21fd5f51da920f6c5771e2f814025977a4fae9b55aeeed952',
+        'influence.php' => 'a427f150db009713644390c8b6eb7bfc1257ec2ca3755f8089bf5ba45998fc60',
+        'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
+        'logging.php' => '21d09ef9213cf727471120623163bb8dc52a129ce4a174ff5e10d645bc9b8ba8',
+        'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    ],
 ];
 
 function qd_mp_source_root(): string

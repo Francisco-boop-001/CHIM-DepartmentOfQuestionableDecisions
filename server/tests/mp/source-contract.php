@@ -53,6 +53,15 @@ $expectedPinsByVersion = [
         'logging.php' => '2f8e7f75cf9de12fa1757bc381100d48512156995a95842749ce3e69e4180d43',
         'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
     ],
+    '0.1.32' => [
+        'manifest.json' => '2b4fddd7b7b23dee61add1f465fcbac09c4a0acfbc1714f59da5c3ae734db906',
+        'dashboard_data.php' => 'd6ff6d2c7f59c91673dbede1843cd3b74cbd75fc1873f1d14265b71096a6795d',
+        'store.php' => '94dec0a3ecf674d21fd5f51da920f6c5771e2f814025977a4fae9b55aeeed952',
+        'influence.php' => 'a427f150db009713644390c8b6eb7bfc1257ec2ca3755f8089bf5ba45998fc60',
+        'intimacy.php' => 'eebec2379641b7e4eb7a626b9e4cdd139c15db95421b57ca7bdcb3b1dc65bd60',
+        'logging.php' => '21d09ef9213cf727471120623163bb8dc52a129ce4a174ff5e10d645bc9b8ba8',
+        'restore_policy.php' => 'ae8fa5f5e694b45667a7eb4da7fd6da101244c231bbefe094dcdb8dadb10058a',
+    ],
 ];
 $checks = ['exactSourceReady' => false, 'storeReadAccepted' => false, 'unprofiledScopeRead' => false, 'oldVersionRefused' => false, 'futureVersionRefused' => false, 'everyPinDriftRefused' => false];
 $ownerPureReadersLoaded = false;
@@ -70,6 +79,7 @@ try {
     require_once $adapterReal;
     $manifest = json_decode((string)file_get_contents($ownerReal . DIRECTORY_SEPARATOR . 'manifest.json'), true, 8, JSON_THROW_ON_ERROR);
     $ownerVersion = is_array($manifest) ? ($manifest['version'] ?? null) : null;
+    if ($ownerVersion === '0.1.32') $checks['mp032DashboardProjection'] = false;
     $expectedPins = is_string($ownerVersion) ? ($expectedPinsByVersion[$ownerVersion] ?? null) : null;
     if (is_array($expectedPins)) {
         foreach ($expectedPins as $file => $expectedHash) {
@@ -79,7 +89,7 @@ try {
     }
     $checks['exactSourceReady'] = is_array($expectedPins)
         && ($manifest['name'] ?? null) === 'mind_poisoning'
-        && QD_MP_EXPECTED_SOURCE_HASHES[$ownerVersion] === $expectedPins
+        && (QD_MP_EXPECTED_SOURCE_HASHES[$ownerVersion] ?? null) === $expectedPins
         && !in_array(false, array_column($pins, 'matches'), true)
         && count($pins) === 7
         && qd_mp_manifest_ready($ownerReal);
@@ -123,7 +133,7 @@ try {
         $tempRoot = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'qd-mp-source-contract-' . bin2hex(random_bytes(8));
         if (!mkdir($tempRoot, 0700)) throw new RuntimeException('Could not create private source fixtures.');
         $tempOwned = true;
-        foreach ([['old', '0.1.29'], ['future', '0.1.32']] as [$name, $version]) {
+        foreach ([['old', '0.1.29'], ['future', '0.1.33']] as [$name, $version]) {
             $fixture = $tempRoot . DIRECTORY_SEPARATOR . $name;
             mpSourceFixture($fixture, $ownerReal, $expectedPins);
             $path = $fixture . DIRECTORY_SEPARATOR . 'manifest.json';
@@ -143,6 +153,68 @@ try {
             $refused = !qd_mp_manifest_ready($driftRoot);
             if (file_put_contents($path, $original, LOCK_EX) === false || !qd_mp_manifest_ready($driftRoot)) throw new RuntimeException('Could not restore a drift fixture.');
             $checks['everyPinDriftRefused'] = $checks['everyPinDriftRefused'] && $refused;
+        }
+        if ($ownerVersion === '0.1.32') {
+            $dashboardRoot = $tempRoot . DIRECTORY_SEPARATOR . 'dashboard';
+            if (!mkdir($dashboardRoot . DIRECTORY_SEPARATOR . 'log', 0700, true)) throw new RuntimeException('Could not create a dashboard log fixture.');
+            $privateMarker = 'MP32-PRIVATE-DIAGNOSTIC';
+            $logLine = json_encode([
+                'plugin' => 'mind_poisoning', 'schema_version' => 1, 'version' => '0.1.32',
+                'timestamp' => '2026-11-14T00:00:00Z', 'request_id' => 'bbbbbbbbbbbbbbbbbbbbbbbb',
+                'level' => 'warning', 'event' => 'request_finished', 'event_id' => 14,
+                'playthrough_id' => 41, 'speaker_id' => 7, 'speaker_kind' => 'npc',
+                'opinion_owner_id' => 7, 'source_kind' => 'reflection', 'utterance_id' => 'utt_diag1234',
+                'outcome' => 'failed', 'reason' => 'judgment_evidence_invalid',
+                'evidence_rejection' => 'not_exact_excerpt', 'model_reason' => $privateMarker,
+                'dialogue' => 'MP32-PRIVATE-DIALOGUE',
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+            if (file_put_contents($dashboardRoot . DIRECTORY_SEPARATOR . 'log' . DIRECTORY_SEPARATOR . 'chim.log', '[warning] ' . $logLine . "\n", LOCK_EX) === false) {
+                throw new RuntimeException('Could not write a dashboard log fixture.');
+            }
+            $logRead = \ChimMindPoisoning\dashboardReadLogs($dashboardRoot);
+            $dashboardRecord = $logRead['records'][0] ?? [];
+            $ownerRow = [
+                'id' => '7', 'npc_name' => 'Mara',
+                'plugin_extended_data' => (object)['mind_poisoning' => (object)[
+                    'playthrough_id' => '41', 'floor_event_id' => 0,
+                    'reflection_state' => ['basis' => str_repeat('a', 64), 'subjects' => []],
+                    'events' => [[
+                        'event_id' => 13, 'utterance_id' => 'utt_zero1234', 'source_kind' => 'reflection',
+                        'judgments' => [['subject' => 'npc:8', 'delta' => 0, 'evidence' => '', 'reason' => 'No new mention.']],
+                    ]],
+                ]],
+                'extended_data' => (object)['relationships' => new stdClass()],
+            ];
+            $buildLimited = false;
+            $interactions = \ChimMindPoisoning\dashboardBuildInteractions([
+                'active_playthrough' => '41', 'player_name' => 'Tester',
+                'identities' => ['7' => 'Mara', '8' => 'Iona'], 'rows' => [$ownerRow],
+            ], $logRead['records'] ?? [], $buildLimited);
+            $diagnosticInteraction = $ledgerInteraction = null;
+            foreach ($interactions as $interaction) {
+                if (($interaction['event_id'] ?? null) === '14') $diagnosticInteraction = $interaction;
+                if (($interaction['event_id'] ?? null) === '13') $ledgerInteraction = $interaction;
+            }
+            if (is_array($ledgerInteraction) && is_array($diagnosticInteraction)) {
+                $ledgerInteraction['evidence_rejection'] = $diagnosticInteraction['evidence_rejection'] ?? null;
+                $ledgerInteraction['private_diagnostic'] = $privateMarker;
+            }
+            $projectionLimited = false;
+            $dto = is_array($ledgerInteraction)
+                ? qd_mp_project_interactions([$ledgerInteraction], '7', 'Mara', '2026-11-14T00:00:00Z', [], $projectionLimited)
+                : [];
+            $dtoJson = json_encode($dto, JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $checks['mp032DashboardProjection'] = ($logRead['available'] ?? false) === true
+                && ($logRead['limited'] ?? true) === false && count($logRead['records'] ?? []) === 1
+                && ($dashboardRecord['evidence_rejection'] ?? null) === 'not_exact_excerpt'
+                && !array_key_exists('model_reason', $dashboardRecord) && !array_key_exists('dialogue', $dashboardRecord)
+                && ($diagnosticInteraction['evidence_rejection'] ?? null) === 'not_exact_excerpt'
+                && !array_key_exists('model_reason', $diagnosticInteraction) && !array_key_exists('dialogue', $diagnosticInteraction)
+                && is_array($ledgerInteraction) && ($ledgerInteraction['outcome'] ?? null) === 'zero-change'
+                && ($ledgerInteraction['changes'][0]['proposed'] ?? null) === 0
+                && $buildLimited === false && $projectionLimited === false && count($dto) === 1
+                && ($dto[0]['proposedDelta'] ?? null) === 0 && ($dto[0]['appliedDelta'] ?? null) === 0
+                && !str_contains($dtoJson, 'not_exact_excerpt') && !str_contains($dtoJson, $privateMarker);
         }
     }
 } catch (Throwable $error) {
