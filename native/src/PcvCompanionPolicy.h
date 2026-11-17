@@ -52,6 +52,17 @@ namespace dql::companion
 		std::uint32_t currentFormId{};
 	};
 
+	class StageOperationIdHighWater
+	{
+	public:
+		[[nodiscard]] bool Observe(std::string_view viewToken, std::string_view uiRequestId,
+			std::string_view operationId);
+
+	private:
+		std::string viewToken_;
+		std::uint64_t highWater_{};
+	};
+
 	enum class DispatchResult
 	{
 		notAttempted,
@@ -90,6 +101,8 @@ namespace dql::companion
 	[[nodiscard]] bool IsValidStageData(const dql::contract::Json& data, std::string_view operationId);
 	[[nodiscard]] bool IsFreshStageData(const dql::contract::Json& data, std::string_view operationId,
 		std::int64_t nowUnixSeconds);
+	[[nodiscard]] bool IsDefinitiveStageInvalidRequest(bool requestCompleted, std::uint32_t statusCode,
+		const dql::contract::JsonParseResult& parsedResponse);
 	[[nodiscard]] std::optional<StatusProjection> ProjectStatus(
 		const dql::contract::Json& data, std::string_view operationId,
 		const std::optional<ExpectedConfigIds>& originalExpected,

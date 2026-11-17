@@ -1011,6 +1011,7 @@ namespace
 			std::uint32_t formId{};
 			RE::ActorHandle actorHandle;
 			dql::companion::ExpectedConfigIds expected;
+			bool stageRefusalEligible{};
 
 			~PendingCompanionStage() { WipeEnvelopeText(request); }
 		};
@@ -1031,6 +1032,8 @@ namespace
 			bool stageHttpSubmitted{};
 			bool papyrusInvocationStarted{};
 			std::uint64_t sequence{};
+			bool stageRefusalEligible{};
+			bool stagePreparedOrTerminalObserved{};
 		};
 
 		enum class CompanionHttpKind
@@ -1046,6 +1049,8 @@ namespace
 			dql::contract::Envelope uiRequest;
 			dql::contract::Envelope serverRequest;
 			std::string operationId;
+			std::uint64_t operationSequence{};
+			bool stageRefusalEligible{};
 		};
 
 		struct ConnectionHttpContext
@@ -2278,7 +2283,8 @@ namespace
 		}
 
 		bool SubmitCompanionHttp(CompanionHttpKind kind, const dql::contract::Envelope& source,
-			std::string_view operationId, dql::contract::Json payload)
+			std::string_view operationId, dql::contract::Json payload,
+			std::optional<std::uint64_t> operationSequenceOverride = std::nullopt)
 		{
 			std::wstring endpointKey;
 			std::wstring trustedHttpBase;
@@ -2302,6 +2308,14 @@ namespace
 			};
 			std::string body = envelope.dump();
 			WipeJsonString(envelope["payload"], "text");
+			std::uint64_t operationSequence{};
+			bool stageRefusalEligible{};
+			if (operationSequenceOverride) {
+				operationSequence = *operationSequenceOverride;
+			} else if (const auto tracked = companionOperations_.find(std::string(operationId)); tracked != companionOperations_.end()) {
+				operationSequence = tracked->second.sequence;
+				stageRefusalEligible = kind == CompanionHttpKind::stage && tracked->second.stageRefusalEligible;
+			}
 			dql::http::HttpRequest httpRequest{
 				.requestId = requestId, .viewToken = source.viewToken,
 				.nativeGeneration = source.nativeGeneration, .operation = operation,
@@ -2311,7 +2325,8 @@ namespace
 			};
 			auto context = std::make_shared<CompanionHttpContext>(CompanionHttpContext{
 				.kind = kind, .uiRequest = CompanionUiRequest(source), .serverRequest = std::move(serverRequest),
-				.operationId = std::string(operationId)
+				.operationId = std::string(operationId), .operationSequence = operationSequence,
+				.stageRefusalEligible = stageRefusalEligible
 			});
 			const auto submitted = transport_.Submit(std::move(httpRequest), [context](dql::http::HttpResult result) mutable {
 				auto resultCopy = std::make_shared<dql::http::HttpResult>(std::move(result));
@@ -2325,8 +2340,9 @@ namespace
 		}
 
 		std::optional<dql::contract::Json> ReadCompanionData(const CompanionHttpContext& context,
-			const dql::http::HttpResult& result, std::string& errorCode) const
+			const dql::http::HttpResult& result, std::string& errorCode, bool& definitiveStageInvalidRequest) const
 		{
+			definitiveStageInvalidRequest = false;
 			if (result.outcome != dql::http::Outcome::completed) {
 				errorCode = "transport_uncertain";
 				return std::nullopt;
@@ -2336,6 +2352,10 @@ namespace
 				errorCode = "invalid_response";
 				return std::nullopt;
 			}
+			definitiveStageInvalidRequest = context.kind == CompanionHttpKind::stage &&
+				dql::companion::IsDefinitiveStageInvalidRequest(
+					result.outcome == dql::http::Outcome::completed && result.errorCode == dql::http::ErrorCode::none,
+					result.statusCode, parsed);
 			auto response = std::move(*parsed.value);
 			if (result.statusCode < 200 || result.statusCode >= 300 || !response["ok"].get<bool>()) {
 				if (response.contains("data") && response["data"].is_object()) {
@@ -2373,6 +2393,14 @@ namespace
 				dql::companion::FormIdHex(static_cast<std::uint32_t>(formId)) == operation.target->formId;
 		}
 
+		bool MatchesCompanionOperationOrigin(const CompanionOperation& operation,
+			const dql::contract::Envelope& request, std::string_view operationId) const
+		{
+			return operation.operationId == operationId && request.serverContext &&
+				operation.viewToken == request.viewToken && operation.nativeGeneration == request.nativeGeneration &&
+				operation.serverContext == *request.serverContext;
+		}
+
 		void BeginPcvSend(dql::contract::Envelope request)
 		{
 			EnvelopeTextWiper wipeRequestText(request);
@@ -2402,6 +2430,8 @@ namespace
 				RespondPreDispatchError(request, "invalid_request", "The PCV send request is invalid.");
 				return;
 			}
+			const bool stageRefusalEligible = companionOperationIdHighWater_.Observe(
+				request.viewToken, request.requestId, operationId);
 			if (const auto prior = companionOperations_.find(operationId); prior != companionOperations_.end()) {
 				RespondCompanionState(request, operationId, prior->second.state, prior->second.expected, prior->second.phase);
 				return;
@@ -2428,6 +2458,7 @@ namespace
 			pending->operationId = operationId;
 			pending->actorKey = actorKey;
 			pending->expected = std::move(expected);
+			pending->stageRefusalEligible = stageRefusalEligible;
 			auto* vm = RE::SkyrimVM::GetSingleton();
 			if (!vm || !vm->impl) {
 				RespondPreDispatchError(pending->request, "unavailable", "The stock CHIM actor roster is unavailable.");
@@ -2472,7 +2503,8 @@ namespace
 				.actorHandle = *actorHandle, .viewToken = pending.request.viewToken,
 				.nativeGeneration = pending.request.nativeGeneration,
 				.serverContext = pending.request.serverContext.value_or(std::string{}),
-				.sequence = ++companionSequenceCounter_
+				.sequence = ++companionSequenceCounter_,
+				.stageRefusalEligible = pending.stageRefusalEligible
 			};
 			const auto [position, inserted] = companionOperations_.emplace(operation.operationId, std::move(operation));
 			if (!inserted) {
@@ -2507,6 +2539,14 @@ namespace
 				RespondError(request, "invalid_request", "The PCV send status request is invalid.");
 				return;
 			}
+			if (const auto operation = companionOperations_.find(operationId); operation != companionOperations_.end() &&
+				operation->second.state == "rejected" && operation->second.phase == "stage_refused") {
+				if (request.serverContext && IsCurrentRequest(request) &&
+					dql::policy::CanSendCompanionPcv(AccessState(), *request.serverContext)) {
+					RespondCompanionState(request, operationId, "rejected", operation->second.expected, "stage_refused");
+				}
+				return;
+			}
 			if (!SubmitCompanionHttp(CompanionHttpKind::status, request, operationId,
 				{ { "operationId", operationId } })) {
 				RespondCompanionState(request, operationId, "unknown", std::nullopt, "status_uncertain");
@@ -2516,13 +2556,19 @@ namespace
 		void BeginCompanionCancel(const CompanionHttpContext& parent)
 		{
 			auto operation = companionOperations_.find(parent.operationId);
-			if (operation != companionOperations_.end()) operation->second.phase = "cancel_uncertain";
+			const bool trackedAttempt = operation != companionOperations_.end() &&
+				operation->second.sequence == parent.operationSequence &&
+				MatchesCompanionOperationOrigin(operation->second, parent.uiRequest, parent.operationId);
+			if (trackedAttempt) operation->second.phase = "cancel_uncertain";
 			if (!SubmitCompanionHttp(CompanionHttpKind::cancel, parent.uiRequest, parent.operationId,
-				{ { "operationId", parent.operationId } })) {
-				if (operation != companionOperations_.end()) {
+				{ { "operationId", parent.operationId } }, parent.operationSequence)) {
+				if (trackedAttempt) {
 					operation->second.state = "unknown";
 					operation->second.phase = "cancel_uncertain";
-					RespondCompanionState(parent.uiRequest, parent.operationId, "unknown", std::nullopt, "cancel_uncertain");
+					if (IsCurrentRequest(parent.uiRequest) && parent.uiRequest.serverContext &&
+						dql::policy::CanSendCompanionPcv(AccessState(), *parent.uiRequest.serverContext)) {
+						RespondCompanionState(parent.uiRequest, parent.operationId, "unknown", std::nullopt, "cancel_uncertain");
+					}
 				}
 			}
 		}
@@ -2530,29 +2576,77 @@ namespace
 		void OnCompanionHttpCompletion(const CompanionHttpContext& context, dql::http::HttpResult result)
 		{
 			StringWiper wipeBody(result.body);
+			bool canReportStatus{};
+			if (context.kind != CompanionHttpKind::stage) {
+				canReportStatus = IsCurrentRequest(context.uiRequest) && context.uiRequest.serverContext &&
+					dql::policy::CanSendCompanionPcv(AccessState(), *context.uiRequest.serverContext);
+				const auto operation = companionOperations_.find(context.operationId);
+				if (context.operationSequence != 0) {
+					if (operation == companionOperations_.end() || context.operationSequence != operation->second.sequence) return;
+				} else if (operation != companionOperations_.end() || !canReportStatus) {
+					return;
+				}
+				if (operation != companionOperations_.end() && operation->second.state == "rejected" &&
+					operation->second.phase == "stage_refused") {
+					if (canReportStatus) {
+						RespondCompanionState(context.uiRequest, context.operationId, "rejected",
+							operation->second.expected, "stage_refused");
+					}
+					return;
+				}
+			}
 			std::string errorCode;
-			auto data = ReadCompanionData(context, result, errorCode);
+			bool definitiveStageInvalidRequest{};
+			auto data = ReadCompanionData(context, result, errorCode, definitiveStageInvalidRequest);
 			if (context.kind == CompanionHttpKind::stage) {
+				const auto operation = companionOperations_.find(context.operationId);
+				const bool trackedStageAttempt = operation != companionOperations_.end() &&
+					context.operationSequence != 0 && operation->second.sequence == context.operationSequence &&
+					operation->second.stageHttpSubmitted &&
+					MatchesCompanionOperationOrigin(operation->second, context.uiRequest, context.operationId);
+				if (operation != companionOperations_.end() && !trackedStageAttempt) {
+					if (data) WipeJsonString(*data, "token");
+					return;
+				}
+				if (trackedStageAttempt && data && dql::companion::IsValidStageData(*data, context.operationId)) {
+					operation->second.stagePreparedOrTerminalObserved = true;
+				}
+				if (!data && definitiveStageInvalidRequest && context.stageRefusalEligible && trackedStageAttempt &&
+					operation->second.stageRefusalEligible && operation->second.stageHttpSubmitted &&
+					operation->second.state == "unknown" && !operation->second.stagePreparedOrTerminalObserved &&
+					!operation->second.papyrusInvocationStarted) {
+					operation->second.state = "rejected";
+					operation->second.phase = "stage_refused";
+					if (IsCurrentRequest(context.uiRequest) && context.uiRequest.serverContext &&
+						dql::policy::CanSendCompanionPcv(AccessState(), *context.uiRequest.serverContext)) {
+						RespondCompanionState(context.uiRequest, context.operationId, "rejected",
+							operation->second.expected, "stage_refused");
+					}
+					return;
+				}
 				if (!data || !dql::companion::IsFreshStageData(*data, context.operationId, CurrentUnixSeconds())) {
 					if (data) WipeJsonString(*data, "token");
-					if (auto operation = companionOperations_.find(context.operationId); operation != companionOperations_.end()) {
+					if (trackedStageAttempt) {
 						operation->second.state = "unknown";
 						operation->second.phase = "stage_reconcile";
 					}
 					if (!SubmitCompanionHttp(CompanionHttpKind::status, context.uiRequest, context.operationId,
-						{ { "operationId", context.operationId } })) {
-						RespondCompanionState(context.uiRequest, context.operationId, "unknown", std::nullopt, "stage_uncertain");
+						{ { "operationId", context.operationId } }, context.operationSequence)) {
+						if (IsCurrentRequest(context.uiRequest) && context.uiRequest.serverContext &&
+							dql::policy::CanSendCompanionPcv(AccessState(), *context.uiRequest.serverContext)) {
+							RespondCompanionState(context.uiRequest, context.operationId, "unknown", std::nullopt, "stage_uncertain");
+						}
 					}
 					return;
 				}
 				auto token = data->at("token").get<std::string>();
 				WipeJsonString(*data, "token");
 				StringWiper wipeToken(token);
-				auto operation = companionOperations_.find(context.operationId);
 				if (operation == companionOperations_.end()) {
 					BeginCompanionCancel(context);
 					return;
 				}
+				operation->second.stagePreparedOrTerminalObserved = true;
 				operation->second.state = "prepared";
 				operation->second.expiresAt = data->at("expiresAt").get<std::int64_t>();
 				operation->second.phase = "stage_prepared";
@@ -2610,8 +2704,10 @@ namespace
 					operation->second.state = "unknown";
 					operation->second.phase = context.kind == CompanionHttpKind::cancel ? "cancel_uncertain" : "status_uncertain";
 				}
-				RespondCompanionState(context.uiRequest, context.operationId, "unknown", std::nullopt,
-					context.kind == CompanionHttpKind::cancel ? "cancel_uncertain" : "status_uncertain");
+				if (canReportStatus) {
+					RespondCompanionState(context.uiRequest, context.operationId, "unknown", std::nullopt,
+						context.kind == CompanionHttpKind::cancel ? "cancel_uncertain" : "status_uncertain");
+				}
 				return;
 			}
 			const auto operation = companionOperations_.find(context.operationId);
@@ -2621,7 +2717,9 @@ namespace
 				std::optional<dql::companion::TargetIdentity>{} : operation->second.target;
 			const auto projection = dql::companion::ProjectStatus(*data, context.operationId, originalExpected, originalTarget);
 			if (!projection) {
-				RespondCompanionState(context.uiRequest, context.operationId, "unknown", std::nullopt, "invalid_status");
+				if (canReportStatus) {
+					RespondCompanionState(context.uiRequest, context.operationId, "unknown", std::nullopt, "invalid_status");
+				}
 				return;
 			}
 			if (operation == companionOperations_.end() && projection->state != "unknown") {
@@ -2631,11 +2729,15 @@ namespace
 					.viewToken = context.uiRequest.viewToken, .nativeGeneration = context.uiRequest.nativeGeneration,
 					.serverContext = context.uiRequest.serverContext.value_or(std::string{}),
 					.expiresAt = projection->expiresAt.value_or(0), .papyrusInvocationStarted = true,
-					.sequence = ++companionSequenceCounter_
+					.sequence = ++companionSequenceCounter_,
+					.stagePreparedOrTerminalObserved = projection->state != "unknown"
 				};
 				companionOperations_.emplace(context.operationId, std::move(recovered));
 			}
 			auto tracked = companionOperations_.find(context.operationId);
+			if (tracked != companionOperations_.end() && projection->state != "unknown") {
+				tracked->second.stagePreparedOrTerminalObserved = true;
+			}
 			if (projection->state == "prepared" && tracked != companionOperations_.end() &&
 				!tracked->second.papyrusInvocationStarted) {
 				tracked->second.state = "prepared";
@@ -2648,10 +2750,12 @@ namespace
 				tracked->second.phase = projection->state == "consumed" ? "server_consumed" :
 					projection->state == "prepared" ? tracked->second.phase : projection->state;
 			}
-			RespondCompanionState(context.uiRequest, context.operationId, projection->state,
-				projection->state == "unknown" ? std::nullopt : std::optional(projection->expected),
-				projection->state == "unknown" ? "status_uncertain" :
-					tracked == companionOperations_.end() ? "server_status" : tracked->second.phase);
+			if (canReportStatus) {
+				RespondCompanionState(context.uiRequest, context.operationId, projection->state,
+					projection->state == "unknown" ? std::nullopt : std::optional(projection->expected),
+					projection->state == "unknown" ? "status_uncertain" :
+						tracked == companionOperations_.end() ? "server_status" : tracked->second.phase);
+			}
 		}
 
 		void HandleRequest(std::string raw)
@@ -2854,6 +2958,7 @@ namespace
 		std::wstring stockIniPath_;
 		std::string stockIniSnapshot_;
 		std::unordered_map<std::string, CompanionOperation> companionOperations_;
+		dql::companion::StageOperationIdHighWater companionOperationIdHighWater_;
 		std::uint64_t companionSequenceCounter_{ 0 };
 		bool stockIniCaptured_{ false };
 		bool stockIniMissingAtStartup_{ false };
@@ -2962,7 +3067,7 @@ extern "C" __declspec(dllexport) bool DQL_ValidateBootstrapResponse(
 	}
 }
 
-SKSEPluginInfo(.Version = "0.1.22.0"_v,
+SKSEPluginInfo(.Version = "0.1.23.0"_v,
 	.Name = "WorldOfDramaLlama")
 
 SKSEPluginLoad(const SKSE::LoadInterface* skse)
@@ -2974,7 +3079,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 	SKSE::Init(skse);
 	InitializeNativeLogger();
 	LogEvent("startup", "skse_initialized");
-	LogEvent("startup", "version_0_1_22_0");
+	LogEvent("startup", "version_0_1_23_0");
 	const auto* messaging = SKSE::GetMessagingInterface();
 	const auto* papyrus = SKSE::GetPapyrusInterface();
 	if (!messaging || !papyrus) {

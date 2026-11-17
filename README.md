@@ -4,6 +4,12 @@
 
 An experimental companion mod that puts the World of Drama Llama plugins in their own PRISMA UI window inside Skyrim. It supplies its own SKSE DLL and view. It does not replace `AIAgent.dll` or patch CHIM core.
 
+## Alpha.2
+
+Private Conversation flags a leading CHIM route marker before sending and recovers a confirmed staging refusal, including after reopening the panel. Sealed Fates is still being tested.
+
+[Download the full Department MO2 ZIP](https://github.com/Francisco-boop-001/CHIM-DepartmentOfQuestionableDecisions/releases/download/v0.1.0-alpha.2/WorldOfDramaLlama-0.1.0-alpha.2.zip). Exit Skyrim, replace your previous Department install in MO2, and let CHIM sync on game load. The CHIM server-only update does not install the new Skyrim DLL or interface.
+
 ## Alpha.1
 
 This is a public alpha. Sealed Fates support is still being tested.

@@ -195,6 +195,49 @@ namespace dql::companion
 			return IsFormId(formId) && !name.empty() && boundedName && boundedName->size() == name.size() &&
 				std::none_of(name.begin(), name.end(), [](unsigned char ch) { return ch < 0x20 || ch == 0x7F; });
 		}
+
+		std::optional<std::uint64_t> ReadUuidSuffix(std::string_view value)
+		{
+			if (!dql::policy::IsUuid(value)) return std::nullopt;
+			std::uint64_t suffix{};
+			for (const char ch : value.substr(24)) {
+				const auto digit = ch >= '0' && ch <= '9' ? ch - '0' :
+					ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 : ch - 'A' + 10;
+				suffix = (suffix << 4) | static_cast<std::uint64_t>(digit);
+			}
+			return suffix;
+		}
+
+		bool SameUuidPrefix(std::string_view left, std::string_view right)
+		{
+			if (left.size() != 36 || right.size() != 36) return false;
+			return std::equal(left.begin(), left.begin() + 24, right.begin(), [](unsigned char a, unsigned char b) {
+				return std::tolower(a) == std::tolower(b);
+			});
+		}
+	}
+
+	bool StageOperationIdHighWater::Observe(std::string_view viewToken, std::string_view uiRequestId,
+		std::string_view operationId)
+	{
+		const auto viewSuffix = ReadUuidSuffix(viewToken);
+		if (!viewSuffix) return false;
+		if (viewToken_ != viewToken) {
+			viewToken_.assign(viewToken);
+			highWater_ = *viewSuffix;
+		}
+		if (!SameUuidPrefix(viewToken, operationId)) return false;
+
+		const auto operationSuffix = ReadUuidSuffix(operationId);
+		if (!operationSuffix || *operationSuffix <= *viewSuffix || *operationSuffix - *viewSuffix > 1'000'000) return false;
+		const bool fresh = *operationSuffix > highWater_;
+		highWater_ = std::max(highWater_, *operationSuffix);
+
+		if (!SameUuidPrefix(viewToken, uiRequestId)) return false;
+		const auto requestSuffix = ReadUuidSuffix(uiRequestId);
+		return fresh && requestSuffix && *operationSuffix < 0xFFFFFFFFFFFFULL &&
+			*requestSuffix == *operationSuffix + 1 && *requestSuffix > *viewSuffix &&
+			*requestSuffix - *viewSuffix <= 1'000'000;
 	}
 
 	bool IsValidOpaqueToken(std::string_view token) noexcept
@@ -310,6 +353,17 @@ namespace dql::companion
 		if (nowUnixSeconds <= 0 || !IsValidStageData(data, operationId)) return false;
 		const auto expiresAt = ReadPositiveInteger(data["expiresAt"]);
 		return expiresAt && *expiresAt > nowUnixSeconds;
+	}
+
+	bool IsDefinitiveStageInvalidRequest(bool requestCompleted, std::uint32_t statusCode,
+		const dql::contract::JsonParseResult& parsedResponse)
+	{
+		if (!requestCompleted || statusCode != 400 || !parsedResponse.value) return false;
+		const auto& response = *parsedResponse.value;
+		return response.is_object() && response.value("operation", "") == "pcv.companion.stage" &&
+			response.contains("ok") && response["ok"].is_boolean() && !response["ok"].get<bool>() &&
+			response.contains("error") && response["error"].is_object() &&
+			response["error"].contains("code") && response["error"]["code"] == "invalid_request";
 	}
 
 	std::optional<StatusProjection> ProjectStatus(const dql::contract::Json& data, std::string_view operationId,

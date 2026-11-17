@@ -110,6 +110,61 @@ namespace
 		CHECK(!wrongActor.Observe(&mapped, "SeranaX"));
 		CHECK(!wrongActor.IsUniqueMappedActor());
 	}
+
+	void CheckStageOperationIdHighWater()
+	{
+		dql::companion::StageOperationIdHighWater ids;
+		constexpr std::string_view view = "123e4567-e89b-12d3-a456-000000000010";
+		CHECK(ids.Observe(view, "123e4567-e89b-12d3-a456-000000000012",
+			"123e4567-e89b-12d3-a456-000000000011"));
+
+		// Reserve a same-view ID even when the adjacent UI request ID does not match.
+		CHECK(!ids.Observe(view, "123e4567-e89b-12d3-a456-000000000015",
+			"123e4567-e89b-12d3-a456-000000000013"));
+		CHECK(!ids.Observe(view, "123e4567-e89b-12d3-a456-000000000014",
+			"123e4567-e89b-12d3-a456-000000000013"));
+		CHECK(ids.Observe(view, "123e4567-e89b-12d3-a456-000000000015",
+			"123e4567-e89b-12d3-a456-000000000014"));
+
+		CHECK(!ids.Observe(view, "123e4567-e89b-12d3-a456-0000000f4252",
+			"123e4567-e89b-12d3-a456-0000000f4251"));
+		CHECK(ids.Observe(view, "123e4567-e89b-12d3-a456-000000000017",
+			"123e4567-e89b-12d3-a456-000000000016"));
+		CHECK(!ids.Observe(view, "223e4567-e89b-12d3-a456-000000000018",
+			"223e4567-e89b-12d3-a456-000000000017"));
+
+		constexpr std::string_view nextView = "223e4567-e89b-12d3-a456-000000000020";
+		CHECK(ids.Observe(nextView, "223e4567-e89b-12d3-a456-000000000022",
+			"223e4567-e89b-12d3-a456-000000000021"));
+	}
+
+	void CheckDefinitiveStageInvalidRequest()
+	{
+		const dql::contract::Envelope request{
+			.requestId = "123e4567-e89b-12d3-a456-426614174010",
+			.operation = "pcv.companion.stage",
+			.viewToken = "123e4567-e89b-12d3-a456-426614174011",
+			.nativeGeneration = "17",
+			.serverContext = "server-context",
+			.payload = dql::contract::Json::object()
+		};
+		const auto refusal = dql::contract::MakeError(request, "invalid_request", "Request is invalid.");
+		const auto parsedRefusal = dql::contract::ParseServerResponse(refusal.dump(), request);
+		CHECK(parsedRefusal.value);
+		CHECK(dql::companion::IsDefinitiveStageInvalidRequest(true, 400, parsedRefusal));
+		CHECK(!dql::companion::IsDefinitiveStageInvalidRequest(false, 400, parsedRefusal));
+		CHECK(!dql::companion::IsDefinitiveStageInvalidRequest(true, 409, parsedRefusal));
+
+		const auto authFailure = dql::contract::MakeError(request, "unauthorized", "Authorization is required.");
+		const auto parsedAuthFailure = dql::contract::ParseServerResponse(authFailure.dump(), request);
+		CHECK(parsedAuthFailure.value);
+		CHECK(!dql::companion::IsDefinitiveStageInvalidRequest(true, 400, parsedAuthFailure));
+
+		auto wrongCorrelation = refusal;
+		wrongCorrelation["requestId"] = "123e4567-e89b-12d3-a456-426614174012";
+		CHECK(!dql::companion::IsDefinitiveStageInvalidRequest(true, 400,
+			dql::contract::ParseServerResponse(wrongCorrelation.dump(), request)));
+	}
 }
 
 int main()
@@ -131,6 +186,8 @@ int main()
 		CHECK(dql::companion::NamesMatchManagedActor("Lydia", "Lydia "));
 		CHECK(dql::companion::NamesMatchManagedActor("\t\xC3\x89LODIE \xC3\x81vila\r\n", "\xC3\x89lodie \xC3\x81vila"));
 		CheckFreshRosterActorMatches();
+		CheckStageOperationIdHighWater();
+		CheckDefinitiveStageInvalidRequest();
 		CHECK(dql::companion::FormIdHex(0x00001234) == "00001234");
 		CHECK(dql::companion::FormIdHex(0xFFFFFFFF) == "ffffffff");
 		CHECK(dql::companion::FormIdHex(0x00F00123) == "00f00123");

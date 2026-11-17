@@ -614,10 +614,167 @@ async function main() {
       await page.close();
     });
 
+    await test('PCV rejects a leading CHIM hash marker before bridge dispatch', async () => {
+      const page = await authenticatedPage(browser, 'scope-pcv-leading-heading', 'H'.repeat(43));
+      const { activeId } = await prepareActivePcv(page, 'roster-pcv-leading-heading');
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+
+      const rejectedText = ' \t# Opening heading\nThe message body.';
+      await page.getByLabel('Your message').fill(rejectedText);
+      await page.locator('#pcv-send').click();
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 0,
+        'an initial Markdown heading is refused before bridge dispatch');
+      assert.equal(await page.getByLabel('Your message').inputValue(), rejectedText, 'the rejected draft remains editable');
+      assert.equal(await page.locator('#pcv-send-state').innerText(), 'ACTIVE', 'local refusal preserves the armed scene');
+      assert.match(await page.locator('#pcv-send-note').innerText(), /CHIM treats a leading # as a special chat route.*remove the opening # or start with plain text.*later Markdown headings can stay/i,
+        'the reason explains how to edit the draft');
+
+      const correctedText = 'The message begins with plain text.\n# Later heading\nThe rest of the same message.';
+      await page.getByLabel('Your message').fill(correctedText);
+      await page.locator('#pcv-send').click();
+      const send = await latestRequest(page, 'pcv.send');
+      assert.equal(send.payload.text, correctedText, 'a later heading can remain in the submitted message');
+      assert.equal(send.payload.expectedActiveConfigId, activeId);
+      assert.equal(await page.locator('#pcv-send-state').innerText(), 'ACTIVE', 'a valid send does not discard the armed scene');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'prepared' });
+      await waitForOperationCount(page, 'pcv.send.status', 1);
+      const status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'unknown', expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.close();
+    });
+
+    await test('PCV releases a late stage refusal only for its original operation and scene', async () => {
+      const scope = 'R'.repeat(43);
+      const page = await authenticatedPage(browser, 'scope-pcv-stage-refusal', scope);
+      const { activeId, scene } = await prepareActivePcv(page, 'roster-pcv-stage-refusal');
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+      const draft = 'The refused message remains available for review.';
+      await page.getByLabel('Your message').fill(draft);
+      await page.locator('#pcv-send').click();
+      const send = await latestRequest(page, 'pcv.send');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'unknown', phase: 'stage_uncertain' });
+
+      let status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'unknown', expectedActiveConfigId: null, expectedPendingConfigId: null });
+      assert.equal(await page.locator('#pcv-send').isDisabled(), true, 'unknown status keeps the send locked');
+      assert.doesNotMatch(await page.locator('#pcv-send-note').innerText(), /rejected before sending/i);
+
+      await page.getByRole('button', { name: 'Refresh send status' }).click();
+      await waitForOperationCount(page, 'pcv.send.status', 2);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'rejected', phase: 'stage_refused',
+        expectedActiveConfigId: newUuid(), expectedPendingConfigId: null });
+      assert.equal(await page.locator('#pcv-send').isDisabled(), true, 'a different scene ID cannot release the lock');
+      assert.match(await page.locator('#pcv-send-note').innerText(), /does not match the original operation scope and scene/i);
+
+      await page.getByRole('button', { name: 'Refresh send status' }).click();
+      await waitForOperationCount(page, 'pcv.send.status', 3);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: newUuid(), state: 'rejected', phase: 'stage_refused',
+        expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      assert.equal(await page.locator('#pcv-send').isDisabled(), true, 'a stale operation ID cannot release the lock');
+      assert.doesNotMatch(await page.locator('#pcv-send-note').innerText(), /rejected before sending/i);
+
+      await page.getByRole('button', { name: 'Close' }).click();
+      const reopened = await initialize(page, newUuid(), '2');
+      await respond(page, reopened, authenticatedData('scope-pcv-stage-refusal-reopened', scope));
+      await page.waitForFunction((draft) => document.getElementById('pcv-text').value === draft, draft);
+      await waitForOperationCount(page, 'pcv.send.status', 4);
+      status = await latestRequest(page, 'pcv.send.status');
+      assert.equal(status.payload.operationId, send.payload.operationId, 'same-scope reconnect recovers the original operation');
+      assert.equal(status.context.nativeGeneration, '2', 'status recovery uses the reopened view generation');
+      assert.equal(status.context.serverContext, 'scope-pcv-stage-refusal-reopened', 'status recovery uses the restored authenticated context');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'rejected', phase: 'stage_refused',
+        expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.waitForFunction(() => /PCV rejected the message before sending|Native resolved this operation as rejected/.test(
+        document.getElementById('pcv-send-note').textContent));
+      assert.match(await page.locator('#pcv-send-note').innerText(), /PCV rejected the message before sending.*Your draft remains/i);
+      assert.equal(await page.getByLabel('Your message').inputValue(), draft, 'confirmed refusal keeps the draft');
+      assert.doesNotMatch(await page.locator('#pcv-send-note').innerText(), /accepted|delivered|audio/i,
+        'confirmed refusal does not imply delivery or acceptance');
+      assert.equal(await page.locator('#pcv-send').isDisabled(), true, 'the reopened view waits for current owner state before another send');
+      await waitForOperationCount(page, 'pcv.status.read', 2);
+      const ownerRead = await latestRequest(page, 'pcv.status.read');
+      assert.deepEqual(ownerRead.payload, {}, 'the late refusal requests a fresh owner read after reopen');
+      await respond(page, ownerRead, { state: 'active', activeConfigId: activeId, pendingConfigId: null, active: scene, pending: null });
+      await page.waitForFunction(() => document.getElementById('pcv-send-state').textContent.toLowerCase() === 'active');
+      assert.equal(await page.locator('#pcv-current').textContent(), 'Active', 'the fresh owner read restores the scene instead of resetting it');
+      assert.equal(await page.locator('#pcv-discard-unknown').isHidden(), true, 'confirmed refusal clears the unknown operation lock');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 1,
+        'status recovery never replays the message');
+      await page.close();
+    });
+
+    await test('PCV stage refusal feedback reflects discarded and auth-cleared drafts', async () => {
+      const scope = 'S'.repeat(43);
+      const page = await authenticatedPage(browser, 'scope-pcv-stage-refusal-discarded', scope);
+      const { activeId, scene } = await prepareActivePcv(page, 'roster-pcv-stage-refusal-discarded');
+      await page.getByLabel('Conversation target').selectOption('npc:one');
+      await page.getByLabel('Your message').fill('This draft will be discarded.');
+      await page.locator('#pcv-send').click();
+      const send = await latestRequest(page, 'pcv.send');
+      await respond(page, send, { operationId: send.payload.operationId, state: 'unknown', phase: 'stage_uncertain' });
+      let status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'unknown', expectedActiveConfigId: null, expectedPendingConfigId: null });
+      await page.getByRole('button', { name: 'Discard unknown draft' }).click();
+      assert.equal(await page.getByLabel('Your message').inputValue(), '');
+
+      await page.getByRole('button', { name: 'Refresh send status' }).click();
+      await waitForOperationCount(page, 'pcv.send.status', 2);
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: send.payload.operationId, state: 'rejected', phase: 'stage_refused',
+        expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.waitForFunction(() => /PCV rejected the message before sending|Native resolved this operation as rejected/.test(
+        document.getElementById('pcv-send-note').textContent));
+      assert.match(await page.locator('#pcv-send-note').innerText(), /PCV rejected the message before sending.*discarded/i);
+      await page.waitForFunction(() => document.getElementById('pcv-send-state').textContent.toLowerCase() === 'active'
+        && !document.getElementById('pcv-refresh-send').disabled);
+      assert.equal(await page.getByLabel('Your message').inputValue(), '', 'deliberate discard is not undone by refusal status');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.status.read').length), 1,
+        'confirmed refusal preserves the current Armed owner status');
+
+      const authClearedDraft = 'This draft is cleared by authorization loss.';
+      await page.getByLabel('Your message').fill(authClearedDraft);
+      await page.locator('#pcv-send').click();
+      const authSend = await latestRequest(page, 'pcv.send');
+      await respond(page, authSend, { operationId: authSend.payload.operationId, state: 'unknown', phase: 'stage_uncertain' });
+      status = await latestRequest(page, 'pcv.send.status');
+      await respond(page, status, { operationId: authSend.payload.operationId, state: 'unknown', expectedActiveConfigId: null, expectedPendingConfigId: null });
+
+      await page.getByRole('button', { name: 'Close' }).click();
+      const reopened = await initialize(page, newUuid(), '2');
+      await respond(page, reopened, unauthenticatedData());
+      await waitForOperationCount(page, 'connection.begin', 1);
+      const begin = await latestRequest(page, 'connection.begin');
+      await respond(page, begin, { state: 'approved' });
+      await page.waitForFunction(() => window.__bridgeRequests.filter((request) => request.operation === 'bootstrap').length === 3);
+      const refreshed = await latestRequest(page, 'bootstrap');
+      await respond(page, refreshed, authenticatedData('scope-pcv-stage-refusal-discarded-reopened', scope));
+      await waitForOperationCount(page, 'pcv.send.status', 4);
+      status = await latestRequest(page, 'pcv.send.status');
+      assert.equal(status.payload.operationId, authSend.payload.operationId, 'reauthorization recovers the same operation');
+      assert.equal(await page.getByLabel('Your message').inputValue(), '', 'authorization loss clears the private draft');
+      await respond(page, status, { operationId: authSend.payload.operationId, state: 'rejected', phase: 'stage_refused',
+        expectedActiveConfigId: activeId, expectedPendingConfigId: null });
+      await page.waitForFunction(() => /PCV rejected the message before sending|Native resolved this operation as rejected/.test(
+        document.getElementById('pcv-send-note').textContent));
+      assert.match(await page.locator('#pcv-send-note').innerText(), /PCV rejected the message before sending.*draft is no longer available.*Enter it again before sending/i);
+      await waitForOperationCount(page, 'pcv.status.read', 2);
+      const ownerRead = await latestRequest(page, 'pcv.status.read');
+      await respond(page, ownerRead, { state: 'active', activeConfigId: activeId, pendingConfigId: null, active: scene, pending: null });
+      await page.waitForFunction(() => document.getElementById('pcv-current').textContent === 'Active');
+      assert.equal(await page.evaluate(() => window.__bridgeRequests.filter((request) => request.operation === 'pcv.send').length), 2,
+        'reauthorization status does not replay either message');
+      await page.close();
+    });
+
     await test('PCV send carries both scene IDs and status recovery never resends', async () => {
       const scope = 'A'.repeat(43);
       const page = await authenticatedPage(browser, 'scope-pcv', scope);
       await page.getByRole('tab', { name: 'Private Conversation' }).click();
+      assert.equal(await page.locator('#panel-pcv .compose-panel > p.subtle').innerText(),
+        'Enter adds a new line. Send is always explicit. This sends your own text to the selected current cast member; it does not impersonate a speaker. Switch CHIM to Standard before sending to your selected NPC. In Close mode, CHIM may route the message to The Narrator.',
+        'the send explanation keeps its existing guidance and warns about Close mode routing');
       await page.getByRole('button', { name: /refresh cast and status/i }).click();
       const roster = await latestRequest(page, 'pcv.roster.read');
       const readStatus = await latestRequest(page, 'pcv.status.read');

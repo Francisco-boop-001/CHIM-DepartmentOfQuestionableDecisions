@@ -1404,6 +1404,7 @@
       return 'mismatch';
     }
     const discarded = state.pcv.sendDraftDiscardedId === result.operationId;
+    const stageRefused = result.state === 'rejected' && result.phase === 'stage_refused';
     if (result.state === 'consumed') {
       if (submitted.text !== null && !discarded && $('pcv-text').value === submitted.text) {
         $('pcv-text').value = '';
@@ -1417,15 +1418,22 @@
         state.pcv.draftText = submitted.text;
         updatePcvCount();
       }
-      setStatus('pcv-send-note', `Native resolved this operation as ${result.state}. Review the draft and scene before another deliberate send.`, 'error');
+      const message = !stageRefused
+        ? `Native resolved this operation as ${result.state}. Review the draft and scene before another deliberate send.`
+        : discarded
+          ? 'PCV rejected the message before sending. You deliberately discarded the draft; enter it again before sending.'
+          : $('pcv-text').value
+            ? 'PCV rejected the message before sending. Your draft remains here; review it before sending again.'
+            : 'PCV rejected the message before sending. The draft is no longer available. Enter it again before sending.';
+      setStatus('pcv-send-note', message, 'error');
     }
     state.pcv.sendUnknownId = null;
     state.pcv.sendSubmitted = null;
     state.pcv.sendDraftDiscardedId = null;
     clearPcvSendStatusPoll();
-    state.pcv.status = null;
+    if (!stageRefused) state.pcv.status = null;
     renderPcvStatus();
-    return 'terminal';
+    return stageRefused && state.pcv.status ? 'resolved' : 'terminal';
   }
   async function refreshPcvOwnerStatus(context, scopeToken) {
     if (!isCurrentContext(context) || !state.authenticated || state.lastAuthenticatedScopeToken !== scopeToken) return;
@@ -1776,6 +1784,10 @@
   }
   async function sendPcv() {
     if ($('pcv-send').disabled || state.pcv.sendPending || state.pcv.sendUnknownId) return;
+    if (/^[ \t\r\n\v\f]*#/.test($('pcv-text').value)) {
+      setStatus('pcv-send-note', 'CHIM treats a leading # as a special chat route. Remove the opening # or start with plain text. Later Markdown headings can stay.', 'error');
+      return;
+    }
     const status = state.pcv.status;
     const expectedActiveConfigId = status && status.activeConfigId;
     const expectedPendingConfigId = status && status.pendingConfigId;

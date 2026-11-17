@@ -145,8 +145,8 @@ namespace
 			"dql::inventory::GoldAmountFromInventory("));
 		CHECK(ContainsBetween(source, "ComposeResult PrepareComposePayload(", "void LoadOpenKey()",
 			"dql::inventory::GoldAmountFromInventory(player->GetInventory())"));
-		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.22.0\"_v,") != std::string::npos);
-		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_22_0\")") != std::string::npos);
+		CHECK(source.find("SKSEPluginInfo(.Version = \"0.1.23.0\"_v,") != std::string::npos);
+		CHECK(source.find("LogEvent(\"startup\", \"version_0_1_23_0\")") != std::string::npos);
 		CHECK(source.find("void RespondPreDispatchError(") != std::string::npos);
 		CHECK(source.find("dql::contract::MakePreDispatchError(request, code, message)") != std::string::npos);
 		CHECK(source.find("dql::contract::MakeError(request, code, message, dispatched)") != std::string::npos);
